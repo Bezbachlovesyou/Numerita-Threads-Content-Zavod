@@ -1,5 +1,4 @@
 aiogram>=3.31,<4
-anthropic>=1.11,<2
 aiosqlite>=0.22
 edge-tts>=7.2
 httpx>=0.28

@@ -19,7 +19,7 @@ async def main() -> None:
 
     storage = Storage(cfg.db_path)
     await storage.init()
-    generator = Generator(cfg.anthropic_api_key, VOICE_PROMPT)
+    generator = Generator(cfg.openrouter_api_key, cfg.openrouter_model, VOICE_PROMPT)
     threads = ThreadsClient(cfg.threads_user_id, cfg.threads_access_token) if cfg.threads_enabled else None
     if threads is None:
         logging.warning("Threads API не настроен: посты будут только сохраняться.")

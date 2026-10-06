@@ -1,0 +1,7 @@
+{
+  "$schema": "https://railway.com/railway.schema.json",
+  "deploy": {
+    "startCommand": "python -m zavod",
+    "restartPolicyType": "ON_FAILURE"
+  }
+}

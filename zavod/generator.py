@@ -1,8 +1,13 @@
+"""Генерация постов через OpenRouter (OpenAI-совместимый Chat Completions API).
+
+https://openrouter.ai/docs/api-reference/chat-completion
+"""
+
 from pathlib import Path
 
-import anthropic
+import httpx
 
-MODEL = "claude-opus-5-5"
+API_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 
 class GenerationError(Exception):
@@ -10,8 +15,9 @@ class GenerationError(Exception):
 
 
 class Generator:
-    def __init__(self, api_key: str, voice_path: Path):
-        self.client = anthropic.AsyncAnthropic(api_key=api_key)
+    def __init__(self, api_key: str, model: str, voice_path: Path):
+        self.api_key = api_key
+        self.model = model
         self.system = voice_path.read_text(encoding="utf-8")
 
     async def write_post(self, topic: str, previous: str | None = None) -> str:
@@ -23,28 +29,35 @@ class Generator:
             )
 
         try:
-            response = await self.client.beta.messages.create(
-                model=MODEL,
-                max_tokens=16000,
-                system=self.system,
-                messages=[{"role": "user", "content": prompt}],
-                output_config={"effort": "medium"},
-                # Если модель откажется по соображениям безопасности,
-                # API сам повторит запрос на подходящей запасной модели.
-                betas=["server-side-fallback-2026-07-01"],
-                fallbacks="default",
-            )
-        except anthropic.RateLimitError as e:
-            raise GenerationError("Превышен лимит запросов к Claude, попробуйте через минуту.") from e
-        except anthropic.APIStatusError as e:
-            raise GenerationError(f"Ошибка Claude API: {e.status_code} {e.message}") from e
-        except anthropic.APIConnectionError as e:
-            raise GenerationError("Не удалось связаться с Claude API.") from e
+            async with httpx.AsyncClient(timeout=180) as http:
+                response = await http.post(
+                    API_URL,
+                    headers={
+                        "Authorization": f"Bearer {self.api_key}",
+                        "X-Title": "Numerita Threads Content Zavod",
+                    },
+                    json={
+                        "model": self.model,
+                        "messages": [
+                            {"role": "system", "content": self.system},
+                            {"role": "user", "content": prompt},
+                        ],
+                    },
+                )
+        except httpx.HTTPError as e:
+            raise GenerationError("Не удалось связаться с OpenRouter.") from e
 
-        if response.stop_reason == "refusal":
-            raise GenerationError("Claude отказался писать пост на эту тему.")
+        try:
+            payload = response.json()
+        except ValueError:
+            raise GenerationError(f"OpenRouter вернул ошибку {response.status_code}.")
+        if response.is_error or "error" in payload:
+            message = payload.get("error", {}).get("message", response.text)
+            if response.status_code == 429:
+                message = "превышен лимит запросов, попробуйте через минуту"
+            raise GenerationError(f"Ошибка OpenRouter: {message}")
 
-        text = "".join(block.text for block in response.content if block.type == "text").strip()
+        text = (payload["choices"][0]["message"].get("content") or "").strip()
         if not text:
-            raise GenerationError("Claude вернул пустой ответ.")
+            raise GenerationError("Модель вернула пустой ответ.")
         return text

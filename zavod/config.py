@@ -4,12 +4,15 @@ from zoneinfo import ZoneInfo
 
 from dotenv import load_dotenv
 
+DEFAULT_MODEL = "anthropic/claude-opus-5.5"
+
 
 @dataclass(frozen=True)
 class Config:
     bot_token: str
     admin_ids: frozenset[int]
-    anthropic_api_key: str
+    openrouter_api_key: str
+    openrouter_model: str
     threads_user_id: str
     threads_access_token: str
     timezone: ZoneInfo
@@ -38,7 +41,8 @@ def load_config() -> Config:
     return Config(
         bot_token=required("TELEGRAM_BOT_TOKEN"),
         admin_ids=admin_ids,
-        anthropic_api_key=required("ANTHROPIC_API_KEY"),
+        openrouter_api_key=required("OPENROUTER_API_KEY"),
+        openrouter_model=os.getenv("OPENROUTER_MODEL", "").strip() or DEFAULT_MODEL,
         threads_user_id=os.getenv("THREADS_USER_ID", "").strip(),
         threads_access_token=os.getenv("THREADS_ACCESS_TOKEN", "").strip(),
         timezone=ZoneInfo(os.getenv("TIMEZONE", "Europe/Moscow")),
