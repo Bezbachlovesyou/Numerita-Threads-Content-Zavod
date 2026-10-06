@@ -43,12 +43,13 @@ python -m zavod
 ## Запуск на Railway
 
 1. На https://railway.com нажмите **New Project → Deploy from GitHub repo** и выберите этот репозиторий.
-2. В сервисе откройте **Variables** и добавьте:
+2. В сервисе бота откройте **Variables** и добавьте:
    - `TELEGRAM_BOT_TOKEN`
    - `ADMIN_IDS`
    - `OPENROUTER_API_KEY`
-   - `DB_PATH` = `/data/zavod.db`
-3. Чтобы черновики не пропадали при перезапуске, подключите диск: правой кнопкой по сервису → **Attach Volume**, путь `/data`.
+   - `DATABASE_URL` = `${{Postgres.DATABASE_URL}}` — ссылка на базу Postgres в этом же проекте (если сервис базы называется иначе, замените `Postgres` на его имя).
+
+Бот сам создаст в базе таблицу `posts`. Без `DATABASE_URL` бот хранит данные в файле SQLite (`DB_PATH`), и тогда на Railway нужен Volume, иначе данные пропадут при перезапуске.
 
 Команда запуска (`python -m zavod`) уже прописана в `railway.json`. После каждого пуша в `main` Railway перезапускает бота сам.
 
@@ -61,7 +62,7 @@ zavod/
   generator.py    генерация постов через OpenRouter
   threads_api.py  публикация в Threads
   tts.py          озвучка (edge-tts)
-  storage.py      SQLite: черновики, расписание, статусы
+  storage.py      SQLite или Postgres: черновики, расписание, статусы
   config.py       настройки из .env
 prompts/
   brand_voice.md  голос бренда — отредактируйте под Numerita

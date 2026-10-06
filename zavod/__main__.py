@@ -7,7 +7,7 @@ from aiogram import Bot, Dispatcher
 from .bot import create_router, run_scheduler
 from .config import load_config
 from .generator import Generator
-from .storage import Storage
+from .storage import PgStorage, Storage
 from .threads_api import ThreadsClient
 
 VOICE_PROMPT = Path(__file__).resolve().parent.parent / "prompts" / "brand_voice.md"
@@ -17,7 +17,7 @@ async def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     cfg = load_config()
 
-    storage = Storage(cfg.db_path)
+    storage = PgStorage(cfg.database_url) if cfg.database_url else Storage(cfg.db_path)
     await storage.init()
     generator = Generator(cfg.openrouter_api_key, cfg.openrouter_model, VOICE_PROMPT)
     threads = ThreadsClient(cfg.threads_user_id, cfg.threads_access_token) if cfg.threads_enabled else None

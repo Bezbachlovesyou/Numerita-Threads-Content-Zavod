@@ -1,5 +1,6 @@
 aiogram>=3.31,<4
 aiosqlite>=0.22
+asyncpg>=0.30
 edge-tts>=7.2
 httpx>=0.28
 python-dotenv>=1.2

@@ -20,6 +20,7 @@ class Config:
     tts_rate: str
     tts_auto: bool
     db_path: str
+    database_url: str
 
     @property
     def threads_enabled(self) -> bool:
@@ -50,4 +51,5 @@ def load_config() -> Config:
         tts_rate=os.getenv("TTS_RATE", "+100%"),
         tts_auto=os.getenv("TTS_AUTO", "1") == "1",
         db_path=os.getenv("DB_PATH", "zavod.db"),
+        database_url=os.getenv("DATABASE_URL", "").strip(),
     )

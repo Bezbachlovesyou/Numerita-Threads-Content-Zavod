@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 
 import aiosqlite
+import asyncpg
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS posts (
@@ -113,4 +114,51 @@ class Storage:
         return await self._fetch(
             "SELECT * FROM posts WHERE status IN ('draft', 'scheduled', 'failed')"
             " ORDER BY COALESCE(scheduled_at, created_at)"
+        )
+
+
+PG_SCHEMA = """
+CREATE TABLE IF NOT EXISTS posts (
+    id           SERIAL PRIMARY KEY,
+    topic        TEXT NOT NULL,
+    text         TEXT NOT NULL,
+    status       TEXT NOT NULL DEFAULT 'draft',
+    scheduled_at TEXT,
+    published_at TEXT,
+    threads_id   TEXT,
+    error        TEXT,
+    created_at   TEXT NOT NULL
+);
+"""
+
+
+class PgStorage(Storage):
+    """То же хранилище поверх Postgres (например, база в проекте Railway).
+
+    SQL общий с SQLite: плейсхолдеры `?` переводятся в `$1, $2, …`.
+    """
+
+    def __init__(self, dsn: str):
+        self.dsn = dsn
+        self.pool: asyncpg.Pool | None = None
+
+    @staticmethod
+    def _sql(sql: str) -> str:
+        parts = sql.split("?")
+        return parts[0] + "".join(f"${i}{part}" for i, part in enumerate(parts[1:], start=1))
+
+    async def init(self) -> None:
+        self.pool = await asyncpg.create_pool(self.dsn, min_size=1, max_size=5)
+        await self.pool.execute(PG_SCHEMA)
+
+    async def _execute(self, sql: str, params: tuple = ()) -> None:
+        await self.pool.execute(self._sql(sql), *params)
+
+    async def _fetch(self, sql: str, params: tuple = ()) -> list[Post]:
+        return [_row_to_post(row) for row in await self.pool.fetch(self._sql(sql), *params)]
+
+    async def add_draft(self, topic: str, text: str) -> int:
+        return await self.pool.fetchval(
+            "INSERT INTO posts (topic, text, created_at) VALUES ($1, $2, $3) RETURNING id",
+            topic, text, _now(),
         )
