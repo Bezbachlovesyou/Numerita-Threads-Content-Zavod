@@ -71,7 +71,7 @@ def post_keyboard(post: Post):
 
 async def publish(post: Post, db: Storage, threads: ThreadsClient | None) -> Post:
     if threads is None:
-        await db.mark_failed(post.id, "Threads API не подключён (нет токена в .env).")
+        await db.mark_failed(post.id, "Zernio не подключён: задайте ZERNIO_API_KEY и ZERNIO_ACCOUNT_ID.")
     else:
         try:
             threads_id = await threads.publish_text(post.text)

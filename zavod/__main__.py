@@ -20,9 +20,9 @@ async def main() -> None:
     storage = PgStorage(cfg.database_url) if cfg.database_url else Storage(cfg.db_path)
     await storage.init()
     generator = Generator(cfg.openrouter_api_key, cfg.openrouter_model, VOICE_PROMPT)
-    threads = ThreadsClient(cfg.threads_user_id, cfg.threads_access_token) if cfg.threads_enabled else None
+    threads = ThreadsClient(cfg.zernio_api_key, cfg.zernio_account_id) if cfg.threads_enabled else None
     if threads is None:
-        logging.warning("Threads API не настроен: посты будут только сохраняться.")
+        logging.warning("Zernio не настроен (ZERNIO_API_KEY, ZERNIO_ACCOUNT_ID): посты будут только сохраняться.")
 
     bot = Bot(cfg.bot_token)
     dp = Dispatcher()

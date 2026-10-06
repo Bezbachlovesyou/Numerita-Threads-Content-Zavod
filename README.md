@@ -37,7 +37,8 @@ python -m zavod
 | `ADMIN_IDS` | Ваш Telegram ID, например через @userinfobot |
 | `OPENROUTER_API_KEY` | https://openrouter.ai/keys → Create Key |
 | `OPENROUTER_MODEL` | Необязательно. По умолчанию `anthropic/claude-opus-5.5` |
-| `THREADS_USER_ID`, `THREADS_ACCESS_TOKEN` | Приложение Meta с Threads API. Пока они пустые, посты только сохраняются, а при публикации бот пишет, что Threads не подключён |
+| `ZERNIO_API_KEY` | https://zernio.com/dashboard/api-keys |
+| `ZERNIO_ACCOUNT_ID` | ID аккаунта Threads, подключённого в Zernio. Пока пусто, посты только сохраняются |
 | `TTS_VOICE`, `TTS_RATE`, `TTS_AUTO` | Голос, скорость и автоозвучка. По умолчанию женский голос Светлана, `+100%` (×2), автоозвучка включена |
 
 ## Запуск на Railway
@@ -47,6 +48,7 @@ python -m zavod
    - `TELEGRAM_BOT_TOKEN`
    - `ADMIN_IDS`
    - `OPENROUTER_API_KEY`
+   - `ZERNIO_API_KEY`, `ZERNIO_ACCOUNT_ID`
    - `DATABASE_URL` = `${{Postgres.DATABASE_URL}}` — ссылка на базу Postgres в этом же проекте (если сервис базы называется иначе, замените `Postgres` на его имя).
 
 Бот сам создаст в базе таблицу `posts`. Без `DATABASE_URL` бот хранит данные в файле SQLite (`DB_PATH`), и тогда на Railway нужен Volume, иначе данные пропадут при перезапуске.
@@ -60,7 +62,7 @@ zavod/
   __main__.py     запуск бота и планировщика
   bot.py          команды, кнопки, планировщик публикаций
   generator.py    генерация постов через OpenRouter
-  threads_api.py  публикация в Threads
+  threads_api.py  публикация в Threads через Zernio
   tts.py          озвучка (edge-tts)
   storage.py      SQLite или Postgres: черновики, расписание, статусы
   config.py       настройки из .env

@@ -13,8 +13,8 @@ class Config:
     admin_ids: frozenset[int]
     openrouter_api_key: str
     openrouter_model: str
-    threads_user_id: str
-    threads_access_token: str
+    zernio_api_key: str
+    zernio_account_id: str
     timezone: ZoneInfo
     tts_voice: str
     tts_rate: str
@@ -24,7 +24,7 @@ class Config:
 
     @property
     def threads_enabled(self) -> bool:
-        return bool(self.threads_user_id and self.threads_access_token)
+        return bool(self.zernio_api_key and self.zernio_account_id)
 
 
 def load_config() -> Config:
@@ -44,8 +44,8 @@ def load_config() -> Config:
         admin_ids=admin_ids,
         openrouter_api_key=required("OPENROUTER_API_KEY"),
         openrouter_model=os.getenv("OPENROUTER_MODEL", "").strip() or DEFAULT_MODEL,
-        threads_user_id=os.getenv("THREADS_USER_ID", "").strip(),
-        threads_access_token=os.getenv("THREADS_ACCESS_TOKEN", "").strip(),
+        zernio_api_key=os.getenv("ZERNIO_API_KEY", "").strip(),
+        zernio_account_id=os.getenv("ZERNIO_ACCOUNT_ID", "").strip(),
         timezone=ZoneInfo(os.getenv("TIMEZONE", "Europe/Moscow")),
         tts_voice=os.getenv("TTS_VOICE", "ru-RU-SvetlanaNeural"),
         tts_rate=os.getenv("TTS_RATE", "+100%"),
