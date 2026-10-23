@@ -1,36 +1,36 @@
-"""Автопостинг по контент-плану: в заданное время бот сам пишет пост и публикует его.
+"""Автопостинг без жёсткого расписания.
 
-Рубрики берутся по кругу из prompts/content_plan.md, номер рубрики и числа в ней
-вычисляются из даты и времени, поэтому после перезапуска план не сбивается.
-Готовые тексты с точным временем (prompts/threads_script.md) публикуются как есть,
-а сгенерированный пост в это время пропускается.
+Бот сам решает, когда выпустить следующий пост и о чём он будет:
+- интервал между постами живой: днём примерно 70–100 минут, ночью реже, со случайным разбросом;
+  самоулучшение (optimizer.py) сокращает интервал в часы, когда люди лучше реагируют, и растягивает в слабые,
+  но не чаще раза в час — чтобы Threads не принял аккаунт за спам;
+- рубрику выбирает по весам: сильные чаще, слабые реже, новые (эксперименты) — с запасом, чтобы успеть проверить;
+- ссылка на бота — не в двух постах подряд и не больше чем в 2 из последних 5;
+- готовые тексты (prompts/threads_script.md) выходят в первую очередь, через пост.
 """
 
 import logging
+import random
 import re
 from dataclasses import dataclass, replace
-from datetime import date, datetime, time, timedelta
-from itertools import combinations_with_replacement
+from datetime import datetime, time, timedelta
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 from .knowledge import reduce_number
 
 log = logging.getLogger(__name__)
 
-# Если бот был выключен в момент слота, догоняем не дольше этого окна, а потом пропускаем.
-CATCH_UP = timedelta(minutes=20)
-# Каждый день сдвигаем слоты на 0–12 минут, чтобы посты не выходили минута в минуту, как у робота.
-JITTER_MINUTES = 13
 WEEKDAYS = ["понедельник", "вторник", "среда", "четверг", "пятница", "суббота", "воскресенье"]
-PAIRS = list(combinations_with_replacement(range(1, 10), 2))
 CTAS = ("link", "reply", "profile", "none")
 BOT_LINK = "t.me/Numeritabot?start=ad_th_"
-# Расписание по умолчанию: пост каждые 90 минут круглые сутки — 16 в день
-# (у Threads лимит 250 постов в сутки через API; чаще 90 минут подряд — риск выглядеть как спам).
-DEFAULT_TIMES = "00:10,01:40,03:10,04:40,06:10,07:40,09:10,10:40,12:10,13:40,15:10,16:40,18:10,19:40,21:10,22:40"
-# Если постов не было дольше этого (бот был выключен, слоты пропущены), выпускаем пост сразу.
-MAX_GAP = timedelta(minutes=110)
+
+# Безопасный ритм для Threads: никогда не чаще раза в час (лимит API — 250 постов в сутки,
+# но частые посты нового аккаунта выглядят как спам), никогда не реже раза в 4 часа.
+MIN_GAP = timedelta(minutes=60)
+MAX_GAP = timedelta(hours=4)
+DAY_GAP = (70, 100)  # минут, 07:00–23:59
+NIGHT_GAP = (110, 160)  # минут, 00:00–06:59
+
 # Тема Threads для рубрики: пост показывают тем, кто следит за темой. По умолчанию — нумерология.
 TOPIC_TAGS = {"love": "Отношения", "pair": "Отношения", "wisdom": "Саморазвитие", "money": "Саморазвитие"}
 DEFAULT_TOPIC_TAG = "Нумерология"
@@ -52,37 +52,30 @@ def part_of_day(at: time) -> str:
     return "поздний вечер"
 
 
-def parse_times(raw: str) -> list[time]:
-    """«9:00, 12:30,18:00» → отсортированный список времён."""
-    result = []
-    for part in raw.replace(";", ",").split(","):
-        part = part.strip()
-        if part:
-            hours, _, minutes = part.partition(":")
-            result.append(time(int(hours), int(minutes or 0)))
-    return sorted(set(result))
-
-
 def soul_group(digit: int) -> str:
     """Дни рождения с этим числом души: 8 → «8, 17, 26»."""
     return ", ".join(str(d) for d in range(1, 32) if reduce_number(d) == digit)
 
 
+def hour_bucket(hour: int) -> str:
+    """Трёхчасовые окна для статистики по времени суток: «0», «3», …, «21»."""
+    return str(hour // 3 * 3)
+
+
 @dataclass(frozen=True)
 class Rubric:
-    cta: str  # link — ссылка на бота с меткой; reply — зовём ответить; profile — «ссылка в профиле»; none
+    cta: str  # link — ссылка на бота первым комментарием; reply — зовём ответить; profile — «ссылка в профиле»; none
     key: str  # попадает в метку ссылки ad_th_<key>…
     text: str
 
 
 @dataclass(frozen=True)
 class Slot:
-    key: str  # «2026-10-24 09:10» — по нему защищаемся от дублей
-    when: datetime  # с учётом дневного сдвига
+    key: str  # защита от дублей
+    when: datetime
     rubric: Rubric
     topic: str
     tag: str  # метка ссылки после ad_th_
-    to_channel: bool
 
 
 def load_rubrics(path: Path) -> list[Rubric]:
@@ -98,108 +91,84 @@ def load_rubrics(path: Path) -> list[Rubric]:
 
 
 class ContentPlan:
-    def __init__(self, times: list[time], channel_times: list[time], rubrics: list[Rubric]):
-        self.times = times
-        self.channel_times = set(channel_times)
+    def __init__(self, rubrics: list[Rubric], enabled: bool = True):
         self.rubrics = rubrics
-        # Самоулучшение (optimizer.py): переписанные тексты рубрик и временные замены слабых рубрик.
-        self.overrides: dict[str, str] = {}
-        self.swaps: dict[str, str] = {}
+        self.enabled = enabled and bool(rubrics)
+        # Всё ниже заполняет самоулучшение (optimizer.py) из базы.
+        self.overrides: dict[str, str] = {}  # переписанные тексты рубрик
+        self.weights: dict[str, float] = {}  # насколько часто брать рубрику (1.0 — обычно)
+        self.hour_weights: dict[str, float] = {}  # >1 — в эти часы постим чаще
+        self.custom: list[Rubric] = []  # новые рубрики, которые бот придумал сам
+
+    def all_rubrics(self) -> list[Rubric]:
+        return self.rubrics + self.custom
 
     def effective(self, rubric: Rubric) -> Rubric:
-        swapped = self.swaps.get(rubric.key)
-        if swapped:
-            rubric = next((r for r in self.rubrics if r.key == swapped and r.cta == rubric.cta), rubric)
         text = self.overrides.get(rubric.key)
         return replace(rubric, text=text) if text else rubric
 
-    @property
-    def enabled(self) -> bool:
-        return bool(self.times and self.rubrics)
+    def choose(self, recent: list[str], rng: random.Random) -> Rubric:
+        """Следующая рубрика. recent — рубрики последних постов, свежие первыми."""
+        by_key = {r.key: r for r in self.all_rubrics()}
+        recent_ctas = [by_key[k].cta for k in recent[:5] if k in by_key]
+        pool = [r for r in self.all_rubrics() if not recent or r.key != recent[0]]
+        if recent_ctas[:1] == ["link"] or recent_ctas.count("link") >= 2:
+            pool = [r for r in pool if r.cta != "link"] or pool
+        weights = [max(0.2, self.weights.get(r.key, 1.0)) for r in pool]
+        return self.effective(rng.choices(pool, weights=weights)[0])
 
-    def _slot(self, day: date, slot: int, tz: ZoneInfo) -> Slot:
-        return self._make(day, self.times[slot], day.toordinal() * len(self.times) + slot, slot, tz)
-
-    def extra_slot(self, now: datetime) -> Slot:
-        """Внеплановый пост «прямо сейчас», когда пауза затянулась."""
-        at = now.time().replace(second=0, microsecond=0)
-        index = now.date().toordinal() * 97 + (at.hour * 60 + at.minute) // 30
-        slot = self._make(now.date(), at, index, 0, now.tzinfo)
-        return replace(slot, key=f"extra {now:%Y-%m-%d %H}:{now.minute // 30 * 30:02d}", when=now)
-
-    def _make(self, day: date, at: time, index: int, slot: int, tz: ZoneInfo) -> Slot:
-        position = index % len(self.rubrics)
-        rubric = self.effective(self.rubrics[position])
-        # Растёт каждый раз, когда рубрика повторяется; сдвиг на номер рубрики,
-        # чтобы соседние посты не были про одно и то же число.
-        turn = index // len(self.rubrics) + position
-        digit = turn % 9 + 1
-        a, b = PAIRS[turn % len(PAIRS)]
+    def render(self, rubric: Rubric, now: datetime, rng: random.Random) -> Slot:
+        digit = rng.randint(1, 9)
+        a, b = sorted(rng.sample(range(1, 10), 2))
+        today = now.date()
         topic = rubric.text.format(
-            part_of_day=part_of_day(at),
-            weekday=WEEKDAYS[day.weekday()],
-            day_number=reduce_number(day.day),
-            tomorrow_number=reduce_number((day + timedelta(days=1)).day),
+            part_of_day=part_of_day(now.time()),
+            weekday=WEEKDAYS[today.weekday()],
+            day_number=reduce_number(today.day),
+            tomorrow_number=reduce_number((today + timedelta(days=1)).day),
             digit=digit,
             group=soul_group(digit),
-            n=turn % 31 + 1,
+            n=rng.randint(1, 31),
             a=a,
             b=b,
-            arcana=turn % 22 + 1,
+            arcana=rng.randint(1, 22),
         )
-        jitter = timedelta(minutes=(day.toordinal() * 7 + slot * 5) % JITTER_MINUTES)
         return Slot(
-            key=f"{day.isoformat()} {at:%H:%M}",
-            when=datetime.combine(day, at, tz) + jitter,
+            key=f"auto {now:%Y-%m-%d %H:%M}",
+            when=now,
             rubric=rubric,
             topic=topic,
-            tag=f"{rubric.key}{digit}_{day:%d%m}",
-            to_channel=at in self.channel_times,
+            tag=f"{rubric.key}{digit}_{now:%d%m}",
         )
 
-    def due(self, now: datetime) -> list[Slot]:
-        """Слоты, время которых наступило не позже CATCH_UP назад (вчерашние — тоже, для слотов после полуночи)."""
-        result = []
-        for day in (now.date() - timedelta(days=1), now.date()):
-            for slot in range(len(self.times)):
-                item = self._slot(day, slot, now.tzinfo)
-                if item.when <= now < item.when + CATCH_UP:
-                    result.append(item)
-        return result
-
-    def upcoming(self, now: datetime, count: int) -> list[Slot]:
-        result = []
-        day = now.date()
-        while len(result) < count:
-            result += [s for s in (self._slot(day, i, now.tzinfo) for i in range(len(self.times))) if s.when > now]
-            day += timedelta(days=1)
-        return result[:count]
+    def next_gap(self, now: datetime, rng: random.Random) -> timedelta:
+        low, high = NIGHT_GAP if now.hour < 7 else DAY_GAP
+        minutes = rng.uniform(low, high) / self.hour_weights.get(hour_bucket(now.hour), 1.0)
+        return min(MAX_GAP, max(MIN_GAP, timedelta(minutes=minutes)))
 
 
 @dataclass(frozen=True)
 class ScriptedPost:
     key: str
-    when: datetime
     text: str
 
 
-def load_script(path: Path, tz: ZoneInfo) -> list[ScriptedPost]:
-    """Готовые посты: заголовок «## ГГГГ-ММ-ДД ЧЧ:ММ», под ним текст строками с «>». Остальное — заметки."""
+def load_script(path: Path) -> list[ScriptedPost]:
+    """Готовые посты: заголовок «## …», под ним текст строками с «>». Остальное — заметки."""
     if not path.exists():
         return []
-    posts, when, lines = [], None, []
+    posts, title, lines = [], None, []
 
     def flush():
         text = "\n".join(lines).strip()
-        if when and text:
-            posts.append(ScriptedPost(f"script {when:%Y-%m-%d %H:%M}", when, text))
+        if title and text:
+            posts.append(ScriptedPost(f"script {title}", text))
 
     for line in path.read_text(encoding="utf-8").splitlines():
-        match = re.match(r"^## (\d{4}-\d{2}-\d{2} \d{1,2}:\d{2})", line)
-        if match:
+        if line.startswith("## "):
             flush()
-            when, lines = datetime.strptime(match.group(1), "%Y-%m-%d %H:%M").replace(tzinfo=tz), []
-        elif when is not None and line.startswith(">"):
+            title, lines = line[3:].strip(), []
+        elif title is not None and line.startswith(">"):
             lines.append(line[1:].removeprefix(" "))
     flush()
     return posts

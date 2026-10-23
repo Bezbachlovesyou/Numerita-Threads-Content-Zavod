@@ -7,7 +7,7 @@ from aiogram.types import BotCommand
 
 from datetime import datetime
 
-from .autopost import ContentPlan, load_rubrics, load_script, parse_times
+from .autopost import ContentPlan, load_rubrics, load_script
 from .bot import COMMANDS, create_router, import_script, run_scheduler
 from .config import load_config
 from .generator import Generator
@@ -37,15 +37,11 @@ async def main() -> None:
     dp["db"] = storage
     dp["generator"] = generator
     dp["threads"] = threads
-    times = parse_times(cfg.autopost_times)
-    plan = ContentPlan(times, parse_times(cfg.autopost_channel_times) or times, load_rubrics(PROMPTS / "content_plan.md"))
-    if plan.enabled:
-        logging.info("Автопостинг: %s", ", ".join(f"{t:%H:%M}" for t in plan.times))
+    plan = ContentPlan(load_rubrics(PROMPTS / "content_plan.md"), enabled=cfg.autopost)
     await apply_state(storage, plan, datetime.now(cfg.timezone))
-    script = load_script(PROMPTS / "threads_script.md", cfg.timezone)
-    added = await import_script(storage, script, datetime.now(cfg.timezone))
+    added = await import_script(storage, load_script(PROMPTS / "threads_script.md"))
     if added:
-        logging.info("Готовых постов поставлено в расписание: %s", added)
+        logging.info("Готовых текстов поставлено в очередь: %s", added)
     dp.include_router(create_router(cfg, plan))
 
     scheduler = asyncio.create_task(run_scheduler(bot, cfg, storage, threads, generator, plan))

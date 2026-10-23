@@ -57,6 +57,20 @@ CREATE TABLE IF NOT EXISTS plan_swaps (
     replacement TEXT NOT NULL,
     until       TEXT NOT NULL
 );
+-- Состояние автопостинга и самоулучшения (время следующего поста, веса рубрик и часов).
+CREATE TABLE IF NOT EXISTS kv (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+
+-- Рубрики, которые бот придумал сам: trial — на проверке, kept — оставлены, dropped — убраны.
+CREATE TABLE IF NOT EXISTS custom_rubrics (
+    key        TEXT PRIMARY KEY,
+    cta        TEXT NOT NULL,
+    text       TEXT NOT NULL,
+    status     TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
 """
 
 
@@ -263,6 +277,48 @@ class Storage:
         rows = await self._rows("SELECT MAX(published_at) AS last FROM posts WHERE status = 'published'")
         return datetime.fromisoformat(rows[0]["last"]) if rows and rows[0]["last"] else None
 
+    async def kv_get(self, key: str) -> str | None:
+        rows = await self._rows("SELECT value FROM kv WHERE key = ?", (key,))
+        return rows[0]["value"] if rows else None
+
+    async def kv_set(self, key: str, value: str) -> None:
+        await self._execute("DELETE FROM kv WHERE key = ?", (key,))
+        await self._execute("INSERT INTO kv (key, value) VALUES (?, ?)", (key, value))
+
+    async def recent_rubrics(self, limit: int) -> list[str]:
+        """Рубрики последних опубликованных постов, свежие первыми."""
+        rows = await self._rows(
+            "SELECT rubric FROM posts WHERE status = 'published' AND rubric IS NOT NULL"
+            " ORDER BY published_at DESC LIMIT ?",
+            (limit,),
+        )
+        return [row["rubric"] for row in rows]
+
+    async def next_queued(self) -> Post | None:
+        """Следующий готовый текст из очереди."""
+        posts = await self._fetch("SELECT * FROM posts WHERE status = 'queued' ORDER BY id LIMIT 1")
+        return posts[0] if posts else None
+
+    async def queue_post(self, post_id: int) -> None:
+        await self._execute("UPDATE posts SET status = 'queued' WHERE id = ?", (post_id,))
+
+    async def requeue_scheduled_scripts(self) -> None:
+        """Готовые тексты, стоявшие на точное время, переводим в очередь — время решает бот."""
+        await self._execute("UPDATE posts SET status = 'queued' WHERE rubric = 'script' AND status = 'scheduled'")
+
+    async def custom_rubrics(self, statuses: tuple[str, ...]) -> list[dict]:
+        marks = ", ".join("?" for _ in statuses)
+        return await self._rows(f"SELECT * FROM custom_rubrics WHERE status IN ({marks}) ORDER BY created_at", statuses)
+
+    async def add_custom_rubric(self, key: str, cta: str, text: str) -> None:
+        await self._execute(
+            "INSERT INTO custom_rubrics (key, cta, text, status, created_at) VALUES (?, ?, ?, 'trial', ?)",
+            (key, cta, text, _now()),
+        )
+
+    async def set_custom_status(self, key: str, status: str) -> None:
+        await self._execute("UPDATE custom_rubrics SET status = ? WHERE key = ?", (status, key))
+
     async def due(self) -> list[Post]:
         return await self._fetch(
             "SELECT * FROM posts WHERE status = 'scheduled' AND scheduled_at <= ?"
@@ -272,7 +328,7 @@ class Storage:
 
     async def queue(self) -> list[Post]:
         return await self._fetch(
-            "SELECT * FROM posts WHERE status IN ('draft', 'scheduled', 'failed')"
+            "SELECT * FROM posts WHERE status IN ('draft', 'scheduled', 'queued', 'failed')"
             " ORDER BY COALESCE(scheduled_at, created_at)"
         )
 
@@ -324,6 +380,20 @@ CREATE TABLE IF NOT EXISTS plan_swaps (
     key         TEXT PRIMARY KEY,
     replacement TEXT NOT NULL,
     until       TEXT NOT NULL
+);
+-- Состояние автопостинга и самоулучшения (время следующего поста, веса рубрик и часов).
+CREATE TABLE IF NOT EXISTS kv (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+
+-- Рубрики, которые бот придумал сам: trial — на проверке, kept — оставлены, dropped — убраны.
+CREATE TABLE IF NOT EXISTS custom_rubrics (
+    key        TEXT PRIMARY KEY,
+    cta        TEXT NOT NULL,
+    text       TEXT NOT NULL,
+    status     TEXT NOT NULL,
+    created_at TEXT NOT NULL
 );
 """
 

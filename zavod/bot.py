@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import random
 from datetime import datetime, time, timedelta, timezone
 
 from aiogram import Bot, F, Router
@@ -9,7 +10,7 @@ from aiogram.filters.callback_data import CallbackData
 from aiogram.types import BufferedInputFile, CallbackQuery, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from .autopost import BOT_LINK, MAX_GAP, ContentPlan, ScriptedPost, Slot, topic_tag_for
+from .autopost import BOT_LINK, MIN_GAP, ContentPlan, ScriptedPost, Slot, topic_tag_for
 from .autoreply import answer_comments
 from .optimizer import optimize
 from .config import Config
@@ -228,30 +229,32 @@ def create_router(cfg: Config, plan: ContentPlan) -> Router:
             f"Telegram-канал: {cfg.telegram_channel or 'не подключён (TELEGRAM_CHANNEL)'}\n"
             f"Автоозвучка: {'включена' if cfg.tts_auto else 'выключена'}\n"
             f"Автоответы на комментарии: {f'включены, до {cfg.autoreply_per_hour} в час' if cfg.autoreply and threads else 'выключены'}\n"
-            f"Самоулучшение рубрик: {'каждый день в 04:10' if plan.enabled else 'выключено (нет AUTOPOST_TIMES)'}"
+            f"Автопостинг: {'включён, время выбирает бот' if plan.enabled else 'выключен (AUTOPOST=off)'}\n"
+            f"Самоулучшение: {'каждый день в 04:10' if plan.enabled else 'выключено'}"
         )
 
     @router.message(Command("plan", ignore_case=True))
     async def on_plan(message: Message, db: Storage) -> None:
         if not plan.enabled:
-            await message.answer(
-                "Автопостинг выключен. Чтобы включить, задайте на Railway AUTOPOST_TIMES, "
-                "например 9:00,12:00,15:00,18:00,21:00."
-            )
+            await message.answer("Автопостинг выключен (AUTOPOST=off).")
             return
         now = datetime.now(cfg.timezone)
-        scheduled = [p for p in await db.queue() if p.status == "scheduled" and p.scheduled_at]
-        items = [(p.scheduled_at.astimezone(cfg.timezone), "📌 готовый", p.text.splitlines()[0]) for p in scheduled]
-        for slot in plan.upcoming(now, 12):
-            if any(abs(slot.when - when) < SCRIPT_GAP for when, _, _ in items):
-                continue
-            label = {"link": "🔗 ссылка", "reply": "💬 ответы", "profile": "👤 профиль", "none": "✨ польза"}
-            items.append((slot.when, label[slot.rubric.cta], slot.topic))
-        items.sort(key=lambda item: item[0])
-        lines = [f"🗓 Автопостинг: {len(plan.times)} слотов в день, публикуются сразу.", ""]
-        for when, label, text in items[:12]:
-            short = text if len(text) <= 80 else text[:80] + "…"
-            lines.append(f"{when:%d.%m %H:%M} {label} — {short}")
+        stored = await db.kv_get("next_post_at")
+        when = datetime.fromisoformat(stored).astimezone(cfg.timezone) if stored else now
+        queued = [p for p in await db.queue() if p.status == "queued"]
+        day = await db.engagement(now - timedelta(days=1))
+        lines = [
+            "🗓 Автопостинг: бот сам выбирает время и рубрику.",
+            f"Следующий пост: {'сейчас' if when <= now else f'около {when:%H:%M}'}.",
+            f"За сутки вышло автопостов: {len(day)}. Готовых текстов в очереди: {len(queued)}.",
+            "",
+            "Рубрики (вес: больше 1 — чаще, меньше 1 — реже):",
+        ]
+        label = {"link": "🔗", "reply": "💬", "profile": "👤", "none": "✨"}
+        for rubric in plan.all_rubrics():
+            mark = " 🧪 новая" if rubric.key.startswith("x") else ""
+            mark += " ✍️ переписана" if rubric.key in plan.overrides else ""
+            lines.append(f"{label[rubric.cta]} {rubric.key}: {plan.weights.get(rubric.key, 1.0):.1f}{mark}")
         await message.answer("\n".join(lines))
 
     @router.message(Command("replies", ignore_case=True))
@@ -387,9 +390,7 @@ CTA_RULES = {
 }
 REPLY_INTERVAL = timedelta(minutes=5)
 OPTIMIZE_AT = time(4, 10)  # ежедневный разбор рубрик, когда трафик минимальный
-# Готовый пост ближе этого к слоту — сгенерированный в слот не пишем.
-SCRIPT_GAP = timedelta(minutes=45)
-
+RETRY_AFTER_ERROR = timedelta(minutes=15)
 
 # Первый комментарий со ссылкой: ссылка в самом посте снижает его показы в Threads.
 FIRST_COMMENTS = [
@@ -418,54 +419,69 @@ async def write_autopost(generator: Generator, slot: Slot) -> tuple[str, str | N
     return text, first_comment_for(slot) if slot.rubric.cta == "link" else None
 
 
-async def post_slot(
-    bot: Bot, cfg: Config, db: Storage, threads: ThreadsClient | None, generator: Generator, slot: Slot
-) -> None:
-    if not await db.claim_slot(slot.key):
-        return
-    log.info("Автопост %s (%s): %s", slot.key, slot.rubric.key, slot.topic)
-    try:
-        text, first_comment = await write_autopost(generator, slot)
-    except GenerationError as e:
-        await notify_admins(bot, cfg, f"❌ Автопост {slot.key} не написан: {e}\nТема: {slot.topic}")
-        return
-    post = await db.get(await db.add_draft(slot.topic, text, slot.rubric.key, first_comment))
-    post = await publish(post, db, threads, bot, cfg.telegram_channel if slot.to_channel else "")
+async def post_next(
+    bot: Bot, cfg: Config, db: Storage, threads: ThreadsClient | None, generator: Generator,
+    plan: ContentPlan, now: datetime, rng: random.Random,
+) -> bool:
+    """Выпускает следующий пост: готовый текст из очереди (через пост) или новый по рубрике.
+
+    Возвращает False, только если пост не удалось написать (тогда повторим скоро).
+    """
+    recent = await db.recent_rubrics(6)
+    queued = await db.next_queued()
+    if queued and (not recent or recent[0] != "script"):
+        post = await publish(queued, db, threads, bot, "")
+    else:
+        slot = plan.render(plan.choose(recent, rng), now, rng)
+        if not await db.claim_slot(slot.key):
+            return True
+        log.info("Автопост (%s): %s", slot.rubric.key, slot.topic)
+        try:
+            text, first_comment = await write_autopost(generator, slot)
+        except GenerationError as e:
+            await notify_admins(bot, cfg, f"❌ Автопост не написан: {e}\nТема: {slot.topic}")
+            return False
+        post = await db.get(await db.add_draft(slot.topic, text, slot.rubric.key, first_comment))
+        post = await publish(post, db, threads, bot, "")
     if post.status == "failed":  # пишем владельцу только о проблемах
-        await notify_admins(bot, cfg, "⚠️ Автопост не опубликован\n\n" + post_card(post, cfg), post)
+        await notify_admins(bot, cfg, "⚠️ Пост не опубликован\n\n" + post_card(post, cfg), post)
+    return True
 
 
-async def autopost(
-    bot: Bot, cfg: Config, db: Storage, threads: ThreadsClient | None, generator: Generator, plan: ContentPlan
+async def autopost_tick(
+    bot: Bot, cfg: Config, db: Storage, threads: ThreadsClient | None, generator: Generator,
+    plan: ContentPlan, rng: random.Random,
 ) -> None:
-    """Пишет и публикует посты для наступивших слотов контент-плана; после долгой паузы — пост сразу."""
+    """Пора ли выпускать пост. Время следующего поста бот выбирает сам и хранит в базе."""
     now = datetime.now(cfg.timezone)
-    due = plan.due(now)
-    for slot in due:
-        if await db.has_post_near(slot.when, SCRIPT_GAP):
-            continue  # в это время выходит готовый пост из сценария
-        await post_slot(bot, cfg, db, threads, generator, slot)
-    if due or threads is None:
-        return
     last = await db.last_published_at()
-    upcoming = plan.upcoming(now, 1)
-    soon = upcoming and upcoming[0].when - now < timedelta(minutes=30)
-    if (last is None or now - last > MAX_GAP) and not soon and not await db.has_post_near(now, SCRIPT_GAP):
-        await post_slot(bot, cfg, db, threads, generator, plan.extra_slot(now))
+    stored = await db.kv_get("next_post_at")
+    if stored:
+        next_at = datetime.fromisoformat(stored)
+    else:
+        # Первый запуск: если давно ничего не выходило — постим сразу.
+        next_at = now if last is None or now - last >= MIN_GAP else last + MIN_GAP
+    if now < next_at:
+        return
+    if last is not None and now - last < MIN_GAP:  # пост уже вышел другим путём — выдерживаем паузу
+        await db.kv_set("next_post_at", (last + MIN_GAP).isoformat())
+        return
+    ok = await post_next(bot, cfg, db, threads, generator, plan, now, rng)
+    delay = plan.next_gap(now, rng) if ok else RETRY_AFTER_ERROR
+    await db.kv_set("next_post_at", (now + delay).isoformat())
 
 
-async def import_script(db: Storage, script: list[ScriptedPost], now: datetime) -> int:
-    """Ставит готовые посты сценария в расписание (каждый — один раз, прошедшие пропускает)."""
+async def import_script(db: Storage, script: list[ScriptedPost]) -> int:
+    """Ставит готовые тексты в очередь (каждый — один раз). Когда их выпускать, бот решает сам."""
+    await db.requeue_scheduled_scripts()
     added = 0
     for item in script:
-        if item.when <= now:
-            continue
         if len(item.text) > MAX_LENGTH:
             log.warning("Готовый пост %s длиннее %s символов, пропущен", item.key, MAX_LENGTH)
             continue
         if await db.claim_slot(item.key):
-            post_id = await db.add_draft(f"Готовый пост на {item.when:%d.%m %H:%M}", item.text, "script")
-            await db.schedule(post_id, item.when)
+            post_id = await db.add_draft("Готовый пост из плана", item.text, "script")
+            await db.queue_post(post_id)
             added += 1
     return added
 
@@ -478,7 +494,8 @@ async def run_scheduler(
     generator: Generator,
     plan: ContentPlan,
 ) -> None:
-    """Раз в 30 секунд публикует запланированные посты и автопосты, раз в 5 минут отвечает на комментарии."""
+    """Раз в 30 секунд: посты по кнопкам «через час», автопостинг; раз в 5 минут — ответы на комментарии."""
+    rng = random.Random()
     next_replies = datetime.now()
     while True:
         try:
@@ -486,8 +503,8 @@ async def run_scheduler(
                 post = await publish(post, db, threads, bot, cfg.telegram_channel)
                 if post.status == "failed":
                     await notify_admins(bot, cfg, "⚠️ Пост не опубликован\n\n" + post_card(post, cfg), post)
-            if plan.enabled:
-                await autopost(bot, cfg, db, threads, generator, plan)
+            if plan.enabled and threads is not None:
+                await autopost_tick(bot, cfg, db, threads, generator, plan, rng)
         except Exception:
             log.exception("Scheduler iteration failed")
         now = datetime.now(cfg.timezone)

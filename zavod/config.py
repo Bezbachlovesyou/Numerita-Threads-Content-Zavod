@@ -24,8 +24,7 @@ class Config:
     database_url: str
     kb_url: str
     telegram_channel: str
-    autopost_times: str
-    autopost_channel_times: str
+    autopost: bool
     autoreply: bool
     autoreply_per_hour: int
 
@@ -40,15 +39,6 @@ def channel_id(raw: str) -> str:
     if not value or value.startswith("@") or value.lstrip("-").isdigit():
         return value
     return "@" + value
-
-
-def autopost_times(raw: str) -> str:
-    from .autopost import DEFAULT_TIMES
-
-    raw = raw.strip()
-    if raw.lower() in ("off", "0", "no", "нет"):
-        return ""
-    return raw or DEFAULT_TIMES
 
 
 def load_config() -> Config:
@@ -87,10 +77,8 @@ def load_config() -> Config:
         # Пустое значение KB_URL отключает базу знаний.
         kb_url=os.getenv("KB_URL", DEFAULT_KB_URL).strip(),
         telegram_channel=channel_id(os.getenv("TELEGRAM_CHANNEL", "")),
-        # Время автопостов по TIMEZONE через запятую. По умолчанию каждые 90 минут, «off» — выключить.
-        autopost_times=autopost_times(os.getenv("AUTOPOST_TIMES", "")),
-        # В какие из этих слотов дублировать пост в Telegram-канал. Пусто — во все.
-        autopost_channel_times=os.getenv("AUTOPOST_CHANNEL_TIMES", "").strip(),
+        # Автопостинг: бот сам выбирает время и рубрику. AUTOPOST=off — выключить.
+        autopost=os.getenv("AUTOPOST", "on").strip().lower() not in ("off", "0", "no", "нет"),
         # Автоответы на комментарии в Threads: включены по умолчанию, AUTOREPLY=0 — выключить.
         autoreply=os.getenv("AUTOREPLY", "1") != "0",
         autoreply_per_hour=int(os.getenv("AUTOREPLY_PER_HOUR", "30") or 30),

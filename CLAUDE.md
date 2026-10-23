@@ -22,6 +22,9 @@ Telegram-бот, который сам ведёт Threads-аккаунт Нум�
   NumeritaCZThreadsbot), деплой автоматически из ветки `main`. Postgres — `DATABASE_URL`.
 - Посты пишет нейросеть через OpenRouter (`OPENROUTER_MODEL`, сейчас Sonnet 5.5) по базе знаний
   Нумериты `https://numerita.up.railway.app/kb.json` (её отдаёт проект My-1st-telegram-bot).
+- Жёсткого расписания нет: бот сам выбирает время следующего поста (`zavod/autopost.py`, не чаще раза в час)
+  и рубрику по весам; раз в сутки `zavod/optimizer.py` сам меняет веса, часы, переписывает слабые рубрики
+  и придумывает новые. Не возвращать фиксированные времена и переменные с расписанием.
 - `prompts/brand_voice.md` — голос постов, `prompts/reply_voice.md` — голос автоответов,
   `prompts/content_plan.md` — путь клиента и рубрики автопостинга, `prompts/threads_script.md` — готовые
   посты с точным временем.
