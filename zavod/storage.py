@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS posts (
     scheduled_at TEXT,  -- UTC ISO
     published_at TEXT,  -- UTC ISO
     threads_id   TEXT,
+    tg_message_id TEXT,  -- сообщение в Telegram-канале
     error        TEXT,
     created_at   TEXT NOT NULL
 );
@@ -28,6 +29,7 @@ class Post:
     status: str
     scheduled_at: datetime | None
     threads_id: str | None
+    tg_message_id: str | None
     error: str | None
 
 
@@ -43,6 +45,7 @@ def _row_to_post(row: aiosqlite.Row) -> Post:
         status=row["status"],
         scheduled_at=datetime.fromisoformat(row["scheduled_at"]) if row["scheduled_at"] else None,
         threads_id=row["threads_id"],
+        tg_message_id=row["tg_message_id"],
         error=row["error"],
     )
 
@@ -66,6 +69,10 @@ class Storage:
     async def init(self) -> None:
         async with aiosqlite.connect(self.path) as db:
             await db.executescript(SCHEMA)
+            try:  # базы, созданные до публикации в Telegram-канал
+                await db.execute("ALTER TABLE posts ADD COLUMN tg_message_id TEXT")
+            except aiosqlite.OperationalError:
+                pass
             await db.commit()
 
     async def add_draft(self, topic: str, text: str) -> int:
@@ -88,11 +95,16 @@ class Storage:
             (when.astimezone(timezone.utc).isoformat(), post_id),
         )
 
-    async def mark_published(self, post_id: int, threads_id: str | None) -> None:
+    async def set_threads_id(self, post_id: int, threads_id: str) -> None:
+        await self._execute("UPDATE posts SET threads_id = ? WHERE id = ?", (threads_id, post_id))
+
+    async def set_tg_message_id(self, post_id: int, message_id: str) -> None:
+        await self._execute("UPDATE posts SET tg_message_id = ? WHERE id = ?", (message_id, post_id))
+
+    async def mark_published(self, post_id: int) -> None:
         await self._execute(
-            "UPDATE posts SET status = 'published', published_at = ?, threads_id = ?, error = NULL"
-            " WHERE id = ?",
-            (_now(), threads_id, post_id),
+            "UPDATE posts SET status = 'published', published_at = ?, error = NULL WHERE id = ?",
+            (_now(), post_id),
         )
 
     async def mark_failed(self, post_id: int, error: str) -> None:
@@ -150,6 +162,7 @@ class PgStorage(Storage):
     async def init(self) -> None:
         self.pool = await asyncpg.create_pool(self.dsn, min_size=1, max_size=5)
         await self.pool.execute(PG_SCHEMA)
+        await self.pool.execute("ALTER TABLE posts ADD COLUMN IF NOT EXISTS tg_message_id TEXT")
 
     async def _execute(self, sql: str, params: tuple = ()) -> None:
         await self.pool.execute(self._sql(sql), *params)

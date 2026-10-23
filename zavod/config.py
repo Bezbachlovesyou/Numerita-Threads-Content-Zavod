@@ -23,10 +23,19 @@ class Config:
     db_path: str
     database_url: str
     kb_url: str
+    telegram_channel: str
 
     @property
     def threads_enabled(self) -> bool:
         return bool(self.zernio_api_key and self.zernio_account_id)
+
+
+def channel_id(raw: str) -> str:
+    """«t.me/name», «https://t.me/name», «name» → «@name»; числовой ID (-100…) оставляем как есть."""
+    value = raw.strip().removeprefix("https://").removeprefix("http://").removeprefix("t.me/")
+    if not value or value.startswith("@") or value.lstrip("-").isdigit():
+        return value
+    return "@" + value
 
 
 def load_config() -> Config:
@@ -64,4 +73,5 @@ def load_config() -> Config:
         database_url=os.getenv("DATABASE_URL", "").strip(),
         # Пустое значение KB_URL отключает базу знаний.
         kb_url=os.getenv("KB_URL", DEFAULT_KB_URL).strip(),
+        telegram_channel=channel_id(os.getenv("TELEGRAM_CHANNEL", "")),
     )

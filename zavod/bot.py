@@ -3,6 +3,7 @@ import logging
 from datetime import datetime, time, timedelta
 
 from aiogram import Bot, F, Router
+from aiogram.exceptions import TelegramAPIError
 from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.filters.callback_data import CallbackData
 from aiogram.types import BufferedInputFile, CallbackQuery, Message
@@ -27,7 +28,7 @@ STATUS_LABELS = {
 HELP = (
     "Я контент-завод Numerita для Threads.\n\n"
     "Просто напишите тему, и я пришлю готовый пост с кнопками:\n"
-    "✅ опубликовать сейчас, 🕒 запланировать, 🔄 переписать, 🔊 озвучить, 🗑 удалить.\n\n"
+    "✅ опубликовать сейчас в Threads и Telegram-канал, 🕒 запланировать, 🔄 переписать, 🔊 озвучить, 🗑 удалить.\n\n"
     "Команды:\n"
     "/new <тема> — новый пост\n"
     "/queue — черновики и запланированные посты\n"
@@ -48,6 +49,9 @@ def post_card(post: Post, cfg: Config) -> str:
         local = post.scheduled_at.astimezone(cfg.timezone)
         header += f" на {local:%d.%m %H:%M}"
     lines = [header, f"Тема: {post.topic}", "", post.text, "", f"{len(post.text)}/{MAX_LENGTH} символов"]
+    targets = [name for name, done in (("Threads", post.threads_id), ("Telegram-канал", post.tg_message_id)) if done]
+    if targets:
+        lines.append("Опубликовано: " + ", ".join(targets))
     if post.status == "failed" and post.error:
         lines.append(f"Причина: {post.error}")
     return "\n".join(lines)
@@ -116,16 +120,33 @@ def post_keyboard(post: Post):
     return kb.as_markup()
 
 
-async def publish(post: Post, db: Storage, threads: ThreadsClient | None) -> Post:
-    if threads is None:
-        await db.mark_failed(post.id, "Zernio не подключён: задайте ZERNIO_API_KEY и ZERNIO_ACCOUNT_ID.")
-    else:
+async def publish(post: Post, db: Storage, threads: ThreadsClient | None, bot: Bot, channel: str) -> Post:
+    """Публикует в Threads и в Telegram-канал. Куда уже вышло, повторно не отправляет."""
+    if threads is None and not channel:
+        await db.mark_failed(
+            post.id,
+            "Некуда публиковать: подключите Zernio (ZERNIO_API_KEY, ZERNIO_ACCOUNT_ID) или канал (TELEGRAM_CHANNEL).",
+        )
+        return await db.get(post.id)
+
+    errors = []
+    if threads is not None and not post.threads_id:
         try:
-            threads_id = await threads.publish_text(post.text)
+            await db.set_threads_id(post.id, await threads.publish_text(post.text) or "published")
         except ThreadsError as e:
-            await db.mark_failed(post.id, str(e))
+            errors.append(f"Threads: {e}")
+    if channel and not post.tg_message_id:
+        try:
+            sent = await bot.send_message(channel, post.text)
+        except TelegramAPIError as e:
+            errors.append(f"Telegram-канал {channel}: {e.message}. Бот должен быть админом канала с правом публикации.")
         else:
-            await db.mark_published(post.id, threads_id)
+            await db.set_tg_message_id(post.id, str(sent.message_id))
+
+    if errors:
+        await db.mark_failed(post.id, " ".join(errors))
+    else:
+        await db.mark_published(post.id)
     return await db.get(post.id)
 
 
@@ -187,6 +208,7 @@ def create_router(cfg: Config) -> Router:
             f"База знаний Numerita: {kb_line}\n"
             f"Хранилище: {'Postgres' if isinstance(db, PgStorage) else 'временный файл (задайте DATABASE_URL)'}\n"
             f"Публикация в Threads (Zernio): {'подключена' if threads else 'не подключена'}\n"
+            f"Telegram-канал: {cfg.telegram_channel or 'не подключён (TELEGRAM_CHANNEL)'}\n"
             f"Автоозвучка: {'включена' if cfg.tts_auto else 'выключена'}"
         )
 
@@ -254,7 +276,7 @@ def create_router(cfg: Config) -> Router:
 
         if action == "publish":
             await callback.answer("Публикую…")
-            post = await publish(post, db, threads)
+            post = await publish(post, db, threads, callback.bot, cfg.telegram_channel)
         elif action in ("in1h", "tomorrow"):
             now = datetime.now(cfg.timezone)
             if action == "in1h":
@@ -290,7 +312,7 @@ async def run_scheduler(bot: Bot, cfg: Config, db: Storage, threads: ThreadsClie
     while True:
         try:
             for post in await db.due():
-                post = await publish(post, db, threads)
+                post = await publish(post, db, threads, bot, cfg.telegram_channel)
                 for admin_id in cfg.admin_ids:
                     await bot.send_message(admin_id, post_card(post, cfg), reply_markup=post_keyboard(post))
         except Exception:
