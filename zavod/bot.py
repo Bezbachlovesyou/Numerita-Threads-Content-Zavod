@@ -285,7 +285,11 @@ def create_router(cfg: Config, plan: ContentPlan) -> Router:
             return
         hour = await db.replies_since(datetime.now(timezone.utc) - timedelta(hours=1))
         day = await db.replies_since(datetime.now(timezone.utc) - timedelta(days=1))
-        lines = [f"💬 Автоответы: за час {hour} (лимит {cfg.autoreply_per_hour}), за сутки {day}.", ""]
+        lines = [f"💬 Автоответы: за час {hour} (лимит {cfg.autoreply_per_hour}), за сутки {day}."]
+        error = await db.kv_get("autoreply_error")
+        if error:
+            lines.append(f"⚠️ Последняя ошибка: {error}")
+        lines.append("")
         for row in await db.recent_comments(8):
             mark = "↩️" if row["status"] == "replied" else "⏭"
             lines.append(f"{mark} @{row['author']}: {row['comment'][:80]}")

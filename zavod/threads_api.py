@@ -4,6 +4,8 @@ Zernio сам ходит в Threads API, поэтому приложение Met
 https://docs.zernio.com
 """
 
+from datetime import datetime
+
 import httpx
 
 API_URL = "https://zernio.com/api/v1"
@@ -78,6 +80,18 @@ class ThreadsClient:
             reasons = [p.get("errorMessage") for p in post.get("platforms") or [] if p.get("errorMessage")]
             raise ThreadsError("Threads отклонил пост: " + ("; ".join(reasons) or payload.get("error", "без причины")))
         return post.get("_id", "")
+
+    async def commented_posts(self, since: datetime) -> list[dict]:
+        """Все посты аккаунта в Threads, под которыми есть комментарии (в том числе опубликованные не ботом)."""
+        _, payload = await self._request(
+            "GET",
+            "/inbox/comments",
+            params={
+                "platform": "threads", "accountId": self.account_id, "minComments": 1,
+                "since": since.isoformat(), "limit": 50,
+            },
+        )
+        return payload.get("data") or []
 
     async def comments(self, post_id: str) -> list[dict]:
         """Комментарии под постом (ответы людей в Threads)."""
