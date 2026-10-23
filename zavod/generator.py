@@ -37,7 +37,27 @@ class Generator:
         self.api_key = clean_key(api_key)
         self.model = model
         self.system = voice_path.read_text(encoding="utf-8")
+        reply_path = voice_path.with_name("reply_voice.md")
+        self.reply_system = reply_path.read_text(encoding="utf-8") if reply_path.exists() else self.system
         self.knowledge = knowledge
+
+    async def _with_knowledge(self, prompt: str, about: str) -> str:
+        excerpt = await self.knowledge.excerpt(about)
+        if not excerpt:
+            return prompt
+        return (
+            "База знаний Numerita (выдержка). Трактовки, расчёт и правила голоса бери только отсюда:\n"
+            f"{excerpt}\n\n{prompt}"
+        )
+
+    async def write_reply(self, post: str, comment: str, author: str, with_link: bool) -> str:
+        """Ответ на комментарий под постом. «SKIP» — отвечать не нужно."""
+        prompt = (
+            f"Наш пост:\n{post}\n\nКомментарий от @{author}:\n{comment}\n\n"
+            + ("В последней строке поставь только маркер {LINK} — бот заменит его ссылкой на полный разбор."
+               if with_link else "Без ссылок и без упоминания бота.")
+        )
+        return await self._complete(self.reply_system, await self._with_knowledge(prompt, comment))
 
     async def check_key(self) -> None:
         """Проверяет ключ при запуске и пишет результат в логи Railway."""
@@ -57,19 +77,15 @@ class Generator:
                       mask_key(self.api_key), response.status_code, response.text[:200])
 
     async def write_post(self, topic: str, previous: str | None = None) -> str:
-        prompt = f"Тема поста: {topic}"
-        excerpt = await self.knowledge.excerpt(topic)
-        if excerpt:
-            prompt = (
-                "База знаний Numerita (выдержка). Трактовки, расчёт и правила голоса бери только отсюда:\n"
-                f"{excerpt}\n\n{prompt}"
-            )
+        prompt = await self._with_knowledge(f"Тема поста: {topic}", topic)
         if previous:
             prompt += (
                 "\n\nВот предыдущий вариант, он не подошёл. "
                 f"Напиши заметно другой пост на ту же тему:\n\n{previous}"
             )
+        return await self._complete(self.system, prompt)
 
+    async def _complete(self, system: str, prompt: str) -> str:
         try:
             async with httpx.AsyncClient(timeout=180) as http:
                 response = await http.post(
@@ -81,7 +97,7 @@ class Generator:
                     json={
                         "model": self.model,
                         "messages": [
-                            {"role": "system", "content": self.system},
+                            {"role": "system", "content": system},
                             {"role": "user", "content": prompt},
                         ],
                     },

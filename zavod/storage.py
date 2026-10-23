@@ -24,6 +24,16 @@ CREATE TABLE IF NOT EXISTS autopost_slots (
     slot    TEXT PRIMARY KEY,
     post_id INTEGER
 );
+-- Комментарии в Threads, на которые бот уже ответил или решил не отвечать.
+CREATE TABLE IF NOT EXISTS comment_replies (
+    comment_id TEXT PRIMARY KEY,
+    post_id    INTEGER,
+    author     TEXT,
+    comment    TEXT,
+    reply      TEXT,
+    status     TEXT NOT NULL,  -- replied | skipped
+    created_at TEXT NOT NULL
+);
 """
 
 
@@ -66,11 +76,14 @@ class Storage:
             await db.commit()
             return cursor
 
-    async def _fetch(self, sql: str, params: tuple = ()) -> list[Post]:
+    async def _rows(self, sql: str, params: tuple = ()) -> list[dict]:
         async with aiosqlite.connect(self.path) as db:
             db.row_factory = aiosqlite.Row
             async with db.execute(sql, params) as cursor:
-                return [_row_to_post(row) for row in await cursor.fetchall()]
+                return [dict(row) for row in await cursor.fetchall()]
+
+    async def _fetch(self, sql: str, params: tuple = ()) -> list[Post]:
+        return [_row_to_post(row) for row in await self._rows(sql, params)]
 
     async def init(self) -> None:
         async with aiosqlite.connect(self.path) as db:
@@ -137,6 +150,42 @@ class Storage:
         cursor = await self._execute("INSERT OR IGNORE INTO autopost_slots (slot) VALUES (?)", (slot,))
         return cursor.rowcount == 1
 
+    async def recent_published(self, since: datetime) -> list[Post]:
+        """Посты, опубликованные в Threads после since, — под ними ищем комментарии."""
+        return await self._fetch(
+            "SELECT * FROM posts WHERE status = 'published' AND published_at >= ?"
+            " AND threads_id IS NOT NULL AND threads_id <> 'published' ORDER BY published_at DESC",
+            (since.astimezone(timezone.utc).isoformat(),),
+        )
+
+    async def handled_comments(self, comment_ids: list[str]) -> set[str]:
+        if not comment_ids:
+            return set()
+        marks = ", ".join("?" for _ in comment_ids)
+        rows = await self._rows(f"SELECT comment_id FROM comment_replies WHERE comment_id IN ({marks})", tuple(comment_ids))
+        return {row["comment_id"] for row in rows}
+
+    async def record_comment(
+        self, comment_id: str, post_id: int, author: str, comment: str, reply: str, status: str
+    ) -> None:
+        await self._execute(
+            "INSERT INTO comment_replies (comment_id, post_id, author, comment, reply, status, created_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (comment_id, post_id, author, comment, reply, status, _now()),
+        )
+
+    async def replies_since(self, since: datetime) -> int:
+        rows = await self._rows(
+            "SELECT COUNT(*) AS n FROM comment_replies WHERE status = 'replied' AND created_at >= ?",
+            (since.astimezone(timezone.utc).isoformat(),),
+        )
+        return int(rows[0]["n"])
+
+    async def recent_comments(self, limit: int) -> list[dict]:
+        return await self._rows(
+            "SELECT * FROM comment_replies ORDER BY created_at DESC LIMIT ?", (limit,)
+        )
+
     async def due(self) -> list[Post]:
         return await self._fetch(
             "SELECT * FROM posts WHERE status = 'scheduled' AND scheduled_at <= ?"
@@ -168,6 +217,16 @@ CREATE TABLE IF NOT EXISTS autopost_slots (
     slot    TEXT PRIMARY KEY,
     post_id INTEGER
 );
+-- Комментарии в Threads, на которые бот уже ответил или решил не отвечать.
+CREATE TABLE IF NOT EXISTS comment_replies (
+    comment_id TEXT PRIMARY KEY,
+    post_id    INTEGER,
+    author     TEXT,
+    comment    TEXT,
+    reply      TEXT,
+    status     TEXT NOT NULL,  -- replied | skipped
+    created_at TEXT NOT NULL
+);
 """
 
 
@@ -194,8 +253,8 @@ class PgStorage(Storage):
     async def _execute(self, sql: str, params: tuple = ()) -> None:
         await self.pool.execute(self._sql(sql), *params)
 
-    async def _fetch(self, sql: str, params: tuple = ()) -> list[Post]:
-        return [_row_to_post(row) for row in await self.pool.fetch(self._sql(sql), *params)]
+    async def _rows(self, sql: str, params: tuple = ()) -> list[dict]:
+        return [dict(row) for row in await self.pool.fetch(self._sql(sql), *params)]
 
     async def claim_slot(self, slot: str) -> bool:
         claimed = await self.pool.fetchval(

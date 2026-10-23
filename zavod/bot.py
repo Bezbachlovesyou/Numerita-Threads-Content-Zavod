@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from datetime import datetime, time, timedelta
+from datetime import datetime, time, timedelta, timezone
 
 from aiogram import Bot, F, Router
 from aiogram.exceptions import TelegramAPIError
@@ -10,6 +10,7 @@ from aiogram.types import BufferedInputFile, CallbackQuery, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from .autopost import BOT_LINK, ContentPlan, ScriptedPost, Slot
+from .autoreply import answer_comments
 from .config import Config
 from .generator import GenerationError, Generator
 from .storage import PgStorage, Post, Storage
@@ -32,6 +33,7 @@ COMMANDS = [
     ("stats", "статистика в Threads"),
     ("status", "модель, база знаний, подключения"),
     ("plan", "контент-план: ближайшие автопосты"),
+    ("replies", "последние автоответы на комментарии"),
     ("help", "справка"),
 ]
 
@@ -45,6 +47,7 @@ HELP = (
     "/stats — статистика аккаунта в Threads\n"
     "/status — какая модель, база знаний и подключения\n"
     "/plan — расписание и темы ближайших автопостов\n"
+    "/replies — последние автоответы на комментарии в Threads\n"
     "/help — эта справка"
 )
 
@@ -220,7 +223,8 @@ def create_router(cfg: Config, plan: ContentPlan) -> Router:
             f"Хранилище: {'Postgres' if isinstance(db, PgStorage) else 'временный файл (задайте DATABASE_URL)'}\n"
             f"Публикация в Threads (Zernio): {'подключена' if threads else 'не подключена'}\n"
             f"Telegram-канал: {cfg.telegram_channel or 'не подключён (TELEGRAM_CHANNEL)'}\n"
-            f"Автоозвучка: {'включена' if cfg.tts_auto else 'выключена'}"
+            f"Автоозвучка: {'включена' if cfg.tts_auto else 'выключена'}\n"
+            f"Автоответы на комментарии: {f'включены, до {cfg.autoreply_per_hour} в час' if cfg.autoreply and threads else 'выключены'}"
         )
 
     @router.message(Command("plan", ignore_case=True))
@@ -245,6 +249,23 @@ def create_router(cfg: Config, plan: ContentPlan) -> Router:
         for when, label, text in items[:12]:
             short = text if len(text) <= 80 else text[:80] + "…"
             lines.append(f"{when:%d.%m %H:%M} {label} — {short}")
+        await message.answer("\n".join(lines))
+
+    @router.message(Command("replies", ignore_case=True))
+    async def on_replies(message: Message, db: Storage) -> None:
+        if not cfg.autoreply:
+            await message.answer("Автоответы выключены (AUTOREPLY=0).")
+            return
+        hour = await db.replies_since(datetime.now(timezone.utc) - timedelta(hours=1))
+        day = await db.replies_since(datetime.now(timezone.utc) - timedelta(days=1))
+        lines = [f"💬 Автоответы: за час {hour} (лимит {cfg.autoreply_per_hour}), за сутки {day}.", ""]
+        for row in await db.recent_comments(8):
+            mark = "↩️" if row["status"] == "replied" else "⏭"
+            lines.append(f"{mark} @{row['author']}: {row['comment'][:80]}")
+            if row["reply"]:
+                lines.append(f"   → {row['reply'][:160]}")
+        if len(lines) == 2:
+            lines.append("Комментариев пока не было.")
         await message.answer("\n".join(lines))
 
     @router.message(Command("queue", ignore_case=True))
@@ -361,6 +382,7 @@ CTA_RULES = {
     "profile": "Закончи фразой, что полный разбор своей даты — по ссылке в профиле. Без ссылок и без упоминания бота.",
     "none": "Без ссылок и без упоминания бота.",
 }
+REPLY_INTERVAL = timedelta(minutes=5)
 # Готовый пост ближе этого к слоту — сгенерированный в слот не пишем.
 SCRIPT_GAP = timedelta(minutes=45)
 
@@ -432,7 +454,8 @@ async def run_scheduler(
     generator: Generator,
     plan: ContentPlan,
 ) -> None:
-    """Раз в 30 секунд публикует запланированные посты и автопосты по контент-плану."""
+    """Раз в 30 секунд публикует запланированные посты и автопосты, раз в 5 минут отвечает на комментарии."""
+    next_replies = datetime.now()
     while True:
         try:
             for post in await db.due():
@@ -442,4 +465,10 @@ async def run_scheduler(
                 await autopost(bot, cfg, db, threads, generator, plan)
         except Exception:
             log.exception("Scheduler iteration failed")
+        if threads is not None and cfg.autoreply and datetime.now() >= next_replies:
+            next_replies = datetime.now() + REPLY_INTERVAL
+            try:
+                await answer_comments(db, threads, generator, cfg.autoreply_per_hour, per_run=5)
+            except Exception:
+                log.exception("Autoreply iteration failed")
         await asyncio.sleep(30)

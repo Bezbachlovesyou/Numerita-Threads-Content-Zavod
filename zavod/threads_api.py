@@ -22,12 +22,8 @@ class ThreadsClient:
     async def _request(self, method: str, path: str, **kwargs) -> tuple[int, dict]:
         try:
             async with httpx.AsyncClient(timeout=60) as http:
-                response = await http.request(
-                    method,
-                    API_URL + path,
-                    headers={"Authorization": f"Bearer {self.api_key}"},
-                    **kwargs,
-                )
+                headers = {"Authorization": f"Bearer {self.api_key}", **kwargs.pop("headers", {})}
+                response = await http.request(method, API_URL + path, headers=headers, **kwargs)
         except httpx.HTTPError as e:
             raise ThreadsError(f"Не удалось связаться с Zernio: {e}") from e
 
@@ -57,6 +53,22 @@ class ThreadsClient:
             },
         )
         return payload.get("post", {}).get("_id", "")
+
+    async def comments(self, post_id: str) -> list[dict]:
+        """Комментарии под постом (ответы людей в Threads)."""
+        _, payload = await self._request(
+            "GET", f"/inbox/comments/{post_id}", params={"accountId": self.account_id, "limit": 50}
+        )
+        return payload.get("comments") or []
+
+    async def reply(self, post_id: str, comment_id: str, message: str) -> None:
+        """Отвечает на комментарий. Ключ идемпотентности не даст ответить дважды при повторе."""
+        await self._request(
+            "POST",
+            f"/inbox/comments/{post_id}",
+            json={"accountId": self.account_id, "commentId": comment_id, "message": message},
+            headers={"Idempotency-Key": f"reply-{comment_id}"},
+        )
 
     async def account_stats(self, limit: int = 10) -> dict:
         """Сводка и последние посты аккаунта: {"overview": {...}, "posts": [...]}."""
