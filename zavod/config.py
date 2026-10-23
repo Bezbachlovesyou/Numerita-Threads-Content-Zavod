@@ -25,6 +25,7 @@ class Config:
     kb_url: str
     telegram_channel: str
     autopost: bool
+    cards: bool
     autoreply: bool
     autoreply_per_hour: int
 
@@ -78,6 +79,8 @@ def load_config() -> Config:
         kb_url=os.getenv("KB_URL", DEFAULT_KB_URL).strip(),
         telegram_channel=channel_id(os.getenv("TELEGRAM_CHANNEL", "")),
         # Автопостинг: бот сам выбирает время и рубрику. AUTOPOST=off — выключить.
+        # Картинки к постам (карточка Нумериты). CARDS=off — публиковать только текст.
+        cards=os.getenv("CARDS", "on").strip().lower() not in ("off", "0", "no", "нет"),
         autopost=os.getenv("AUTOPOST", "on").strip().lower() not in ("off", "0", "no", "нет"),
         # Автоответы на комментарии в Threads: включены по умолчанию, AUTOREPLY=0 — выключить.
         autoreply=os.getenv("AUTOREPLY", "1") != "0",

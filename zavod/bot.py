@@ -11,6 +11,7 @@ from aiogram.types import BufferedInputFile, CallbackQuery, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from .autopost import BOT_LINK, MIN_GAP, ContentPlan, ScriptedPost, Slot, topic_tag_for
+from .cards import Card, card_from_text, render_card
 from .autoreply import answer_comments
 from .optimizer import optimize
 from .config import Config
@@ -137,8 +138,25 @@ def post_keyboard(post: Post):
     return kb.as_markup()
 
 
-async def publish(post: Post, db: Storage, threads: ThreadsClient | None, bot: Bot, channel: str) -> Post:
-    """Публикует в Threads и в Telegram-канал. Куда уже вышло, повторно не отправляет."""
+async def ensure_image(post: Post, db: Storage, threads: ThreadsClient) -> str | None:
+    """Рисует карточку к посту и загружает её в Zernio. При любой ошибке пост выйдет без картинки."""
+    if post.image_url:
+        return post.image_url
+    try:
+        card = Card.from_json(post.card) or card_from_text(post.text)
+        data = await asyncio.to_thread(render_card, card, f"{post.id}-{post.text[:20]}")
+        url = await threads.upload_image(data, f"numerita_{post.id}.jpg")
+    except Exception:
+        log.exception("Картинка к посту #%s не сделана, публикую без неё", post.id)
+        return None
+    await db.set_image(post.id, url)
+    return url
+
+
+async def publish(
+    post: Post, db: Storage, threads: ThreadsClient | None, bot: Bot, channel: str, cards: bool = True
+) -> Post:
+    """Публикует в Threads (с картинкой-карточкой) и в Telegram-канал. Куда уже вышло, повторно не отправляет."""
     if threads is None and not channel:
         await db.mark_failed(
             post.id,
@@ -149,7 +167,10 @@ async def publish(post: Post, db: Storage, threads: ThreadsClient | None, bot: B
     errors = []
     if threads is not None and not post.threads_id:
         try:
-            threads_id = await threads.publish_text(post.text, topic_tag_for(post.rubric), post.first_comment)
+            image_url = await ensure_image(post, db, threads) if cards else None
+            threads_id = await threads.publish_text(
+                post.text, topic_tag_for(post.rubric), post.first_comment, image_url
+            )
             await db.set_threads_id(post.id, threads_id or "published")
         except ThreadsError as e:
             errors.append(f"Threads: {e}")
@@ -342,7 +363,7 @@ def create_router(cfg: Config, plan: ContentPlan) -> Router:
 
         if action == "publish":
             await callback.answer("Публикую…")
-            post = await publish(post, db, threads, callback.bot, cfg.telegram_channel)
+            post = await publish(post, db, threads, callback.bot, cfg.telegram_channel, cfg.cards)
         elif action in ("in1h", "tomorrow"):
             now = datetime.now(cfg.timezone)
             if action == "in1h":
@@ -406,17 +427,34 @@ def first_comment_for(slot: Slot) -> str:
     return template.format(link=BOT_LINK + slot.tag)
 
 
-async def write_autopost(generator: Generator, slot: Slot) -> tuple[str, str | None]:
-    """Текст поста и первый комментарий (для постов со ссылкой)."""
-    topic = f"{slot.topic}\n\n{CTA_RULES[slot.rubric.cta]}"
+CARD_RULE = (
+    "После поста с новой строки напиши «КАРТИНКА: » и фразу для картинки к посту: до 8 слов, без эмодзи, "
+    "интрига или узнавание, чтобы захотелось ответить. Не повторяй первую строку поста дословно."
+)
 
-    def finish(raw: str) -> str:
-        return raw.replace("{LINK}", "").strip()  # маркер не к месту — убираем
 
-    text = finish(await generator.write_post(topic))
+def split_card_hook(raw: str) -> tuple[str, str | None]:
+    """Отделяет строку «КАРТИНКА: …» от текста поста."""
+    lines, hook = [], None
+    for line in raw.splitlines():
+        stripped = line.strip().strip("*")
+        if stripped.upper().startswith("КАРТИНКА:"):
+            hook = stripped.split(":", 1)[1].strip().strip("«»\"") or None
+        else:
+            lines.append(line)
+    return "\n".join(lines).replace("{LINK}", "").strip(), hook  # маркер ссылки не к месту — убираем
+
+
+async def write_autopost(generator: Generator, slot: Slot) -> tuple[str, str | None, str]:
+    """Текст поста, первый комментарий (для постов со ссылкой) и фраза для картинки."""
+    topic = f"{slot.topic}\n\n{CTA_RULES[slot.rubric.cta]}\n\n{CARD_RULE}"
+    text, hook = split_card_hook(await generator.write_post(topic))
     if len(text) > MAX_LENGTH:
-        text = finish(await generator.write_post(f"{topic} Пиши заметно короче: весь пост до 400 символов."))
-    return text, first_comment_for(slot) if slot.rubric.cta == "link" else None
+        text, hook = split_card_hook(
+            await generator.write_post(f"{topic} Пиши заметно короче: весь пост до 400 символов.")
+        )
+    hook = hook or card_from_text(text).hook
+    return text, first_comment_for(slot) if slot.rubric.cta == "link" else None, hook
 
 
 async def post_next(
@@ -430,19 +468,20 @@ async def post_next(
     recent = await db.recent_rubrics(6)
     queued = await db.next_queued()
     if queued and (not recent or recent[0] != "script"):
-        post = await publish(queued, db, threads, bot, "")
+        post = await publish(queued, db, threads, bot, "", cfg.cards)
     else:
         slot = plan.render(plan.choose(recent, rng), now, rng)
         if not await db.claim_slot(slot.key):
             return True
         log.info("Автопост (%s): %s", slot.rubric.key, slot.topic)
         try:
-            text, first_comment = await write_autopost(generator, slot)
+            text, first_comment, hook = await write_autopost(generator, slot)
         except GenerationError as e:
             await notify_admins(bot, cfg, f"❌ Автопост не написан: {e}\nТема: {slot.topic}")
             return False
-        post = await db.get(await db.add_draft(slot.topic, text, slot.rubric.key, first_comment))
-        post = await publish(post, db, threads, bot, "")
+        card = Card(hook, slot.card_number, slot.card_label, slot.rubric.cta, slot.card_cta_text)
+        post = await db.get(await db.add_draft(slot.topic, text, slot.rubric.key, first_comment, card.to_json()))
+        post = await publish(post, db, threads, bot, "", cfg.cards)
     if post.status == "failed":  # пишем владельцу только о проблемах
         await notify_admins(bot, cfg, "⚠️ Пост не опубликован\n\n" + post_card(post, cfg), post)
     return True
@@ -500,7 +539,7 @@ async def run_scheduler(
     while True:
         try:
             for post in await db.due():
-                post = await publish(post, db, threads, bot, cfg.telegram_channel)
+                post = await publish(post, db, threads, bot, cfg.telegram_channel, cfg.cards)
                 if post.status == "failed":
                     await notify_admins(bot, cfg, "⚠️ Пост не опубликован\n\n" + post_card(post, cfg), post)
             if plan.enabled and threads is not None:

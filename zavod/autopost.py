@@ -16,6 +16,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime, time, timedelta
 from pathlib import Path
 
+from .cards import PLANETS
 from .knowledge import reduce_number
 
 log = logging.getLogger(__name__)
@@ -76,6 +77,9 @@ class Slot:
     rubric: Rubric
     topic: str
     tag: str  # метка ссылки после ad_th_
+    card_number: str | None = None  # крупно на картинке
+    card_label: str | None = None  # подпись под числом
+    card_cta_text: str | None = None  # свой текст кнопки на картинке
 
 
 def load_rubrics(path: Path) -> list[Rubric]:
@@ -120,6 +124,7 @@ class ContentPlan:
     def render(self, rubric: Rubric, now: datetime, rng: random.Random) -> Slot:
         digit = rng.randint(1, 9)
         a, b = sorted(rng.sample(range(1, 10), 2))
+        arcana = rng.randint(1, 22)
         today = now.date()
         topic = rubric.text.format(
             part_of_day=part_of_day(now.time()),
@@ -131,14 +136,26 @@ class ContentPlan:
             n=rng.randint(1, 31),
             a=a,
             b=b,
-            arcana=rng.randint(1, 22),
+            arcana=arcana,
         )
+        number, label, cta_text = None, None, None
+        if "{a}" in rubric.text and "{b}" in rubric.text:
+            number, label, cta_text = f"{a} · {b}", "Совместимость", "Напиши два числа в ответах"
+        elif "{arcana}" in rubric.text:
+            number, label = str(arcana), "Аркан"
+        elif "{digit}" in rubric.text or "{group}" in rubric.text:
+            number, label = str(digit), PLANETS[digit]
+        elif "{day_number}" in rubric.text or "{tomorrow_number}" in rubric.text:
+            number, label = str(reduce_number(today.day)), "Число дня"
         return Slot(
             key=f"auto {now:%Y-%m-%d %H:%M}",
             when=now,
             rubric=rubric,
             topic=topic,
             tag=f"{rubric.key}{digit}_{now:%d%m}",
+            card_number=number,
+            card_label=label,
+            card_cta_text=cta_text,
         )
 
     def next_gap(self, now: datetime, rng: random.Random) -> timedelta:

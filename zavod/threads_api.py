@@ -40,7 +40,23 @@ class ThreadsClient:
             raise ThreadsError(f"Zernio: {error}")
         return response.status_code, payload
 
-    async def publish_text(self, text: str, topic_tag: str | None = None, first_comment: str | None = None) -> str:
+    async def upload_image(self, data: bytes, filename: str) -> str:
+        """Загружает JPEG в хранилище Zernio, возвращает публичный адрес для mediaItems."""
+        _, presigned = await self._request(
+            "POST", "/media/presign", json={"filename": filename, "contentType": "image/jpeg", "size": len(data)}
+        )
+        try:
+            async with httpx.AsyncClient(timeout=60) as http:
+                response = await http.put(presigned["uploadUrl"], content=data, headers={"Content-Type": "image/jpeg"})
+        except httpx.HTTPError as e:
+            raise ThreadsError(f"Не удалось загрузить картинку: {e}") from e
+        if response.is_error:
+            raise ThreadsError(f"Хранилище Zernio не приняло картинку: {response.status_code}")
+        return presigned["publicUrl"]
+
+    async def publish_text(
+        self, text: str, topic_tag: str | None = None, first_comment: str | None = None, image_url: str | None = None
+    ) -> str:
         """Публикует пост. topic_tag — тема Threads (показ подписчикам темы), first_comment — первый комментарий."""
         if len(text) > MAX_LENGTH:
             raise ThreadsError(f"Пост длиннее {MAX_LENGTH} символов ({len(text)}).")
@@ -52,9 +68,10 @@ class ThreadsClient:
             extra["firstComment"] = first_comment[:MAX_LENGTH]
         if extra:
             platform["platformSpecificData"] = extra
-        _, payload = await self._request(
-            "POST", "/posts", json={"content": text, "platforms": [platform], "publishNow": True}
-        )
+        body: dict = {"content": text, "platforms": [platform], "publishNow": True}
+        if image_url:
+            body["mediaItems"] = [{"type": "image", "url": image_url}]
+        _, payload = await self._request("POST", "/posts", json=body)
         post = payload.get("post") or {}
         # Threads может отказать, а Zernio ответит 207 — это тоже ошибка публикации.
         if post.get("status") == "failed":

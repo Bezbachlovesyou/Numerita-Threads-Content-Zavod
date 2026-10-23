@@ -17,6 +17,8 @@ CREATE TABLE IF NOT EXISTS posts (
     tg_message_id TEXT,  -- сообщение в Telegram-канале
     rubric       TEXT,  -- рубрика контент-плана (для самоулучшения)
     first_comment TEXT,  -- первый комментарий под постом (ссылка с меткой)
+    card         TEXT,  -- что нарисовать на картинке (JSON)
+    image_url    TEXT,  -- загруженная картинка поста
     error        TEXT,
     created_at   TEXT NOT NULL
 );
@@ -85,6 +87,8 @@ class Post:
     tg_message_id: str | None
     rubric: str | None
     first_comment: str | None
+    card: str | None
+    image_url: str | None
     error: str | None
 
 
@@ -103,6 +107,8 @@ def _row_to_post(row: aiosqlite.Row) -> Post:
         tg_message_id=row["tg_message_id"],
         rubric=row.get("rubric"),
         first_comment=row.get("first_comment"),
+        card=row.get("card"),
+        image_url=row.get("image_url"),
         error=row["error"],
     )
 
@@ -129,7 +135,7 @@ class Storage:
     async def init(self) -> None:
         async with aiosqlite.connect(self.path) as db:
             await db.executescript(SCHEMA)
-            for column in ("tg_message_id", "rubric", "first_comment"):  # базы, созданные до этих колонок
+            for column in ("tg_message_id", "rubric", "first_comment", "card", "image_url"):  # базы, созданные до этих колонок
                 try:
                     await db.execute(f"ALTER TABLE posts ADD COLUMN {column} TEXT")
                 except aiosqlite.OperationalError:
@@ -137,11 +143,12 @@ class Storage:
             await db.commit()
 
     async def add_draft(
-        self, topic: str, text: str, rubric: str | None = None, first_comment: str | None = None
+        self, topic: str, text: str, rubric: str | None = None, first_comment: str | None = None,
+        card: str | None = None,
     ) -> int:
         cursor = await self._execute(
-            "INSERT INTO posts (topic, text, created_at, rubric, first_comment) VALUES (?, ?, ?, ?, ?)",
-            (topic, text, _now(), rubric, first_comment),
+            "INSERT INTO posts (topic, text, created_at, rubric, first_comment, card) VALUES (?, ?, ?, ?, ?, ?)",
+            (topic, text, _now(), rubric, first_comment, card),
         )
         return cursor.lastrowid
 
@@ -157,6 +164,9 @@ class Storage:
             "UPDATE posts SET status = 'scheduled', scheduled_at = ? WHERE id = ?",
             (when.astimezone(timezone.utc).isoformat(), post_id),
         )
+
+    async def set_image(self, post_id: int, url: str) -> None:
+        await self._execute("UPDATE posts SET image_url = ? WHERE id = ?", (url, post_id))
 
     async def set_threads_id(self, post_id: int, threads_id: str) -> None:
         await self._execute("UPDATE posts SET threads_id = ? WHERE id = ?", (threads_id, post_id))
@@ -419,6 +429,8 @@ class PgStorage(Storage):
         await self.pool.execute("ALTER TABLE posts ADD COLUMN IF NOT EXISTS tg_message_id TEXT")
         await self.pool.execute("ALTER TABLE posts ADD COLUMN IF NOT EXISTS rubric TEXT")
         await self.pool.execute("ALTER TABLE posts ADD COLUMN IF NOT EXISTS first_comment TEXT")
+        await self.pool.execute("ALTER TABLE posts ADD COLUMN IF NOT EXISTS card TEXT")
+        await self.pool.execute("ALTER TABLE posts ADD COLUMN IF NOT EXISTS image_url TEXT")
 
     async def _execute(self, sql: str, params: tuple = ()) -> None:
         await self.pool.execute(self._sql(sql), *params)
@@ -433,12 +445,13 @@ class PgStorage(Storage):
         return claimed is not None
 
     async def add_draft(
-        self, topic: str, text: str, rubric: str | None = None, first_comment: str | None = None
+        self, topic: str, text: str, rubric: str | None = None, first_comment: str | None = None,
+        card: str | None = None,
     ) -> int:
         return await self.pool.fetchval(
-            "INSERT INTO posts (topic, text, created_at, rubric, first_comment) VALUES ($1, $2, $3, $4, $5)"
-            " RETURNING id",
-            topic, text, _now(), rubric, first_comment,
+            "INSERT INTO posts (topic, text, created_at, rubric, first_comment, card)"
+            " VALUES ($1, $2, $3, $4, $5, $6) RETURNING id",
+            topic, text, _now(), rubric, first_comment, card,
         )
 
     async def save_metrics(self, post_id: int, likes: int, impressions: int) -> None:
