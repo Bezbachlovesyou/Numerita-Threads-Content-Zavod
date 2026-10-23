@@ -10,7 +10,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from .config import Config
 from .generator import GenerationError, Generator
-from .storage import Post, Storage
+from .storage import PgStorage, Post, Storage
 from .threads_api import MAX_LENGTH, ThreadsClient, ThreadsError
 from .tts import synthesize
 
@@ -32,6 +32,7 @@ HELP = (
     "/new <тема> — новый пост\n"
     "/queue — черновики и запланированные посты\n"
     "/stats — статистика аккаунта в Threads\n"
+    "/status — какая модель, база знаний и подключения\n"
     "/help — эта справка"
 )
 
@@ -170,6 +171,24 @@ def create_router(cfg: Config) -> Router:
             await message.answer("Напишите тему после команды, например: /new утренние ритуалы")
             return
         await new_post(message, command.args.strip(), db, generator)
+
+    @router.message(Command("status"))
+    async def on_status(message: Message, db: Storage, generator: Generator, threads: ThreadsClient | None) -> None:
+        kb = generator.knowledge
+        if not kb.url:
+            kb_line = "выключена (KB_URL пустой)"
+        elif kb.data:
+            kb_line = f"загружена, версия {kb.data.get('version', '?')}"
+        else:
+            kb_line = "ещё не загружалась (загрузится с первым постом)"
+        await message.answer(
+            "⚙️ Состояние бота\n\n"
+            f"Модель: {generator.model}\n"
+            f"База знаний Numerita: {kb_line}\n"
+            f"Хранилище: {'Postgres' if isinstance(db, PgStorage) else 'временный файл (задайте DATABASE_URL)'}\n"
+            f"Публикация в Threads (Zernio): {'подключена' if threads else 'не подключена'}\n"
+            f"Автоозвучка: {'включена' if cfg.tts_auto else 'выключена'}"
+        )
 
     @router.message(Command("queue"))
     async def on_queue(message: Message, db: Storage) -> None:
