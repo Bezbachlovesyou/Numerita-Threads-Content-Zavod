@@ -8,7 +8,7 @@
 
 import logging
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, time, timedelta
 from itertools import combinations_with_replacement
 from pathlib import Path
@@ -78,6 +78,16 @@ class ContentPlan:
         self.times = times
         self.channel_times = set(channel_times)
         self.rubrics = rubrics
+        # Самоулучшение (optimizer.py): переписанные тексты рубрик и временные замены слабых рубрик.
+        self.overrides: dict[str, str] = {}
+        self.swaps: dict[str, str] = {}
+
+    def effective(self, rubric: Rubric) -> Rubric:
+        swapped = self.swaps.get(rubric.key)
+        if swapped:
+            rubric = next((r for r in self.rubrics if r.key == swapped and r.cta == rubric.cta), rubric)
+        text = self.overrides.get(rubric.key)
+        return replace(rubric, text=text) if text else rubric
 
     @property
     def enabled(self) -> bool:
@@ -87,7 +97,7 @@ class ContentPlan:
         at = self.times[slot]
         index = day.toordinal() * len(self.times) + slot
         position = index % len(self.rubrics)
-        rubric = self.rubrics[position]
+        rubric = self.effective(self.rubrics[position])
         # Растёт каждый раз, когда рубрика повторяется; сдвиг на номер рубрики,
         # чтобы соседние посты не были про одно и то же число.
         turn = index // len(self.rubrics) + position

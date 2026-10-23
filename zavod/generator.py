@@ -50,6 +50,10 @@ class Generator:
             f"{excerpt}\n\n{prompt}"
         )
 
+    async def improve(self, system: str, prompt: str) -> str:
+        """Свободный запрос к модели (самоулучшение контент-плана)."""
+        return await self._complete(system, prompt)
+
     async def write_reply(self, post: str, comment: str, author: str, with_link: bool) -> str:
         """Ответ на комментарий под постом. «SKIP» — отвечать не нужно."""
         prompt = (

@@ -11,6 +11,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from .autopost import BOT_LINK, ContentPlan, ScriptedPost, Slot
 from .autoreply import answer_comments
+from .optimizer import optimize
 from .config import Config
 from .generator import GenerationError, Generator
 from .storage import PgStorage, Post, Storage
@@ -224,7 +225,8 @@ def create_router(cfg: Config, plan: ContentPlan) -> Router:
             f"Публикация в Threads (Zernio): {'подключена' if threads else 'не подключена'}\n"
             f"Telegram-канал: {cfg.telegram_channel or 'не подключён (TELEGRAM_CHANNEL)'}\n"
             f"Автоозвучка: {'включена' if cfg.tts_auto else 'выключена'}\n"
-            f"Автоответы на комментарии: {f'включены, до {cfg.autoreply_per_hour} в час' if cfg.autoreply and threads else 'выключены'}"
+            f"Автоответы на комментарии: {f'включены, до {cfg.autoreply_per_hour} в час' if cfg.autoreply and threads else 'выключены'}\n"
+            f"Самоулучшение рубрик: {'каждый день в 04:10' if plan.enabled else 'выключено (нет AUTOPOST_TIMES)'}"
         )
 
     @router.message(Command("plan", ignore_case=True))
@@ -235,7 +237,6 @@ def create_router(cfg: Config, plan: ContentPlan) -> Router:
                 "например 9:00,12:00,15:00,18:00,21:00."
             )
             return
-        mode = "черновиком на одобрение" if cfg.autopost_approval else "сразу публикуются"
         now = datetime.now(cfg.timezone)
         scheduled = [p for p in await db.queue() if p.status == "scheduled" and p.scheduled_at]
         items = [(p.scheduled_at.astimezone(cfg.timezone), "📌 готовый", p.text.splitlines()[0]) for p in scheduled]
@@ -245,7 +246,7 @@ def create_router(cfg: Config, plan: ContentPlan) -> Router:
             label = {"link": "🔗 ссылка", "reply": "💬 ответы", "profile": "👤 профиль", "none": "✨ польза"}
             items.append((slot.when, label[slot.rubric.cta], slot.topic))
         items.sort(key=lambda item: item[0])
-        lines = [f"🗓 Автопостинг: {len(plan.times)} слотов в день, {mode}.", ""]
+        lines = [f"🗓 Автопостинг: {len(plan.times)} слотов в день, публикуются сразу.", ""]
         for when, label, text in items[:12]:
             short = text if len(text) <= 80 else text[:80] + "…"
             lines.append(f"{when:%d.%m %H:%M} {label} — {short}")
@@ -383,6 +384,7 @@ CTA_RULES = {
     "none": "Без ссылок и без упоминания бота.",
 }
 REPLY_INTERVAL = timedelta(minutes=5)
+OPTIMIZE_AT = time(4, 10)  # ежедневный разбор рубрик, когда трафик минимальный
 # Готовый пост ближе этого к слоту — сгенерированный в слот не пишем.
 SCRIPT_GAP = timedelta(minutes=45)
 
@@ -422,12 +424,10 @@ async def autopost(
         except GenerationError as e:
             await notify_admins(bot, cfg, f"❌ Автопост {slot.key} не написан: {e}\nТема: {slot.topic}")
             continue
-        post = await db.get(await db.add_draft(slot.topic, text))
-        if cfg.autopost_approval:
-            await notify_admins(bot, cfg, "🤖 Автопост на одобрение\n\n" + post_card(post, cfg), post)
-            continue
+        post = await db.get(await db.add_draft(slot.topic, text, slot.rubric.key))
         post = await publish(post, db, threads, bot, cfg.telegram_channel if slot.to_channel else "")
-        await notify_admins(bot, cfg, "🤖 Автопост\n\n" + post_card(post, cfg), post)
+        if post.status == "failed":  # пишем владельцу только о проблемах
+            await notify_admins(bot, cfg, "⚠️ Автопост не опубликован\n\n" + post_card(post, cfg), post)
 
 
 async def import_script(db: Storage, script: list[ScriptedPost], now: datetime) -> int:
@@ -440,7 +440,7 @@ async def import_script(db: Storage, script: list[ScriptedPost], now: datetime) 
             log.warning("Готовый пост %s длиннее %s символов, пропущен", item.key, MAX_LENGTH)
             continue
         if await db.claim_slot(item.key):
-            post_id = await db.add_draft(f"Готовый пост на {item.when:%d.%m %H:%M}", item.text)
+            post_id = await db.add_draft(f"Готовый пост на {item.when:%d.%m %H:%M}", item.text, "script")
             await db.schedule(post_id, item.when)
             added += 1
     return added
@@ -460,11 +460,19 @@ async def run_scheduler(
         try:
             for post in await db.due():
                 post = await publish(post, db, threads, bot, cfg.telegram_channel)
-                await notify_admins(bot, cfg, post_card(post, cfg), post)
+                if post.status == "failed":
+                    await notify_admins(bot, cfg, "⚠️ Пост не опубликован\n\n" + post_card(post, cfg), post)
             if plan.enabled:
                 await autopost(bot, cfg, db, threads, generator, plan)
         except Exception:
             log.exception("Scheduler iteration failed")
+        now = datetime.now(cfg.timezone)
+        if plan.enabled and now.time() >= OPTIMIZE_AT and await db.claim_slot(f"optimize {now.date().isoformat()}"):
+            try:
+                report = await optimize(db, threads, generator, plan, now)
+                await notify_admins(bot, cfg, "🧠 Самоулучшение за сутки\n\n" + "\n".join(report))
+            except Exception:
+                log.exception("Optimizer failed")
         if threads is not None and cfg.autoreply and datetime.now() >= next_replies:
             next_replies = datetime.now() + REPLY_INTERVAL
             try:

@@ -12,6 +12,7 @@ from .bot import COMMANDS, create_router, import_script, run_scheduler
 from .config import load_config
 from .generator import Generator
 from .knowledge import KnowledgeBase
+from .optimizer import apply_state
 from .storage import PgStorage, Storage
 from .threads_api import ThreadsClient
 
@@ -40,6 +41,7 @@ async def main() -> None:
     plan = ContentPlan(times, parse_times(cfg.autopost_channel_times) or times, load_rubrics(PROMPTS / "content_plan.md"))
     if plan.enabled:
         logging.info("Автопостинг: %s", ", ".join(f"{t:%H:%M}" for t in plan.times))
+    await apply_state(storage, plan, datetime.now(cfg.timezone))
     script = load_script(PROMPTS / "threads_script.md", cfg.timezone)
     added = await import_script(storage, script, datetime.now(cfg.timezone))
     if added:

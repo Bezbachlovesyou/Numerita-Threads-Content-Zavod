@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS posts (
     published_at TEXT,  -- UTC ISO
     threads_id   TEXT,
     tg_message_id TEXT,  -- сообщение в Telegram-канале
+    rubric       TEXT,  -- рубрика контент-плана (для самоулучшения)
     error        TEXT,
     created_at   TEXT NOT NULL
 );
@@ -33,6 +34,27 @@ CREATE TABLE IF NOT EXISTS comment_replies (
     reply      TEXT,
     status     TEXT NOT NULL,  -- replied | skipped
     created_at TEXT NOT NULL
+);
+-- Самоулучшение: лайки и показы постов, переписанные рубрики, временные замены рубрик.
+CREATE TABLE IF NOT EXISTS post_metrics (
+    post_id     INTEGER PRIMARY KEY,
+    likes       INTEGER NOT NULL,
+    impressions INTEGER NOT NULL,
+    updated_at  TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS rubric_overrides (
+    key        TEXT PRIMARY KEY,
+    text       TEXT NOT NULL,
+    previous   TEXT NOT NULL,
+    baseline   REAL NOT NULL,
+    created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS plan_swaps (
+    key         TEXT PRIMARY KEY,
+    replacement TEXT NOT NULL,
+    until       TEXT NOT NULL
 );
 """
 
@@ -88,16 +110,17 @@ class Storage:
     async def init(self) -> None:
         async with aiosqlite.connect(self.path) as db:
             await db.executescript(SCHEMA)
-            try:  # базы, созданные до публикации в Telegram-канал
-                await db.execute("ALTER TABLE posts ADD COLUMN tg_message_id TEXT")
-            except aiosqlite.OperationalError:
-                pass
+            for column in ("tg_message_id", "rubric"):  # базы, созданные до этих колонок
+                try:
+                    await db.execute(f"ALTER TABLE posts ADD COLUMN {column} TEXT")
+                except aiosqlite.OperationalError:
+                    pass
             await db.commit()
 
-    async def add_draft(self, topic: str, text: str) -> int:
+    async def add_draft(self, topic: str, text: str, rubric: str | None = None) -> int:
         cursor = await self._execute(
-            "INSERT INTO posts (topic, text, created_at) VALUES (?, ?, ?)",
-            (topic, text, _now()),
+            "INSERT INTO posts (topic, text, created_at, rubric) VALUES (?, ?, ?, ?)",
+            (topic, text, _now(), rubric),
         )
         return cursor.lastrowid
 
@@ -186,6 +209,48 @@ class Storage:
             "SELECT * FROM comment_replies ORDER BY created_at DESC LIMIT ?", (limit,)
         )
 
+    async def engagement(self, since: datetime) -> list[dict]:
+        """Опубликованные посты с рубрикой: сколько комментариев и лайков собрали."""
+        return await self._rows(
+            "SELECT p.id AS id, p.rubric AS rubric, p.text AS text, p.published_at AS published_at,"
+            " (SELECT COUNT(*) FROM comment_replies c WHERE c.post_id = p.id) AS comments,"
+            " COALESCE((SELECT m.likes FROM post_metrics m WHERE m.post_id = p.id), 0) AS likes"
+            " FROM posts p WHERE p.status = 'published' AND p.rubric IS NOT NULL AND p.published_at >= ?",
+            (since.astimezone(timezone.utc).isoformat(),),
+        )
+
+    async def save_metrics(self, post_id: int, likes: int, impressions: int) -> None:
+        await self._execute(
+            "INSERT OR REPLACE INTO post_metrics (post_id, likes, impressions, updated_at) VALUES (?, ?, ?, ?)",
+            (post_id, likes, impressions, _now()),
+        )
+
+    async def overrides(self) -> list[dict]:
+        return await self._rows("SELECT * FROM rubric_overrides")
+
+    async def set_override(self, key: str, text: str, previous: str, baseline: float) -> None:
+        await self._execute("DELETE FROM rubric_overrides WHERE key = ?", (key,))
+        await self._execute(
+            "INSERT INTO rubric_overrides (key, text, previous, baseline, created_at) VALUES (?, ?, ?, ?, ?)",
+            (key, text, previous, baseline, _now()),
+        )
+
+    async def drop_override(self, key: str) -> None:
+        await self._execute("DELETE FROM rubric_overrides WHERE key = ?", (key,))
+
+    async def swaps(self, now: datetime) -> dict[str, str]:
+        rows = await self._rows(
+            "SELECT key, replacement FROM plan_swaps WHERE until > ?", (now.astimezone(timezone.utc).isoformat(),)
+        )
+        return {row["key"]: row["replacement"] for row in rows}
+
+    async def set_swap(self, key: str, replacement: str, until: datetime) -> None:
+        await self._execute("DELETE FROM plan_swaps WHERE key = ?", (key,))
+        await self._execute(
+            "INSERT INTO plan_swaps (key, replacement, until) VALUES (?, ?, ?)",
+            (key, replacement, until.astimezone(timezone.utc).isoformat()),
+        )
+
     async def due(self) -> list[Post]:
         return await self._fetch(
             "SELECT * FROM posts WHERE status = 'scheduled' AND scheduled_at <= ?"
@@ -227,6 +292,27 @@ CREATE TABLE IF NOT EXISTS comment_replies (
     status     TEXT NOT NULL,  -- replied | skipped
     created_at TEXT NOT NULL
 );
+-- Самоулучшение: лайки и показы постов, переписанные рубрики, временные замены рубрик.
+CREATE TABLE IF NOT EXISTS post_metrics (
+    post_id     INTEGER PRIMARY KEY,
+    likes       INTEGER NOT NULL,
+    impressions INTEGER NOT NULL,
+    updated_at  TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS rubric_overrides (
+    key        TEXT PRIMARY KEY,
+    text       TEXT NOT NULL,
+    previous   TEXT NOT NULL,
+    baseline   REAL NOT NULL,
+    created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS plan_swaps (
+    key         TEXT PRIMARY KEY,
+    replacement TEXT NOT NULL,
+    until       TEXT NOT NULL
+);
 """
 
 
@@ -249,6 +335,7 @@ class PgStorage(Storage):
         self.pool = await asyncpg.create_pool(self.dsn, min_size=1, max_size=5)
         await self.pool.execute(PG_SCHEMA)
         await self.pool.execute("ALTER TABLE posts ADD COLUMN IF NOT EXISTS tg_message_id TEXT")
+        await self.pool.execute("ALTER TABLE posts ADD COLUMN IF NOT EXISTS rubric TEXT")
 
     async def _execute(self, sql: str, params: tuple = ()) -> None:
         await self.pool.execute(self._sql(sql), *params)
@@ -262,8 +349,15 @@ class PgStorage(Storage):
         )
         return claimed is not None
 
-    async def add_draft(self, topic: str, text: str) -> int:
+    async def add_draft(self, topic: str, text: str, rubric: str | None = None) -> int:
         return await self.pool.fetchval(
-            "INSERT INTO posts (topic, text, created_at) VALUES ($1, $2, $3) RETURNING id",
-            topic, text, _now(),
+            "INSERT INTO posts (topic, text, created_at, rubric) VALUES ($1, $2, $3, $4) RETURNING id",
+            topic, text, _now(), rubric,
+        )
+
+    async def save_metrics(self, post_id: int, likes: int, impressions: int) -> None:
+        await self.pool.execute(
+            "INSERT INTO post_metrics (post_id, likes, impressions, updated_at) VALUES ($1, $2, $3, $4)"
+            " ON CONFLICT (post_id) DO UPDATE SET likes = $2, impressions = $3, updated_at = $4",
+            post_id, likes, impressions, _now(),
         )

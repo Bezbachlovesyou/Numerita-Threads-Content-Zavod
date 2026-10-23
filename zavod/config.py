@@ -26,7 +26,6 @@ class Config:
     telegram_channel: str
     autopost_times: str
     autopost_channel_times: str
-    autopost_approval: bool
     autoreply: bool
     autoreply_per_hour: int
 
@@ -83,8 +82,6 @@ def load_config() -> Config:
         autopost_times=os.getenv("AUTOPOST_TIMES", "").strip(),
         # В какие из этих слотов дублировать пост в Telegram-канал. Пусто — во все.
         autopost_channel_times=os.getenv("AUTOPOST_CHANNEL_TIMES", "").strip(),
-        # 1 — автопосты приходят вам черновиком на одобрение, 0 — публикуются сразу.
-        autopost_approval=os.getenv("AUTOPOST_APPROVAL", "0") == "1",
         # Автоответы на комментарии в Threads: включены по умолчанию, AUTOREPLY=0 — выключить.
         autoreply=os.getenv("AUTOREPLY", "1") != "0",
         autoreply_per_hour=int(os.getenv("AUTOREPLY_PER_HOUR", "30") or 30),
