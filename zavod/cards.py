@@ -43,6 +43,8 @@ class Card:
     label: str | None = None  # под числом: «САТУРН», «АРКАН»
     cta: str = "none"
     cta_text: str | None = None  # свой текст призыва на кнопке, например для совместимости
+    palette: int | None = None  # номер палитры (для самоулучшения картинок); None — по seed
+    style: str | None = None  # стиль фразы: intrigue | question
 
     def to_json(self) -> str:
         return json.dumps(asdict(self), ensure_ascii=False)
@@ -88,7 +90,8 @@ def _gradient(top: tuple, bottom: tuple) -> Image.Image:
 def render_card(card: Card, seed: str) -> bytes:
     """JPEG-байты карточки. seed делает звёзды и палитру стабильными для одного поста."""
     rng = random.Random(seed)
-    top, bottom, accent = PALETTES[rng.randrange(len(PALETTES))]
+    index = rng.randrange(len(PALETTES))
+    top, bottom, accent = PALETTES[card.palette % len(PALETTES) if card.palette is not None else index]
     img = _gradient(top, bottom).convert("RGBA")
 
     # Свечение за числом.

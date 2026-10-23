@@ -101,6 +101,7 @@ async def apply_state(db: Storage, plan: ContentPlan, now: datetime) -> None:
     plan.weights = json.loads(await db.kv_get("rubric_weights") or "{}")
     plan.hour_weights = json.loads(await db.kv_get("hour_weights") or "{}")
     plan.custom = [Rubric(r["cta"], r["key"], r["text"]) for r in await db.custom_rubrics(("trial", "kept"))]
+    plan.card_weights = json.loads(await db.kv_get("card_weights") or "{}")
 
 
 async def optimize(
@@ -178,6 +179,28 @@ async def optimize(
         best = max(hour_weights, key=hour_weights.get)
         report.append(f"🕐 Лучшее время: {best}:00–{int(best) + 3}:00 — там посты будут выходить чаще.")
     await db.kv_set("hour_weights", json.dumps(hour_weights))
+
+    # 4б. Картинки: какие палитры и стиль фразы дают больше реакции.
+    variants: dict[str, list[float]] = {}
+    for row in rows:
+        card = json.loads(row.get("card") or "null") or {}
+        for key in (f"palette:{card.get('palette')}", f"style:{card.get('style')}"):
+            if not key.endswith(":None"):
+                variants.setdefault(key, []).append(post_score(row))
+    card_avg = {k: sum(v) / len(v) for k, v in variants.items() if len(v) >= MIN_POSTS}
+    card_weights = {}
+    if card_avg and statistics.mean(card_avg.values()) > 0:
+        mean = statistics.mean(card_avg.values())
+        card_weights = {k: round(clamp(v / mean, 0.5, 2.0), 2) for k, v in card_avg.items()}
+        best_style = max((k for k in card_weights if k.startswith("style:")), key=card_weights.get, default=None)
+        best_palette = max((k for k in card_weights if k.startswith("palette:")), key=card_weights.get, default=None)
+        names = {"style:intrigue": "интрига", "style:question": "вопрос"}
+        report.append(
+            "🎨 Картинки: лучше работает "
+            + ", ".join(x for x in (names.get(best_style), best_palette and f"палитра {best_palette[8:]}") if x)
+            + " — буду использовать чаще."
+        )
+    await db.kv_set("card_weights", json.dumps(card_weights))
 
     # 5. Переписываем самую слабую рубрику (если её сейчас не проверяем).
     testing = {row["key"] for row in await db.overrides() if row["previous"] != row["text"]}

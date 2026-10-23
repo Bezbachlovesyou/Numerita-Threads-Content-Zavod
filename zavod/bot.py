@@ -427,10 +427,17 @@ def first_comment_for(slot: Slot) -> str:
     return template.format(link=BOT_LINK + slot.tag)
 
 
-CARD_RULE = (
-    "После поста с новой строки напиши «КАРТИНКА: » и фразу для картинки к посту: до 8 слов, без эмодзи, "
-    "интрига или узнавание, чтобы захотелось ответить. Не повторяй первую строку поста дословно."
-)
+# Два стиля фразы на картинке — самоулучшение (optimizer.py) смотрит, какой лучше цепляет.
+CARD_RULES = {
+    "intrigue": (
+        "После поста с новой строки напиши «КАРТИНКА: » и фразу для картинки к посту: до 8 слов, без эмодзи, "
+        "интрига или узнавание, чтобы захотелось дочитать и ответить. Не повторяй первую строку поста дословно."
+    ),
+    "question": (
+        "После поста с новой строки напиши «КАРТИНКА: » и фразу для картинки к посту: прямой короткий вопрос "
+        "к читателю до 8 слов, без эмодзи, на который хочется ответить в комментариях. Не повторяй первую строку поста."
+    ),
+}
 
 
 def split_card_hook(raw: str) -> tuple[str, str | None]:
@@ -445,9 +452,9 @@ def split_card_hook(raw: str) -> tuple[str, str | None]:
     return "\n".join(lines).replace("{LINK}", "").strip(), hook  # маркер ссылки не к месту — убираем
 
 
-async def write_autopost(generator: Generator, slot: Slot) -> tuple[str, str | None, str]:
+async def write_autopost(generator: Generator, slot: Slot, style: str = "intrigue") -> tuple[str, str | None, str]:
     """Текст поста, первый комментарий (для постов со ссылкой) и фраза для картинки."""
-    topic = f"{slot.topic}\n\n{CTA_RULES[slot.rubric.cta]}\n\n{CARD_RULE}"
+    topic = f"{slot.topic}\n\n{CTA_RULES[slot.rubric.cta]}\n\n{CARD_RULES[style]}"
     text, hook = split_card_hook(await generator.write_post(topic))
     if len(text) > MAX_LENGTH:
         text, hook = split_card_hook(
@@ -475,11 +482,12 @@ async def post_next(
             return True
         log.info("Автопост (%s): %s", slot.rubric.key, slot.topic)
         try:
-            text, first_comment, hook = await write_autopost(generator, slot)
+            palette, style = plan.choose_card(rng)
+            text, first_comment, hook = await write_autopost(generator, slot, style)
         except GenerationError as e:
             await notify_admins(bot, cfg, f"❌ Автопост не написан: {e}\nТема: {slot.topic}")
             return False
-        card = Card(hook, slot.card_number, slot.card_label, slot.rubric.cta, slot.card_cta_text)
+        card = Card(hook, slot.card_number, slot.card_label, slot.rubric.cta, slot.card_cta_text, palette, style)
         post = await db.get(await db.add_draft(slot.topic, text, slot.rubric.key, first_comment, card.to_json()))
         post = await publish(post, db, threads, bot, "", cfg.cards)
     if post.status == "failed":  # пишем владельцу только о проблемах

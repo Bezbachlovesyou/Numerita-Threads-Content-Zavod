@@ -16,7 +16,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime, time, timedelta
 from pathlib import Path
 
-from .cards import PLANETS
+from .cards import PALETTES, PLANETS
 from .knowledge import reduce_number
 
 log = logging.getLogger(__name__)
@@ -103,6 +103,15 @@ class ContentPlan:
         self.weights: dict[str, float] = {}  # насколько часто брать рубрику (1.0 — обычно)
         self.hour_weights: dict[str, float] = {}  # >1 — в эти часы постим чаще
         self.custom: list[Rubric] = []  # новые рубрики, которые бот придумал сам
+        self.card_weights: dict[str, float] = {}  # «palette:0», «style:question» → вес
+
+    def choose_card(self, rng: random.Random) -> tuple[int, str]:
+        """Палитра и стиль фразы для картинки: удачные чаще, но остальные тоже пробуем."""
+        palettes = list(range(len(PALETTES)))
+        palette = rng.choices(palettes, [max(0.3, self.card_weights.get(f"palette:{p}", 1.0)) for p in palettes])[0]
+        styles = ["intrigue", "question"]
+        style = rng.choices(styles, [max(0.3, self.card_weights.get(f"style:{s}", 1.0)) for s in styles])[0]
+        return palette, style
 
     def all_rubrics(self) -> list[Rubric]:
         return self.rubrics + self.custom

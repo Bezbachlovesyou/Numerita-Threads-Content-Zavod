@@ -243,7 +243,7 @@ class Storage:
     async def engagement(self, since: datetime) -> list[dict]:
         """Опубликованные посты с рубрикой: сколько комментариев и лайков собрали."""
         return await self._rows(
-            "SELECT p.id AS id, p.rubric AS rubric, p.text AS text, p.published_at AS published_at,"
+            "SELECT p.id AS id, p.rubric AS rubric, p.text AS text, p.published_at AS published_at, p.card AS card,"
             " (SELECT COUNT(*) FROM comment_replies c WHERE c.post_id = p.id) AS comments,"
             " COALESCE((SELECT m.likes FROM post_metrics m WHERE m.post_id = p.id), 0) AS likes,"
             " COALESCE((SELECT m.impressions FROM post_metrics m WHERE m.post_id = p.id), 0) AS views"
