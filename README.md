@@ -5,7 +5,7 @@
 ## Как это работает
 
 1. Вы пишете боту тему поста (или `/new <тема>`).
-2. Claude (через OpenRouter) пишет пост в голосе бренда (правила в `prompts/brand_voice.md`).
+2. Claude (через OpenRouter) пишет пост по базе знаний Numerita (`KB_URL`, по умолчанию https://numerita.up.railway.app/kb.json) и правилам из `prompts/brand_voice.md`.
 3. Бот присылает черновик с кнопками и голосовое сообщение, где пост зачитывает женский голос в 2 раза быстрее обычного.
 4. Кнопки под черновиком:
    - ✅ Опубликовать — сразу в Threads;
@@ -63,6 +63,7 @@ zavod/
   __main__.py     запуск бота и планировщика
   bot.py          команды, кнопки, планировщик публикаций
   generator.py    генерация постов через OpenRouter
+  knowledge.py    база знаний Numerita (/kb.json): трактовки чисел и голос бренда
   threads_api.py  публикация и статистика Threads через Zernio
   tts.py          озвучка (edge-tts)
   storage.py      SQLite или Postgres: черновики, расписание, статусы

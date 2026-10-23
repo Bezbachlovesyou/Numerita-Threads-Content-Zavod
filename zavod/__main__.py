@@ -7,6 +7,7 @@ from aiogram import Bot, Dispatcher
 from .bot import create_router, run_scheduler
 from .config import load_config
 from .generator import Generator
+from .knowledge import KnowledgeBase
 from .storage import PgStorage, Storage
 from .threads_api import ThreadsClient
 
@@ -19,7 +20,7 @@ async def main() -> None:
 
     storage = PgStorage(cfg.database_url) if cfg.database_url else Storage(cfg.db_path)
     await storage.init()
-    generator = Generator(cfg.openrouter_api_key, cfg.openrouter_model, VOICE_PROMPT)
+    generator = Generator(cfg.openrouter_api_key, cfg.openrouter_model, VOICE_PROMPT, KnowledgeBase(cfg.kb_url))
     await generator.check_key()
     threads = ThreadsClient(cfg.zernio_api_key, cfg.zernio_account_id) if cfg.threads_enabled else None
     if threads is None:

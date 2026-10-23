@@ -8,6 +8,8 @@ from pathlib import Path
 
 import httpx
 
+from .knowledge import KnowledgeBase
+
 API_URL = "https://openrouter.ai/api/v1/chat/completions"
 KEY_URL = "https://openrouter.ai/api/v1/key"
 
@@ -31,10 +33,11 @@ class GenerationError(Exception):
 
 
 class Generator:
-    def __init__(self, api_key: str, model: str, voice_path: Path):
+    def __init__(self, api_key: str, model: str, voice_path: Path, knowledge: KnowledgeBase):
         self.api_key = clean_key(api_key)
         self.model = model
         self.system = voice_path.read_text(encoding="utf-8")
+        self.knowledge = knowledge
 
     async def check_key(self) -> None:
         """Проверяет ключ при запуске и пишет результат в логи Railway."""
@@ -55,6 +58,12 @@ class Generator:
 
     async def write_post(self, topic: str, previous: str | None = None) -> str:
         prompt = f"Тема поста: {topic}"
+        excerpt = await self.knowledge.excerpt(topic)
+        if excerpt:
+            prompt = (
+                "База знаний Numerita (выдержка). Трактовки, расчёт и правила голоса бери только отсюда:\n"
+                f"{excerpt}\n\n{prompt}"
+            )
         if previous:
             prompt += (
                 "\n\nВот предыдущий вариант, он не подошёл. "

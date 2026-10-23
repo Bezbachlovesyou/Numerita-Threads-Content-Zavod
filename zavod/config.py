@@ -5,6 +5,7 @@ from zoneinfo import ZoneInfo
 from dotenv import load_dotenv
 
 DEFAULT_MODEL = "anthropic/claude-opus-5.5"
+DEFAULT_KB_URL = "https://numerita.up.railway.app/kb.json"
 
 
 @dataclass(frozen=True)
@@ -21,6 +22,7 @@ class Config:
     tts_auto: bool
     db_path: str
     database_url: str
+    kb_url: str
 
     @property
     def threads_enabled(self) -> bool:
@@ -60,4 +62,6 @@ def load_config() -> Config:
         tts_auto=os.getenv("TTS_AUTO", "1") == "1",
         db_path=os.getenv("DB_PATH", "zavod.db"),
         database_url=os.getenv("DATABASE_URL", "").strip(),
+        # Пустое значение KB_URL отключает базу знаний.
+        kb_url=os.getenv("KB_URL", DEFAULT_KB_URL).strip(),
     )
