@@ -9,7 +9,7 @@ from aiogram.filters.callback_data import CallbackData
 from aiogram.types import BufferedInputFile, CallbackQuery, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from .autopost import ContentPlan
+from .autopost import BOT_LINK, ContentPlan, ScriptedPost, Slot
 from .config import Config
 from .generator import GenerationError, Generator
 from .storage import PgStorage, Post, Storage
@@ -224,7 +224,7 @@ def create_router(cfg: Config, plan: ContentPlan) -> Router:
         )
 
     @router.message(Command("plan", ignore_case=True))
-    async def on_plan(message: Message) -> None:
+    async def on_plan(message: Message, db: Storage) -> None:
         if not plan.enabled:
             await message.answer(
                 "Автопостинг выключен. Чтобы включить, задайте на Railway AUTOPOST_TIMES, "
@@ -232,10 +232,19 @@ def create_router(cfg: Config, plan: ContentPlan) -> Router:
             )
             return
         mode = "черновиком на одобрение" if cfg.autopost_approval else "сразу публикуются"
-        lines = [f"🗓 Автопостинг: {len(plan.times)} в день, {mode}.", ""]
-        for when, topic in plan.upcoming(datetime.now(cfg.timezone), 8):
-            channel = " + канал" if cfg.telegram_channel and when.time() in plan.channel_times else ""
-            lines.append(f"{when:%d.%m %H:%M}{channel} — {topic}")
+        now = datetime.now(cfg.timezone)
+        scheduled = [p for p in await db.queue() if p.status == "scheduled" and p.scheduled_at]
+        items = [(p.scheduled_at.astimezone(cfg.timezone), "📌 готовый", p.text.splitlines()[0]) for p in scheduled]
+        for slot in plan.upcoming(now, 12):
+            if any(abs(slot.when - when) < SCRIPT_GAP for when, _, _ in items):
+                continue
+            label = {"link": "🔗 ссылка", "reply": "💬 ответы", "profile": "👤 профиль", "none": "✨ польза"}
+            items.append((slot.when, label[slot.rubric.cta], slot.topic))
+        items.sort(key=lambda item: item[0])
+        lines = [f"🗓 Автопостинг: {len(plan.times)} слотов в день, {mode}.", ""]
+        for when, label, text in items[:12]:
+            short = text if len(text) <= 80 else text[:80] + "…"
+            lines.append(f"{when:%d.%m %H:%M} {label} — {short}")
         await message.answer("\n".join(lines))
 
     @router.message(Command("queue", ignore_case=True))
@@ -345,27 +354,74 @@ async def notify_admins(bot: Bot, cfg: Config, text: str, post: Post | None = No
             log.exception("Не удалось написать админу %s", admin_id)
 
 
+CTA_RULES = {
+    "link": "В последней строке напиши только маркер {LINK} — бот заменит его ссылкой на @Numeritabot. "
+            "Адрес сам не пиши. Весь текст без ссылки — не длиннее 420 символов.",
+    "reply": "Закончи приглашением ответить в комментариях. Без ссылок и без упоминания бота.",
+    "profile": "Закончи фразой, что полный разбор своей даты — по ссылке в профиле. Без ссылок и без упоминания бота.",
+    "none": "Без ссылок и без упоминания бота.",
+}
+# Готовый пост ближе этого к слоту — сгенерированный в слот не пишем.
+SCRIPT_GAP = timedelta(minutes=45)
+
+
+def insert_link(text: str, tag: str) -> str:
+    link = BOT_LINK + tag
+    if "{LINK}" in text:
+        return text.replace("{LINK}", link)
+    return f"{text.rstrip()}\n{link}"
+
+
+async def write_autopost(generator: Generator, slot: Slot) -> str:
+    topic = f"{slot.topic}\n\n{CTA_RULES[slot.rubric.cta]}"
+    def finish(raw: str) -> str:
+        if slot.rubric.cta == "link":
+            return insert_link(raw, slot.tag)
+        return raw.replace("{LINK}", "").strip()  # маркер не к месту — убираем
+
+    text = finish(await generator.write_post(topic))
+    if len(text) > MAX_LENGTH:
+        text = finish(await generator.write_post(f"{topic} Пиши заметно короче: весь пост до 400 символов."))
+    return text
+
+
 async def autopost(
     bot: Bot, cfg: Config, db: Storage, threads: ThreadsClient | None, generator: Generator, plan: ContentPlan
 ) -> None:
     """Пишет и публикует посты для наступивших слотов контент-плана."""
-    for slot, topic, to_channel in plan.due(datetime.now(cfg.timezone)):
-        if not await db.claim_slot(slot):
+    for slot in plan.due(datetime.now(cfg.timezone)):
+        if await db.has_post_near(slot.when, SCRIPT_GAP):
+            continue  # в это время выходит готовый пост из сценария
+        if not await db.claim_slot(slot.key):
             continue
-        log.info("Автопост %s: %s", slot, topic)
+        log.info("Автопост %s (%s): %s", slot.key, slot.rubric.key, slot.topic)
         try:
-            text = await generator.write_post(topic)
-            if len(text) > MAX_LENGTH:
-                text = await generator.write_post(f"{topic} Строго короче 450 символов.")
+            text = await write_autopost(generator, slot)
         except GenerationError as e:
-            await notify_admins(bot, cfg, f"❌ Автопост {slot} не написан: {e}\nТема: {topic}")
+            await notify_admins(bot, cfg, f"❌ Автопост {slot.key} не написан: {e}\nТема: {slot.topic}")
             continue
-        post = await db.get(await db.add_draft(topic, text))
+        post = await db.get(await db.add_draft(slot.topic, text))
         if cfg.autopost_approval:
             await notify_admins(bot, cfg, "🤖 Автопост на одобрение\n\n" + post_card(post, cfg), post)
             continue
-        post = await publish(post, db, threads, bot, cfg.telegram_channel if to_channel else "")
+        post = await publish(post, db, threads, bot, cfg.telegram_channel if slot.to_channel else "")
         await notify_admins(bot, cfg, "🤖 Автопост\n\n" + post_card(post, cfg), post)
+
+
+async def import_script(db: Storage, script: list[ScriptedPost], now: datetime) -> int:
+    """Ставит готовые посты сценария в расписание (каждый — один раз, прошедшие пропускает)."""
+    added = 0
+    for item in script:
+        if item.when <= now:
+            continue
+        if len(item.text) > MAX_LENGTH:
+            log.warning("Готовый пост %s длиннее %s символов, пропущен", item.key, MAX_LENGTH)
+            continue
+        if await db.claim_slot(item.key):
+            post_id = await db.add_draft(f"Готовый пост на {item.when:%d.%m %H:%M}", item.text)
+            await db.schedule(post_id, item.when)
+            added += 1
+    return added
 
 
 async def run_scheduler(

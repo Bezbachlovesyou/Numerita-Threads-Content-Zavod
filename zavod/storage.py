@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import aiosqlite
 import asyncpg
@@ -120,6 +120,17 @@ class Storage:
 
     async def delete(self, post_id: int) -> None:
         await self._execute("UPDATE posts SET status = 'deleted' WHERE id = ?", (post_id,))
+
+    async def has_post_near(self, when: datetime, gap: timedelta) -> bool:
+        """Есть ли запланированный или опубликованный пост ближе gap к этому времени."""
+        lo = (when - gap).astimezone(timezone.utc).isoformat()
+        hi = (when + gap).astimezone(timezone.utc).isoformat()
+        posts = await self._fetch(
+            "SELECT * FROM posts WHERE status IN ('scheduled', 'published')"
+            " AND COALESCE(scheduled_at, published_at) BETWEEN ? AND ?",
+            (lo, hi),
+        )
+        return bool(posts)
 
     async def claim_slot(self, slot: str) -> bool:
         """Отмечает слот автопостинга. False — слот уже был отработан."""
