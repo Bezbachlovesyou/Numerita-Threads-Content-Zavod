@@ -31,12 +31,13 @@ HELP = (
     "Команды:\n"
     "/new <тема> — новый пост\n"
     "/queue — черновики и запланированные посты\n"
+    "/stats — статистика аккаунта в Threads\n"
     "/help — эта справка"
 )
 
 
 class PostAction(CallbackData, prefix="post"):
-    action: str  # publish | in1h | tomorrow | redo | voice | delete
+    action: str  # publish | in1h | tomorrow | redo | voice | delete | stats
     post_id: int
 
 
@@ -51,6 +52,49 @@ def post_card(post: Post, cfg: Config) -> str:
     return "\n".join(lines)
 
 
+METRICS = [
+    ("impressions", "👁"),
+    ("reach", "охват"),
+    ("likes", "❤️"),
+    ("comments", "💬"),
+    ("shares", "🔁"),
+    ("saves", "🔖"),
+    ("clicks", "клики"),
+]
+
+
+def format_metrics(analytics: dict | None) -> str:
+    """Строка вида «👁 120 · ❤️ 5 · 💬 2 · ER 3.1%» из того, что вернул Zernio."""
+    if not isinstance(analytics, dict):
+        return "нет данных"
+    parts = [
+        f"{label} {analytics[key]}"
+        for key, label in METRICS
+        if isinstance(analytics.get(key), (int, float))
+    ]
+    rate = analytics.get("engagementRate")
+    if isinstance(rate, (int, float)):
+        parts.append(f"ER {rate:.1f}%")
+    return " · ".join(parts) or "нет данных"
+
+
+def format_account_stats(payload: dict) -> str:
+    lines = ["📊 Статистика Threads"]
+    overview = payload.get("overview")
+    if isinstance(overview, dict):
+        lines += ["", f"Всего: {format_metrics(overview)}"]
+    posts = payload.get("posts") or []
+    if not posts:
+        lines += ["", "Опубликованных постов пока нет."]
+    for item in posts:
+        content = (item.get("content") or "").replace("\n", " ")
+        if len(content) > 60:
+            content = content[:60] + "…"
+        date = (item.get("publishedAt") or "")[:10]
+        lines += ["", f"{date} {content}".strip(), format_metrics(item.get("analytics"))]
+    return "\n".join(lines)
+
+
 def post_keyboard(post: Post):
     kb = InlineKeyboardBuilder()
 
@@ -62,6 +106,8 @@ def post_keyboard(post: Post):
         button("🕒 Через час", "in1h")
         button("🕒 Завтра 10:00", "tomorrow")
         button("🔄 Переписать", "redo")
+    if post.status == "published" and post.threads_id:
+        button("📊 Статистика", "stats")
     button("🔊 Озвучить", "voice")
     if post.status in ("draft", "failed", "scheduled"):
         button("🗑 Удалить", "delete")
@@ -134,6 +180,18 @@ def create_router(cfg: Config) -> Router:
         for post in posts:
             await message.answer(post_card(post, cfg), reply_markup=post_keyboard(post))
 
+    @router.message(Command("stats"))
+    async def on_stats(message: Message, threads: ThreadsClient | None) -> None:
+        if threads is None:
+            await message.answer("Zernio не подключён: задайте ZERNIO_API_KEY и ZERNIO_ACCOUNT_ID.")
+            return
+        try:
+            payload = await threads.account_stats()
+        except ThreadsError as e:
+            await message.answer(f"❌ {e}")
+            return
+        await message.answer(format_account_stats(payload))
+
     @router.message(F.text & ~F.text.startswith("/"))
     async def on_topic(message: Message, db: Storage, generator: Generator) -> None:
         await new_post(message, message.text.strip(), db, generator)
@@ -152,6 +210,24 @@ def create_router(cfg: Config) -> Router:
             return
 
         action = callback_data.action
+        if action == "stats":
+            if threads is None or not post.threads_id:
+                await callback.answer("Статистика недоступна.", show_alert=True)
+                return
+            try:
+                stats = await threads.post_stats(post.threads_id)
+            except ThreadsError as e:
+                await callback.answer(str(e)[:200], show_alert=True)
+                return
+            if stats is None:
+                await callback.answer("Zernio ещё собирает статистику, загляните позже.", show_alert=True)
+                return
+            link = stats.get("platformPostUrl")
+            text = f"📊 Пост #{post.id}\n{format_metrics(stats.get('analytics'))}"
+            await callback.message.answer(text + (f"\n{link}" if link else ""))
+            await callback.answer()
+            return
+
         if action == "voice":
             await callback.answer("Озвучиваю…")
             await send_voice(callback.bot, callback.message.chat.id, post, cfg)
