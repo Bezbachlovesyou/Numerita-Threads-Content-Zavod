@@ -38,7 +38,7 @@ def load_config() -> Config:
 
     # Принимаем и привычные варианты названия переменной.
     raw_admins = next(
-        (os.getenv(n, "").strip() for n in ("ADMIN_IDS", "ADMIN_ID", "ADMIN_TELEGRAM_ID") if os.getenv(n, "").strip()),
+        (os.getenv(n, "").strip() for n in ("ADMIN_IDS", "ADMIN_ID", "ADMIN_TELEGRAM_ID", "TELEGRAM_ID") if os.getenv(n, "").strip()),
         "",
     )
     if not raw_admins:
