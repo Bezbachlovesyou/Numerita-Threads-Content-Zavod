@@ -11,7 +11,7 @@ from aiogram.types import BufferedInputFile, CallbackQuery, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from .autopost import BOT_LINK, MIN_GAP, ContentPlan, ScriptedPost, Slot, topic_tag_for
-from .cards import Card, card_from_text, render_card
+from .cards import Card, card_from_text, carousel_from_json, carousel_json, render_card, soul_carousel
 from .autoreply import answer_comments
 from .optimizer import optimize
 from .config import Config
@@ -138,19 +138,21 @@ def post_keyboard(post: Post):
     return kb.as_markup()
 
 
-async def ensure_image(post: Post, db: Storage, threads: ThreadsClient) -> str | None:
-    """Рисует карточку к посту и загружает её в Zernio. При любой ошибке пост выйдет без картинки."""
+async def ensure_images(post: Post, db: Storage, threads: ThreadsClient) -> list[str]:
+    """Рисует карточку (или карусель) к посту и загружает в Zernio. При ошибке пост выйдет без картинок."""
     if post.image_url:
-        return post.image_url
+        return post.image_url.split("\n")
     try:
-        card = Card.from_json(post.card) or card_from_text(post.text)
-        data = await asyncio.to_thread(render_card, card, f"{post.id}-{post.text[:20]}")
-        url = await threads.upload_image(data, f"numerita_{post.id}.jpg")
+        cards = carousel_from_json(post.card) or [Card.from_json(post.card) or card_from_text(post.text)]
+        urls = []
+        for i, card in enumerate(cards):
+            data = await asyncio.to_thread(render_card, card, f"{post.id}-{i}-{post.text[:20]}")
+            urls.append(await threads.upload_image(data, f"numerita_{post.id}_{i}.jpg"))
     except Exception:
-        log.exception("Картинка к посту #%s не сделана, публикую без неё", post.id)
-        return None
-    await db.set_image(post.id, url)
-    return url
+        log.exception("Картинки к посту #%s не сделаны, публикую без них", post.id)
+        return []
+    await db.set_image(post.id, "\n".join(urls))
+    return urls
 
 
 async def publish(
@@ -167,9 +169,9 @@ async def publish(
     errors = []
     if threads is not None and not post.threads_id:
         try:
-            image_url = await ensure_image(post, db, threads) if cards else None
+            image_urls = await ensure_images(post, db, threads) if cards else []
             threads_id = await threads.publish_text(
-                post.text, topic_tag_for(post.rubric), post.first_comment, image_url
+                post.text, topic_tag_for(post.rubric), post.first_comment, image_urls
             )
             await db.set_threads_id(post.id, threads_id or "published")
         except ThreadsError as e:
@@ -414,6 +416,7 @@ CTA_RULES = {
     "none": "Без ссылок и без упоминания бота.",
 }
 REPLY_INTERVAL = timedelta(minutes=5)
+FAST_REPLY_INTERVAL = timedelta(minutes=2)
 OPTIMIZE_AT = time(4, 10)  # ежедневный разбор рубрик, когда трафик минимальный
 RETRY_AFTER_ERROR = timedelta(minutes=15)
 
@@ -491,11 +494,15 @@ async def post_next(
         except GenerationError as e:
             await notify_admins(bot, cfg, f"❌ Автопост не написан: {e}\nТема: {slot.topic}")
             return False
-        card = Card(
-            hook, slot.card_number, slot.card_label, slot.rubric.cta, slot.card_cta_text, palette, style,
-            slot.card_dates,
-        )
-        post = await db.get(await db.add_draft(slot.topic, text, slot.rubric.key, first_comment, card.to_json()))
+        if slot.rubric.key == "carousel":
+            numbers = (generator.knowledge.data or {}).get("numbers", {})
+            card_json = carousel_json(soul_carousel(numbers, palette))
+        else:
+            card_json = Card(
+                hook, slot.card_number, slot.card_label, slot.rubric.cta, slot.card_cta_text, palette, style,
+                slot.card_dates,
+            ).to_json()
+        post = await db.get(await db.add_draft(slot.topic, text, slot.rubric.key, first_comment, card_json))
         post = await publish(post, db, threads, bot, "", cfg.cards)
     if post.status == "failed":  # пишем владельцу только о проблемах
         await notify_admins(bot, cfg, "⚠️ Пост не опубликован\n\n" + post_card(post, cfg), post)
@@ -569,7 +576,10 @@ async def run_scheduler(
             except Exception:
                 log.exception("Optimizer failed")
         if threads is not None and cfg.autoreply and datetime.now() >= next_replies:
-            next_replies = datetime.now() + REPLY_INTERVAL
+            # Первые 15–30 минут решают, покажет ли Threads пост шире: в первый час после поста отвечаем быстрее.
+            last = await db.last_published_at()
+            fresh = last is not None and datetime.now(cfg.timezone) - last < timedelta(hours=1)
+            next_replies = datetime.now() + (FAST_REPLY_INTERVAL if fresh else REPLY_INTERVAL)
             try:
                 await answer_comments(db, threads, generator, cfg.autoreply_per_hour, per_run=5)
             except Exception:

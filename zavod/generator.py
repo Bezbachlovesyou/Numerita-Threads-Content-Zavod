@@ -37,6 +37,9 @@ class Generator:
         self.api_key = clean_key(api_key)
         self.model = model
         self.system = voice_path.read_text(encoding="utf-8")
+        playbook = voice_path.with_name("playbook.md")  # хуки, сторителлинг, что заходит в Threads
+        if playbook.exists():
+            self.system += "\n\n" + playbook.read_text(encoding="utf-8")
         reply_path = voice_path.with_name("reply_voice.md")
         self.reply_system = reply_path.read_text(encoding="utf-8") if reply_path.exists() else self.system
         self.knowledge = knowledge

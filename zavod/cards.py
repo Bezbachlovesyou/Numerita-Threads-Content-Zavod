@@ -52,7 +52,33 @@ class Card:
 
     @staticmethod
     def from_json(raw: str | None) -> "Card | None":
-        return Card(**json.loads(raw)) if raw else None
+        data = json.loads(raw) if raw else None
+        return Card(**data) if data and "carousel" not in data else None
+
+
+def carousel_from_json(raw: str | None) -> list[Card] | None:
+    data = json.loads(raw) if raw else None
+    return [Card(**c) for c in data["carousel"]] if data and "carousel" in data else None
+
+
+def carousel_json(cards: list[Card]) -> str:
+    return json.dumps({"carousel": [asdict(c) for c in cards]}, ensure_ascii=False)
+
+
+def soul_carousel(numbers: dict, palette: int) -> list[Card]:
+    """Карусель «9 чисел души — найди своё»: обложка и по карточке на число (качества — из базы Нумериты)."""
+    slides = [Card(
+        "Найди своё число души: листай до своей даты", number=None, label="9 чисел души", cta="reply",
+        cta_text="Листай →", palette=palette,
+    )]
+    for digit in range(1, 10):
+        qualities = (numbers.get(str(digit)) or {}).get("qualities") or ""
+        hook = ", ".join(q.strip() for q in qualities.split(",")[:3]) if qualities else f"Число души {digit}"
+        slides.append(Card(
+            hook[:1].upper() + hook[1:], number=str(digit), label=PLANETS[digit], cta="reply",
+            cta_text="Совпало? Напиши в ответах", palette=palette, dates=birth_days(digit),
+        ))
+    return slides
 
 
 def _font(name: str, size: int, weight: str) -> ImageFont.FreeTypeFont:

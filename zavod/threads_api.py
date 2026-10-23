@@ -57,7 +57,8 @@ class ThreadsClient:
         return presigned["publicUrl"]
 
     async def publish_text(
-        self, text: str, topic_tag: str | None = None, first_comment: str | None = None, image_url: str | None = None
+        self, text: str, topic_tag: str | None = None, first_comment: str | None = None,
+        image_urls: list[str] | None = None,
     ) -> str:
         """Публикует пост. topic_tag — тема Threads (показ подписчикам темы), first_comment — первый комментарий."""
         if len(text) > MAX_LENGTH:
@@ -71,8 +72,8 @@ class ThreadsClient:
         if extra:
             platform["platformSpecificData"] = extra
         body: dict = {"content": text, "platforms": [platform], "publishNow": True}
-        if image_url:
-            body["mediaItems"] = [{"type": "image", "url": image_url}]
+        if image_urls:  # одна картинка или карусель до 10
+            body["mediaItems"] = [{"type": "image", "url": url} for url in image_urls[:10]]
         _, payload = await self._request("POST", "/posts", json=body)
         post = payload.get("post") or {}
         # Threads может отказать, а Zernio ответит 207 — это тоже ошибка публикации.
