@@ -491,7 +491,10 @@ async def post_next(
         except GenerationError as e:
             await notify_admins(bot, cfg, f"❌ Автопост не написан: {e}\nТема: {slot.topic}")
             return False
-        card = Card(hook, slot.card_number, slot.card_label, slot.rubric.cta, slot.card_cta_text, palette, style)
+        card = Card(
+            hook, slot.card_number, slot.card_label, slot.rubric.cta, slot.card_cta_text, palette, style,
+            slot.card_dates,
+        )
         post = await db.get(await db.add_draft(slot.topic, text, slot.rubric.key, first_comment, card.to_json()))
         post = await publish(post, db, threads, bot, "", cfg.cards)
     if post.status == "failed":  # пишем владельцу только о проблемах

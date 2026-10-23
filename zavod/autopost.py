@@ -16,7 +16,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime, time, timedelta
 from pathlib import Path
 
-from .cards import PALETTES, PLANETS
+from .cards import PALETTES, PLANETS, birth_days
 from .knowledge import reduce_number
 
 log = logging.getLogger(__name__)
@@ -80,6 +80,7 @@ class Slot:
     card_number: str | None = None  # крупно на картинке
     card_label: str | None = None  # подпись под числом
     card_cta_text: str | None = None  # свой текст кнопки на картинке
+    card_dates: str | None = None  # дни рождения с числом на картинке
 
 
 def load_rubrics(path: Path) -> list[Rubric]:
@@ -147,13 +148,16 @@ class ContentPlan:
             b=b,
             arcana=arcana,
         )
-        number, label, cta_text = None, None, None
+        number, label, cta_text, dates = None, None, None, None
         if "{a}" in rubric.text and "{b}" in rubric.text:
             number, label, cta_text = f"{a} · {b}", "Совместимость", "Напиши два числа в ответах"
         elif "{arcana}" in rubric.text:
             number, label = str(arcana), "Аркан"
         elif "{digit}" in rubric.text or "{group}" in rubric.text:
             number, label = str(digit), PLANETS[digit]
+            dates = birth_days(digit)
+            # Человек должен сразу понять, его ли это число: даём модели дни рождения явно.
+            topic += f"\nДни рождения с числом души {digit}: {soul_group(digit)} — обязательно назови их, лучше в первой строке."
         elif "{day_number}" in rubric.text or "{tomorrow_number}" in rubric.text:
             number, label = str(reduce_number(today.day)), "Число дня"
         return Slot(
@@ -165,6 +169,7 @@ class ContentPlan:
             card_number=number,
             card_label=label,
             card_cta_text=cta_text,
+            card_dates=dates,
         )
 
     def next_gap(self, now: datetime, rng: random.Random) -> timedelta:

@@ -45,6 +45,7 @@ class Card:
     cta_text: str | None = None  # свой текст призыва на кнопке, например для совместимости
     palette: int | None = None  # номер палитры (для самоулучшения картинок); None — по seed
     style: str | None = None  # стиль фразы: intrigue | question
+    dates: str | None = None  # дни рождения с этим числом: «7 · 16 · 25» — чтобы человек сразу узнал себя
 
     def to_json(self) -> str:
         return json.dumps(asdict(self), ensure_ascii=False)
@@ -140,7 +141,13 @@ def render_card(card: Card, seed: str) -> bytes:
         font = _font("Montserrat.ttf", 34, "SemiBold")
         label = " ".join(card.label.upper())  # разрядка
         draw.text((cx, y), label, font=font, fill=accent + (235,), anchor="ma")
-        y += 66
+        y += 60
+    if card.dates:
+        font = _font("Montserrat.ttf", 30, "Medium")
+        draw.text((cx, y), f"родились {card.dates}", font=font, fill=(255, 255, 255, 200), anchor="ma")
+        y += 58
+    elif card.label:
+        y += 6
 
     # Цепляющая фраза: крупно; уменьшаем, пока не влезет между подписью и кнопкой, и центрируем.
     hook = _strip_emoji(card.hook)
@@ -190,4 +197,12 @@ def card_from_text(text: str, cta: str | None = None) -> Card:
     if len(first) > 90:
         first = first[:88].rsplit(" ", 1)[0] + "…"
     digit = next((d for d, name in PLANETS.items() if name.lower() in text.lower()), None)
-    return Card(hook=first, number=str(digit) if digit else None, label=PLANETS.get(digit), cta=cta, cta_text=cta_text)
+    return Card(
+        hook=first, number=str(digit) if digit else None, label=PLANETS.get(digit), cta=cta, cta_text=cta_text,
+        dates=birth_days(digit) if digit else None,
+    )
+
+
+def birth_days(digit: int) -> str:
+    """Дни рождения с этим числом души: 7 → «7 · 16 · 25»."""
+    return " · ".join(str(d) for d in range(1, 32) if (d - 1) % 9 + 1 == digit)
