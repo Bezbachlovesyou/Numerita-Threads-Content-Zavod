@@ -25,6 +25,14 @@ STATUS_LABELS = {
     "deleted": "🗑 Удалён",
 }
 
+COMMANDS = [
+    ("new", "новый пост: /new <тема>"),
+    ("queue", "черновики и запланированные посты"),
+    ("stats", "статистика в Threads"),
+    ("status", "модель, база знаний, подключения"),
+    ("help", "справка"),
+]
+
 HELP = (
     "Я контент-завод Numerita для Threads.\n\n"
     "Просто напишите тему, и я пришлю готовый пост с кнопками:\n"
@@ -182,18 +190,18 @@ def create_router(cfg: Config) -> Router:
             await send_voice(message.bot, message.chat.id, post, cfg)
 
     @router.message(CommandStart())
-    @router.message(Command("help"))
+    @router.message(Command("help", ignore_case=True))
     async def on_help(message: Message) -> None:
         await message.answer(HELP)
 
-    @router.message(Command("new"))
+    @router.message(Command("new", ignore_case=True))
     async def on_new(message: Message, command: CommandObject, db: Storage, generator: Generator) -> None:
         if not command.args:
             await message.answer("Напишите тему после команды, например: /new утренние ритуалы")
             return
         await new_post(message, command.args.strip(), db, generator)
 
-    @router.message(Command("status"))
+    @router.message(Command("status", ignore_case=True))
     async def on_status(message: Message, db: Storage, generator: Generator, threads: ThreadsClient | None) -> None:
         kb = generator.knowledge
         if not kb.url:
@@ -212,7 +220,7 @@ def create_router(cfg: Config) -> Router:
             f"Автоозвучка: {'включена' if cfg.tts_auto else 'выключена'}"
         )
 
-    @router.message(Command("queue"))
+    @router.message(Command("queue", ignore_case=True))
     async def on_queue(message: Message, db: Storage) -> None:
         posts = await db.queue()
         if not posts:
@@ -221,7 +229,7 @@ def create_router(cfg: Config) -> Router:
         for post in posts:
             await message.answer(post_card(post, cfg), reply_markup=post_keyboard(post))
 
-    @router.message(Command("stats"))
+    @router.message(Command("stats", ignore_case=True))
     async def on_stats(message: Message, threads: ThreadsClient | None) -> None:
         if threads is None:
             await message.answer("Zernio не подключён: задайте ZERNIO_API_KEY и ZERNIO_ACCOUNT_ID.")
@@ -232,6 +240,10 @@ def create_router(cfg: Config) -> Router:
             await message.answer(f"❌ {e}")
             return
         await message.answer(format_account_stats(payload))
+
+    @router.message(F.text.startswith("/"))
+    async def on_unknown_command(message: Message) -> None:
+        await message.answer("Не знаю такую команду.\n\n" + HELP)
 
     @router.message(F.text & ~F.text.startswith("/"))
     async def on_topic(message: Message, db: Storage, generator: Generator) -> None:

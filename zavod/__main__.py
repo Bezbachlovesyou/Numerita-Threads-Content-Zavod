@@ -3,8 +3,9 @@ import logging
 from pathlib import Path
 
 from aiogram import Bot, Dispatcher
+from aiogram.types import BotCommand
 
-from .bot import create_router, run_scheduler
+from .bot import COMMANDS, create_router, run_scheduler
 from .config import load_config
 from .generator import Generator
 from .knowledge import KnowledgeBase
@@ -35,6 +36,7 @@ async def main() -> None:
 
     scheduler = asyncio.create_task(run_scheduler(bot, cfg, storage, threads))
     try:
+        await bot.set_my_commands([BotCommand(command=c, description=d) for c, d in COMMANDS])
         await dp.start_polling(bot)
     finally:
         scheduler.cancel()
