@@ -9,7 +9,7 @@ from aiogram.filters.callback_data import CallbackData
 from aiogram.types import BufferedInputFile, CallbackQuery, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from .autopost import BOT_LINK, ContentPlan, ScriptedPost, Slot
+from .autopost import BOT_LINK, MAX_GAP, ContentPlan, ScriptedPost, Slot, topic_tag_for
 from .autoreply import answer_comments
 from .optimizer import optimize
 from .config import Config
@@ -73,6 +73,7 @@ def post_card(post: Post, cfg: Config) -> str:
 
 
 METRICS = [
+    ("views", "👁"),
     ("impressions", "👁"),
     ("reach", "охват"),
     ("likes", "❤️"),
@@ -147,7 +148,8 @@ async def publish(post: Post, db: Storage, threads: ThreadsClient | None, bot: B
     errors = []
     if threads is not None and not post.threads_id:
         try:
-            await db.set_threads_id(post.id, await threads.publish_text(post.text) or "published")
+            threads_id = await threads.publish_text(post.text, topic_tag_for(post.rubric), post.first_comment)
+            await db.set_threads_id(post.id, threads_id or "published")
         except ThreadsError as e:
             errors.append(f"Threads: {e}")
     if channel and not post.tg_message_id:
@@ -377,8 +379,8 @@ async def notify_admins(bot: Bot, cfg: Config, text: str, post: Post | None = No
 
 
 CTA_RULES = {
-    "link": "В последней строке напиши только маркер {LINK} — бот заменит его ссылкой на @Numeritabot. "
-            "Адрес сам не пиши. Весь текст без ссылки — не длиннее 420 символов.",
+    "link": "Закончи короткой фразой, что полный разбор — по ссылке в первом комментарии (можно 👇). "
+            "Саму ссылку и @Numeritabot не пиши: бот добавит ссылку первым комментарием.",
     "reply": "Закончи приглашением ответить в комментариях. Без ссылок и без упоминания бота.",
     "profile": "Закончи фразой, что полный разбор своей даты — по ссылке в профиле. Без ссылок и без упоминания бота.",
     "none": "Без ссылок и без упоминания бота.",
@@ -389,45 +391,67 @@ OPTIMIZE_AT = time(4, 10)  # ежедневный разбор рубрик, к�
 SCRIPT_GAP = timedelta(minutes=45)
 
 
-def insert_link(text: str, tag: str) -> str:
-    link = BOT_LINK + tag
-    if "{LINK}" in text:
-        return text.replace("{LINK}", link)
-    return f"{text.rstrip()}\n{link}"
+# Первый комментарий со ссылкой: ссылка в самом посте снижает его показы в Threads.
+FIRST_COMMENTS = [
+    "Полный разбор твоей даты — {link}",
+    "Твоя личная карточка за 10 секунд 👉 {link}",
+    "Узнать своё число души и судьбы: {link}",
+    "Разбор по имени и дате, бесплатно для начала ✨ {link}",
+]
 
 
-async def write_autopost(generator: Generator, slot: Slot) -> str:
+def first_comment_for(slot: Slot) -> str:
+    template = FIRST_COMMENTS[sum(map(ord, slot.tag)) % len(FIRST_COMMENTS)]
+    return template.format(link=BOT_LINK + slot.tag)
+
+
+async def write_autopost(generator: Generator, slot: Slot) -> tuple[str, str | None]:
+    """Текст поста и первый комментарий (для постов со ссылкой)."""
     topic = f"{slot.topic}\n\n{CTA_RULES[slot.rubric.cta]}"
+
     def finish(raw: str) -> str:
-        if slot.rubric.cta == "link":
-            return insert_link(raw, slot.tag)
         return raw.replace("{LINK}", "").strip()  # маркер не к месту — убираем
 
     text = finish(await generator.write_post(topic))
     if len(text) > MAX_LENGTH:
         text = finish(await generator.write_post(f"{topic} Пиши заметно короче: весь пост до 400 символов."))
-    return text
+    return text, first_comment_for(slot) if slot.rubric.cta == "link" else None
+
+
+async def post_slot(
+    bot: Bot, cfg: Config, db: Storage, threads: ThreadsClient | None, generator: Generator, slot: Slot
+) -> None:
+    if not await db.claim_slot(slot.key):
+        return
+    log.info("Автопост %s (%s): %s", slot.key, slot.rubric.key, slot.topic)
+    try:
+        text, first_comment = await write_autopost(generator, slot)
+    except GenerationError as e:
+        await notify_admins(bot, cfg, f"❌ Автопост {slot.key} не написан: {e}\nТема: {slot.topic}")
+        return
+    post = await db.get(await db.add_draft(slot.topic, text, slot.rubric.key, first_comment))
+    post = await publish(post, db, threads, bot, cfg.telegram_channel if slot.to_channel else "")
+    if post.status == "failed":  # пишем владельцу только о проблемах
+        await notify_admins(bot, cfg, "⚠️ Автопост не опубликован\n\n" + post_card(post, cfg), post)
 
 
 async def autopost(
     bot: Bot, cfg: Config, db: Storage, threads: ThreadsClient | None, generator: Generator, plan: ContentPlan
 ) -> None:
-    """Пишет и публикует посты для наступивших слотов контент-плана."""
-    for slot in plan.due(datetime.now(cfg.timezone)):
+    """Пишет и публикует посты для наступивших слотов контент-плана; после долгой паузы — пост сразу."""
+    now = datetime.now(cfg.timezone)
+    due = plan.due(now)
+    for slot in due:
         if await db.has_post_near(slot.when, SCRIPT_GAP):
             continue  # в это время выходит готовый пост из сценария
-        if not await db.claim_slot(slot.key):
-            continue
-        log.info("Автопост %s (%s): %s", slot.key, slot.rubric.key, slot.topic)
-        try:
-            text = await write_autopost(generator, slot)
-        except GenerationError as e:
-            await notify_admins(bot, cfg, f"❌ Автопост {slot.key} не написан: {e}\nТема: {slot.topic}")
-            continue
-        post = await db.get(await db.add_draft(slot.topic, text, slot.rubric.key))
-        post = await publish(post, db, threads, bot, cfg.telegram_channel if slot.to_channel else "")
-        if post.status == "failed":  # пишем владельцу только о проблемах
-            await notify_admins(bot, cfg, "⚠️ Автопост не опубликован\n\n" + post_card(post, cfg), post)
+        await post_slot(bot, cfg, db, threads, generator, slot)
+    if due or threads is None:
+        return
+    last = await db.last_published_at()
+    upcoming = plan.upcoming(now, 1)
+    soon = upcoming and upcoming[0].when - now < timedelta(minutes=30)
+    if (last is None or now - last > MAX_GAP) and not soon and not await db.has_post_near(now, SCRIPT_GAP):
+        await post_slot(bot, cfg, db, threads, generator, plan.extra_slot(now))
 
 
 async def import_script(db: Storage, script: list[ScriptedPost], now: datetime) -> int:

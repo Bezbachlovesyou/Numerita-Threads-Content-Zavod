@@ -40,19 +40,27 @@ class ThreadsClient:
             raise ThreadsError(f"Zernio: {error}")
         return response.status_code, payload
 
-    async def publish_text(self, text: str) -> str:
+    async def publish_text(self, text: str, topic_tag: str | None = None, first_comment: str | None = None) -> str:
+        """Публикует пост. topic_tag — тема Threads (показ подписчикам темы), first_comment — первый комментарий."""
         if len(text) > MAX_LENGTH:
             raise ThreadsError(f"Пост длиннее {MAX_LENGTH} символов ({len(text)}).")
+        platform: dict = {"platform": "threads", "accountId": self.account_id}
+        extra = {}
+        if topic_tag:
+            extra["topic_tag"] = topic_tag
+        if first_comment:
+            extra["firstComment"] = first_comment[:MAX_LENGTH]
+        if extra:
+            platform["platformSpecificData"] = extra
         _, payload = await self._request(
-            "POST",
-            "/posts",
-            json={
-                "content": text,
-                "platforms": [{"platform": "threads", "accountId": self.account_id}],
-                "publishNow": True,
-            },
+            "POST", "/posts", json={"content": text, "platforms": [platform], "publishNow": True}
         )
-        return payload.get("post", {}).get("_id", "")
+        post = payload.get("post") or {}
+        # Threads может отказать, а Zernio ответит 207 — это тоже ошибка публикации.
+        if post.get("status") == "failed":
+            reasons = [p.get("errorMessage") for p in post.get("platforms") or [] if p.get("errorMessage")]
+            raise ThreadsError("Threads отклонил пост: " + ("; ".join(reasons) or payload.get("error", "без причины")))
+        return post.get("_id", "")
 
     async def comments(self, post_id: str) -> list[dict]:
         """Комментарии под постом (ответы людей в Threads)."""

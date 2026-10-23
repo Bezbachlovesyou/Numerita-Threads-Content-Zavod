@@ -42,6 +42,15 @@ def channel_id(raw: str) -> str:
     return "@" + value
 
 
+def autopost_times(raw: str) -> str:
+    from .autopost import DEFAULT_TIMES
+
+    raw = raw.strip()
+    if raw.lower() in ("off", "0", "no", "нет"):
+        return ""
+    return raw or DEFAULT_TIMES
+
+
 def load_config() -> Config:
     load_dotenv()
 
@@ -78,8 +87,8 @@ def load_config() -> Config:
         # Пустое значение KB_URL отключает базу знаний.
         kb_url=os.getenv("KB_URL", DEFAULT_KB_URL).strip(),
         telegram_channel=channel_id(os.getenv("TELEGRAM_CHANNEL", "")),
-        # Время автопостов по TIMEZONE через запятую. Пусто — автопостинг выключен.
-        autopost_times=os.getenv("AUTOPOST_TIMES", "").strip(),
+        # Время автопостов по TIMEZONE через запятую. По умолчанию каждые 90 минут, «off» — выключить.
+        autopost_times=autopost_times(os.getenv("AUTOPOST_TIMES", "")),
         # В какие из этих слотов дублировать пост в Telegram-канал. Пусто — во все.
         autopost_channel_times=os.getenv("AUTOPOST_CHANNEL_TIMES", "").strip(),
         # Автоответы на комментарии в Threads: включены по умолчанию, AUTOREPLY=0 — выключить.

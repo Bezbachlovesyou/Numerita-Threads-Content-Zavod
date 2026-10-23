@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS posts (
     threads_id   TEXT,
     tg_message_id TEXT,  -- сообщение в Telegram-канале
     rubric       TEXT,  -- рубрика контент-плана (для самоулучшения)
+    first_comment TEXT,  -- первый комментарий под постом (ссылка с меткой)
     error        TEXT,
     created_at   TEXT NOT NULL
 );
@@ -68,6 +69,8 @@ class Post:
     scheduled_at: datetime | None
     threads_id: str | None
     tg_message_id: str | None
+    rubric: str | None
+    first_comment: str | None
     error: str | None
 
 
@@ -84,6 +87,8 @@ def _row_to_post(row: aiosqlite.Row) -> Post:
         scheduled_at=datetime.fromisoformat(row["scheduled_at"]) if row["scheduled_at"] else None,
         threads_id=row["threads_id"],
         tg_message_id=row["tg_message_id"],
+        rubric=row.get("rubric"),
+        first_comment=row.get("first_comment"),
         error=row["error"],
     )
 
@@ -110,17 +115,19 @@ class Storage:
     async def init(self) -> None:
         async with aiosqlite.connect(self.path) as db:
             await db.executescript(SCHEMA)
-            for column in ("tg_message_id", "rubric"):  # базы, созданные до этих колонок
+            for column in ("tg_message_id", "rubric", "first_comment"):  # базы, созданные до этих колонок
                 try:
                     await db.execute(f"ALTER TABLE posts ADD COLUMN {column} TEXT")
                 except aiosqlite.OperationalError:
                     pass
             await db.commit()
 
-    async def add_draft(self, topic: str, text: str, rubric: str | None = None) -> int:
+    async def add_draft(
+        self, topic: str, text: str, rubric: str | None = None, first_comment: str | None = None
+    ) -> int:
         cursor = await self._execute(
-            "INSERT INTO posts (topic, text, created_at, rubric) VALUES (?, ?, ?, ?)",
-            (topic, text, _now(), rubric),
+            "INSERT INTO posts (topic, text, created_at, rubric, first_comment) VALUES (?, ?, ?, ?, ?)",
+            (topic, text, _now(), rubric, first_comment),
         )
         return cursor.lastrowid
 
@@ -214,7 +221,8 @@ class Storage:
         return await self._rows(
             "SELECT p.id AS id, p.rubric AS rubric, p.text AS text, p.published_at AS published_at,"
             " (SELECT COUNT(*) FROM comment_replies c WHERE c.post_id = p.id) AS comments,"
-            " COALESCE((SELECT m.likes FROM post_metrics m WHERE m.post_id = p.id), 0) AS likes"
+            " COALESCE((SELECT m.likes FROM post_metrics m WHERE m.post_id = p.id), 0) AS likes,"
+            " COALESCE((SELECT m.impressions FROM post_metrics m WHERE m.post_id = p.id), 0) AS views"
             " FROM posts p WHERE p.status = 'published' AND p.rubric IS NOT NULL AND p.published_at >= ?",
             (since.astimezone(timezone.utc).isoformat(),),
         )
@@ -250,6 +258,10 @@ class Storage:
             "INSERT INTO plan_swaps (key, replacement, until) VALUES (?, ?, ?)",
             (key, replacement, until.astimezone(timezone.utc).isoformat()),
         )
+
+    async def last_published_at(self) -> datetime | None:
+        rows = await self._rows("SELECT MAX(published_at) AS last FROM posts WHERE status = 'published'")
+        return datetime.fromisoformat(rows[0]["last"]) if rows and rows[0]["last"] else None
 
     async def due(self) -> list[Post]:
         return await self._fetch(
@@ -336,6 +348,7 @@ class PgStorage(Storage):
         await self.pool.execute(PG_SCHEMA)
         await self.pool.execute("ALTER TABLE posts ADD COLUMN IF NOT EXISTS tg_message_id TEXT")
         await self.pool.execute("ALTER TABLE posts ADD COLUMN IF NOT EXISTS rubric TEXT")
+        await self.pool.execute("ALTER TABLE posts ADD COLUMN IF NOT EXISTS first_comment TEXT")
 
     async def _execute(self, sql: str, params: tuple = ()) -> None:
         await self.pool.execute(self._sql(sql), *params)
@@ -349,10 +362,13 @@ class PgStorage(Storage):
         )
         return claimed is not None
 
-    async def add_draft(self, topic: str, text: str, rubric: str | None = None) -> int:
+    async def add_draft(
+        self, topic: str, text: str, rubric: str | None = None, first_comment: str | None = None
+    ) -> int:
         return await self.pool.fetchval(
-            "INSERT INTO posts (topic, text, created_at, rubric) VALUES ($1, $2, $3, $4) RETURNING id",
-            topic, text, _now(), rubric,
+            "INSERT INTO posts (topic, text, created_at, rubric, first_comment) VALUES ($1, $2, $3, $4, $5)"
+            " RETURNING id",
+            topic, text, _now(), rubric, first_comment,
         )
 
     async def save_metrics(self, post_id: int, likes: int, impressions: int) -> None:

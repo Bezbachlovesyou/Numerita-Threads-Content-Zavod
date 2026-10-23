@@ -22,7 +22,7 @@ WINDOW = timedelta(days=7)
 MIN_POSTS = 3
 SWAP_DAYS = 3
 TRIAL = timedelta(days=3)
-PLACEHOLDERS = {"weekday", "day_number", "tomorrow_number", "digit", "group", "n", "a", "b", "arcana"}
+PLACEHOLDERS = {"part_of_day", "weekday", "day_number", "tomorrow_number", "digit", "group", "n", "a", "b", "arcana"}
 
 IMPROVE_SYSTEM = (
     "Ты редактор контент-плана Threads-аккаунта Нумериты (@numerita.ai). Цель постов — ответы под постом, "
@@ -30,7 +30,7 @@ IMPROVE_SYSTEM = (
     "Перепиши задание слабой рубрики так, чтобы посты получали больше ответов: сильнее крючок в первой строке, "
     "понятный повод ответить. Сохрани тему рубрики, честность (нумерология — язык символов, не наука), "
     "без обещаний и давления. Можно использовать подстановки {digit}, {group}, {n}, {a}, {b}, {arcana}, "
-    "{weekday}, {day_number}, {tomorrow_number} — только их, в фигурных скобках. Ссылки и призыв в конце "
+    "{weekday}, {part_of_day}, {day_number}, {tomorrow_number} — только их, в фигурных скобках. Ссылки и призыв в конце "
     "не описывай: их добавляет бот. Верни только новый текст задания, одной строкой, до 500 символов."
 )
 
@@ -39,8 +39,13 @@ def score_rubrics(rows: list[dict]) -> dict[str, tuple[int, float]]:
     """{рубрика: (сколько постов, средние очки на пост)}."""
     totals: dict[str, list[float]] = {}
     for row in rows:
-        totals.setdefault(row["rubric"], []).append(row["comments"] + 0.2 * row["likes"])
+        totals.setdefault(row["rubric"], []).append(post_score(row))
     return {key: (len(values), sum(values) / len(values)) for key, values in totals.items()}
+
+
+def post_score(row: dict) -> float:
+    """Очки поста: ответы важнее всего, лайки и просмотры — дополнительно."""
+    return row["comments"] + 0.2 * row["likes"] + row.get("views", 0) / 500
 
 
 def valid_rubric_text(text: str) -> bool:
@@ -58,7 +63,8 @@ async def refresh_metrics(db: Storage, threads: ThreadsClient, now: datetime) ->
             log.info("Статистика Zernio недоступна: %s", e)
             return updated
         analytics = (stats or {}).get("analytics") or {}
-        likes, impressions = analytics.get("likes"), analytics.get("impressions")
+        likes = analytics.get("likes")
+        impressions = analytics.get("views", analytics.get("impressions"))  # у Threads — просмотры
         if isinstance(likes, (int, float)):
             await db.save_metrics(post.id, int(likes), int(impressions or 0))
             updated += 1
@@ -83,7 +89,7 @@ async def optimize(
     by_key = {r.key: r for r in plan.rubrics}
     ranked = sorted(((k, v) for k, v in scores.items() if k in by_key), key=lambda item: -item[1][1])
     if ranked:
-        report.append("Рубрики за 7 дней (очки на пост = комментарии + 0,2 × лайки):")
+        report.append("Рубрики за 7 дней (очки на пост = ответы + 0,2 × лайки + просмотры / 500):")
         report += [f"• {key}: {value:.1f} ({count} пост.)" for key, (count, value) in ranked]
 
     # Откат или закрепление переписанных рубрик, которые прожили пробный срок.
@@ -112,7 +118,7 @@ async def optimize(
     candidates = [(k, v) for k, v in confident.items() if k not in testing]
     if len(candidates) >= 2:
         weakest, weak_value = min(candidates, key=lambda item: item[1])
-        top = sorted(rows, key=lambda r: -(r["comments"] + 0.2 * r["likes"]))[:3]
+        top = sorted(rows, key=lambda r: -post_score(r))[:3]
         examples = "\n\n".join(
             f"[{r['rubric']}, комментариев {r['comments']}, лайков {r['likes']}]\n{r['text']}" for r in top
         )

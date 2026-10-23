@@ -26,6 +26,30 @@ WEEKDAYS = ["понедельник", "вторник", "среда", "четв�
 PAIRS = list(combinations_with_replacement(range(1, 10), 2))
 CTAS = ("link", "reply", "profile", "none")
 BOT_LINK = "t.me/Numeritabot?start=ad_th_"
+# Расписание по умолчанию: пост каждые 90 минут круглые сутки — 16 в день
+# (у Threads лимит 250 постов в сутки через API; чаще 90 минут подряд — риск выглядеть как спам).
+DEFAULT_TIMES = "00:10,01:40,03:10,04:40,06:10,07:40,09:10,10:40,12:10,13:40,15:10,16:40,18:10,19:40,21:10,22:40"
+# Если постов не было дольше этого (бот был выключен, слоты пропущены), выпускаем пост сразу.
+MAX_GAP = timedelta(minutes=110)
+# Тема Threads для рубрики: пост показывают тем, кто следит за темой. По умолчанию — нумерология.
+TOPIC_TAGS = {"love": "Отношения", "pair": "Отношения", "wisdom": "Саморазвитие", "money": "Саморазвитие"}
+DEFAULT_TOPIC_TAG = "Нумерология"
+
+
+def topic_tag_for(rubric: str | None) -> str:
+    return TOPIC_TAGS.get(rubric or "", DEFAULT_TOPIC_TAG)
+
+
+def part_of_day(at: time) -> str:
+    if at.hour < 5:
+        return "глубокая ночь"
+    if at.hour < 11:
+        return "утро"
+    if at.hour < 17:
+        return "день"
+    if at.hour < 22:
+        return "вечер"
+    return "поздний вечер"
 
 
 def parse_times(raw: str) -> list[time]:
@@ -94,8 +118,16 @@ class ContentPlan:
         return bool(self.times and self.rubrics)
 
     def _slot(self, day: date, slot: int, tz: ZoneInfo) -> Slot:
-        at = self.times[slot]
-        index = day.toordinal() * len(self.times) + slot
+        return self._make(day, self.times[slot], day.toordinal() * len(self.times) + slot, slot, tz)
+
+    def extra_slot(self, now: datetime) -> Slot:
+        """Внеплановый пост «прямо сейчас», когда пауза затянулась."""
+        at = now.time().replace(second=0, microsecond=0)
+        index = now.date().toordinal() * 97 + (at.hour * 60 + at.minute) // 30
+        slot = self._make(now.date(), at, index, 0, now.tzinfo)
+        return replace(slot, key=f"extra {now:%Y-%m-%d %H}:{now.minute // 30 * 30:02d}", when=now)
+
+    def _make(self, day: date, at: time, index: int, slot: int, tz: ZoneInfo) -> Slot:
         position = index % len(self.rubrics)
         rubric = self.effective(self.rubrics[position])
         # Растёт каждый раз, когда рубрика повторяется; сдвиг на номер рубрики,
@@ -104,6 +136,7 @@ class ContentPlan:
         digit = turn % 9 + 1
         a, b = PAIRS[turn % len(PAIRS)]
         topic = rubric.text.format(
+            part_of_day=part_of_day(at),
             weekday=WEEKDAYS[day.weekday()],
             day_number=reduce_number(day.day),
             tomorrow_number=reduce_number((day + timedelta(days=1)).day),
