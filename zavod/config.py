@@ -36,9 +36,17 @@ def load_config() -> Config:
             raise SystemExit(f"Не задана переменная окружения {name} (см. .env.example)")
         return value
 
-    admin_ids = frozenset(
-        int(x) for x in required("ADMIN_IDS").replace(" ", "").split(",") if x
+    # Принимаем и привычные варианты названия переменной.
+    raw_admins = next(
+        (os.getenv(n, "").strip() for n in ("ADMIN_IDS", "ADMIN_ID", "ADMIN_TELEGRAM_ID") if os.getenv(n, "").strip()),
+        "",
     )
+    if not raw_admins:
+        raise SystemExit("Не задана переменная окружения ADMIN_IDS — ваш Telegram ID из @userinfobot")
+    try:
+        admin_ids = frozenset(int(x) for x in raw_admins.replace(" ", "").split(",") if x)
+    except ValueError:
+        raise SystemExit(f"ADMIN_IDS должен содержать только цифры через запятую, сейчас: {raw_admins!r}")
     return Config(
         bot_token=required("TELEGRAM_BOT_TOKEN"),
         admin_ids=admin_ids,
