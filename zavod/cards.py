@@ -53,7 +53,7 @@ class Card:
     @staticmethod
     def from_json(raw: str | None) -> "Card | None":
         data = json.loads(raw) if raw else None
-        return Card(**data) if data and "carousel" not in data else None
+        return Card(**data) if data and "carousel" not in data and "grid" not in data else None
 
 
 def carousel_from_json(raw: str | None) -> list[Card] | None:
@@ -232,3 +232,113 @@ def card_from_text(text: str, cta: str | None = None) -> Card:
 def birth_days(digit: int) -> str:
     """Дни рождения с этим числом души: 7 → «7 · 16 · 25»."""
     return " · ".join(str(d) for d in range(1, 32) if (d - 1) % 9 + 1 == digit)
+
+
+# ---------- Головоломка «Какие числа ты видишь первыми?» ----------
+
+# «Ангельские» и сильные сочетания, которые прячем в сетке. 666 не берём — пугает.
+SEQUENCES = ["111", "222", "333", "444", "555", "777", "888", "999", "1111", "1212", "1010", "2222", "1234", "2828", "1717"]
+GRID_COLS, GRID_ROWS = 12, 14
+
+
+def make_grid(rng: random.Random, count: int = 7) -> dict:
+    """Сетка цифр со спрятанными сочетаниями: {"rows": [...], "marks": [[r, c], ...], "hidden": [...]}."""
+    grid = [[None] * GRID_COLS for _ in range(GRID_ROWS)]
+    marks, hidden = set(), []
+    for seq in rng.sample(SEQUENCES, len(SEQUENCES)):
+        if len(hidden) >= count:
+            break
+        for _ in range(60):  # ищем место без пересечений
+            vertical = rng.random() < 0.35
+            r = rng.randrange(GRID_ROWS - (len(seq) if vertical else 0))
+            c = rng.randrange(GRID_COLS - (0 if vertical else len(seq)))
+            cells = [(r + i, c) if vertical else (r, c + i) for i in range(len(seq))]
+            if all(grid[y][x] is None for y, x in cells):
+                for (y, x), ch in zip(cells, seq):
+                    grid[y][x] = ch
+                    marks.add((y, x))
+                hidden.append(seq)
+                break
+    for y in range(GRID_ROWS):
+        for x in range(GRID_COLS):
+            if grid[y][x] is None:
+                grid[y][x] = str(rng.randrange(10))
+    return {"rows": ["".join(row) for row in grid], "marks": sorted(marks), "hidden": hidden}
+
+
+def render_grid(grid: dict, title: str, palette: int, seed: str) -> bytes:
+    """Картинка-головоломка: заголовок, светящаяся рамка с сеткой цифр, призыв написать в ответах."""
+    rng = random.Random(seed)
+    top, bottom, accent = PALETTES[palette % len(PALETTES)]
+    img = _gradient(top, bottom).convert("RGBA")
+
+    stars = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    sd = ImageDraw.Draw(stars)
+    for _ in range(140):
+        x, y, r = rng.randrange(W), rng.randrange(H), rng.choice((1, 1, 2))
+        sd.ellipse((x - r, y - r, x + r, y + r), fill=(255, 255, 255, rng.randrange(50, 200)))
+    img = Image.alpha_composite(img, stars)
+
+    # Рамка со свечением.
+    box = (70, 230, W - 70, H - 230)
+    glow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    ImageDraw.Draw(glow).rounded_rectangle(box, radius=36, outline=accent + (200,), width=14)
+    img = Image.alpha_composite(img, glow.filter(ImageFilter.GaussianBlur(18)))
+    panel = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    ImageDraw.Draw(panel).rounded_rectangle(box, radius=36, fill=(4, 4, 16, 150), outline=accent + (230,), width=3)
+    img = Image.alpha_composite(img, panel)
+    draw = ImageDraw.Draw(img)
+
+    # Заголовок.
+    font = _font("PlayfairDisplay.ttf", 58, "SemiBold")
+    lines = _wrap(draw, _strip_emoji(title), font, W - 140)[:2]
+    y = 70 if len(lines) == 2 else 110
+    for line in lines:
+        draw.text((W // 2, y), line, font=font, fill=(255, 255, 255, 255), anchor="ma")
+        y += 70
+
+    # Сетка: спрятанные сочетания чуть теплее и ярче — глаз цепляется, но не сразу.
+    marks = {tuple(m) for m in grid["marks"]}
+    rows = grid["rows"]
+    cell_w = (box[2] - box[0] - 60) / len(rows[0])
+    cell_h = (box[3] - box[1] - 50) / len(rows)
+    font = _font("Montserrat.ttf", 44, "Medium")
+    hint = tuple(min(255, int(a * 0.55 + 255 * 0.45)) for a in accent)
+    for r, row in enumerate(rows):
+        for c, ch in enumerate(row):
+            cx = box[0] + 30 + cell_w * (c + 0.5)
+            cy = box[1] + 25 + cell_h * (r + 0.5)
+            color = hint + (255,) if (r, c) in marks else (236, 232, 245, 225)
+            draw.text((cx, cy), ch, font=font, fill=color, anchor="mm")
+
+    cta = "Напиши в ответах — расскажу, что они значат"
+    font = _font("Montserrat.ttf", 32, "SemiBold")
+    tw = draw.textlength(cta, font=font)
+    bx0, by0, bx1, by1 = W / 2 - tw / 2 - 36, H - 190, W / 2 + tw / 2 + 36, H - 124
+    draw.rounded_rectangle((bx0, by0, bx1, by1), radius=33, fill=accent + (255,))
+    draw.text((W / 2, (by0 + by1) / 2), cta, font=font, fill=top + (255,), anchor="mm")
+    font = _font("Montserrat.ttf", 28, "Medium")
+    draw.text((W / 2, H - 70), "@numerita.ai", font=font, fill=(255, 255, 255, 170), anchor="mm")
+
+    out = io.BytesIO()
+    img.convert("RGB").save(out, "JPEG", quality=90, optimize=True)
+    return out.getvalue()
+
+
+GRID_TITLES = [
+    "Какие 3 числа ты видишь первыми?",
+    "Какое число бросилось в глаза первым?",
+    "Первые 3 числа, что ты увидишь, — твоё послание",
+]
+
+
+def grid_json(grid: dict, title: str, palette: int) -> str:
+    return json.dumps({"grid": grid, "title": title, "palette": palette}, ensure_ascii=False)
+
+
+def grid_hint(raw: str | None) -> str:
+    """Для автоответов: какие сочетания спрятаны в картинке-головоломке поста (или пусто)."""
+    data = json.loads(raw) if raw else None
+    if not data or "grid" not in data:
+        return ""
+    return "\n\n(К посту — картинка-сетка цифр, в ней спрятаны: " + ", ".join(data["grid"]["hidden"]) + ")"

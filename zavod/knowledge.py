@@ -15,7 +15,7 @@ import httpx
 log = logging.getLogger(__name__)
 
 REFRESH_SECONDS = 24 * 60 * 60
-NUMBER_RE = re.compile(r"(?<!\d)(\d{1,2})(?!\d)")
+NUMBER_RE = re.compile(r"(?<!\d)(\d{1,4})(?!\d)")  # 1–31, пары и сочетания вроде 777, 1212
 
 
 def reduce_number(n: int) -> int:
@@ -58,7 +58,7 @@ class KnowledgeBase:
         numbers = kb.get("numbers", {})
         compound = kb.get("compound", {})
 
-        found = [int(m) for m in NUMBER_RE.findall(topic) if 1 <= int(m) <= 99]
+        found = [int(m) for m in NUMBER_RE.findall(topic) if 1 <= int(m) <= 9999][:12]
         if found:
             single: set[int] = set()
             for n in found:

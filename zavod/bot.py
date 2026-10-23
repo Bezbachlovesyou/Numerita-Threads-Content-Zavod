@@ -1,6 +1,8 @@
 import asyncio
+import json
 import logging
 import random
+from dataclasses import replace
 from datetime import datetime, time, timedelta, timezone
 
 from aiogram import Bot, F, Router
@@ -11,7 +13,10 @@ from aiogram.types import BufferedInputFile, CallbackQuery, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from .autopost import BOT_LINK, MIN_GAP, ContentPlan, ScriptedPost, Slot, topic_tag_for
-from .cards import Card, card_from_text, carousel_from_json, carousel_json, render_card, soul_carousel
+from .cards import (
+    GRID_TITLES, Card, card_from_text, carousel_from_json, carousel_json, grid_json, make_grid, render_card,
+    render_grid, soul_carousel,
+)
 from .autoreply import answer_comments
 from .optimizer import optimize
 from .config import Config
@@ -143,6 +148,14 @@ async def ensure_images(post: Post, db: Storage, threads: ThreadsClient) -> list
     if post.image_url:
         return post.image_url.split("\n")
     try:
+        puzzle = json.loads(post.card) if post.card else None
+        if puzzle and "grid" in puzzle:  # головоломка «какие числа ты видишь первыми»
+            data = await asyncio.to_thread(
+                render_grid, puzzle["grid"], puzzle["title"], puzzle["palette"], f"{post.id}-grid"
+            )
+            urls = [await threads.upload_image(data, f"numerita_{post.id}_grid.jpg")]
+            await db.set_image(post.id, urls[0])
+            return urls
         cards = carousel_from_json(post.card) or [Card.from_json(post.card) or card_from_text(post.text)]
         urls = []
         for i, card in enumerate(cards):
@@ -487,6 +500,12 @@ async def post_next(
         slot = plan.render(plan.choose(recent, rng), now, rng)
         if not await db.claim_slot(slot.key):
             return True
+        grid = None
+        if slot.rubric.key == "grid":
+            grid = make_grid(rng)
+            # Модели — какие числа спрятаны, чтобы пост мог намекнуть, но не выдать их все.
+            slot = replace(slot, topic=slot.topic + "\nНа картинке спрятаны: " + ", ".join(grid["hidden"])
+                           + ". Не перечисляй их в тексте.")
         log.info("Автопост (%s): %s", slot.rubric.key, slot.topic)
         try:
             palette, style = plan.choose_card(rng)
@@ -494,7 +513,9 @@ async def post_next(
         except GenerationError as e:
             await notify_admins(bot, cfg, f"❌ Автопост не написан: {e}\nТема: {slot.topic}")
             return False
-        if slot.rubric.key == "carousel":
+        if grid:
+            card_json = grid_json(grid, rng.choice(GRID_TITLES), palette)
+        elif slot.rubric.key == "carousel":
             numbers = (generator.knowledge.data or {}).get("numbers", {})
             card_json = carousel_json(soul_carousel(numbers, palette))
         else:

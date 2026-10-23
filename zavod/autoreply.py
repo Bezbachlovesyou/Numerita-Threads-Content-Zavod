@@ -8,6 +8,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 
 from .autopost import BOT_LINK
+from .cards import grid_hint
 from .generator import GenerationError, Generator
 from .storage import Storage
 from .threads_api import ThreadsClient, ThreadsError
@@ -37,7 +38,7 @@ async def reply_targets(db: Storage, threads: ThreadsClient, now: datetime) -> l
     targets: dict[str, tuple[str, int | None, str]] = {}
     ours = await db.recent_published(now - LOOKBACK)
     for post in ours:
-        targets[post.threads_id] = (post.threads_id, post.id, post.text)
+        targets[post.threads_id] = (post.threads_id, post.id, post.text + grid_hint(post.card))
     try:
         for item in await threads.commented_posts(now - LOOKBACK):
             if not item.get("id") or item["id"] in targets:
