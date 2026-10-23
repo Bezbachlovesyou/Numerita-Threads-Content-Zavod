@@ -24,6 +24,9 @@ class Config:
     database_url: str
     kb_url: str
     telegram_channel: str
+    autopost_times: str
+    autopost_channel_times: str
+    autopost_approval: bool
 
     @property
     def threads_enabled(self) -> bool:
@@ -74,4 +77,10 @@ def load_config() -> Config:
         # Пустое значение KB_URL отключает базу знаний.
         kb_url=os.getenv("KB_URL", DEFAULT_KB_URL).strip(),
         telegram_channel=channel_id(os.getenv("TELEGRAM_CHANNEL", "")),
+        # Время автопостов по TIMEZONE через запятую. Пусто — автопостинг выключен.
+        autopost_times=os.getenv("AUTOPOST_TIMES", "").strip(),
+        # В какие из этих слотов дублировать пост в Telegram-канал. Пусто — во все.
+        autopost_channel_times=os.getenv("AUTOPOST_CHANNEL_TIMES", "").strip(),
+        # 1 — автопосты приходят вам черновиком на одобрение, 0 — публикуются сразу.
+        autopost_approval=os.getenv("AUTOPOST_APPROVAL", "0") == "1",
     )

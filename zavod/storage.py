@@ -18,6 +18,12 @@ CREATE TABLE IF NOT EXISTS posts (
     error        TEXT,
     created_at   TEXT NOT NULL
 );
+
+-- Слоты автопостинга, которые уже отработали (защита от дублей после перезапуска).
+CREATE TABLE IF NOT EXISTS autopost_slots (
+    slot    TEXT PRIMARY KEY,
+    post_id INTEGER
+);
 """
 
 
@@ -115,6 +121,11 @@ class Storage:
     async def delete(self, post_id: int) -> None:
         await self._execute("UPDATE posts SET status = 'deleted' WHERE id = ?", (post_id,))
 
+    async def claim_slot(self, slot: str) -> bool:
+        """Отмечает слот автопостинга. False — слот уже был отработан."""
+        cursor = await self._execute("INSERT OR IGNORE INTO autopost_slots (slot) VALUES (?)", (slot,))
+        return cursor.rowcount == 1
+
     async def due(self) -> list[Post]:
         return await self._fetch(
             "SELECT * FROM posts WHERE status = 'scheduled' AND scheduled_at <= ?"
@@ -140,6 +151,11 @@ CREATE TABLE IF NOT EXISTS posts (
     threads_id   TEXT,
     error        TEXT,
     created_at   TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS autopost_slots (
+    slot    TEXT PRIMARY KEY,
+    post_id INTEGER
 );
 """
 
@@ -169,6 +185,12 @@ class PgStorage(Storage):
 
     async def _fetch(self, sql: str, params: tuple = ()) -> list[Post]:
         return [_row_to_post(row) for row in await self.pool.fetch(self._sql(sql), *params)]
+
+    async def claim_slot(self, slot: str) -> bool:
+        claimed = await self.pool.fetchval(
+            "INSERT INTO autopost_slots (slot) VALUES ($1) ON CONFLICT DO NOTHING RETURNING slot", slot
+        )
+        return claimed is not None
 
     async def add_draft(self, topic: str, text: str) -> int:
         return await self.pool.fetchval(

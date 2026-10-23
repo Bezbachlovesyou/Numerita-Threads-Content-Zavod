@@ -5,6 +5,7 @@ from pathlib import Path
 from aiogram import Bot, Dispatcher
 from aiogram.types import BotCommand
 
+from .autopost import ContentPlan, load_rubrics, parse_times
 from .bot import COMMANDS, create_router, run_scheduler
 from .config import load_config
 from .generator import Generator
@@ -12,7 +13,8 @@ from .knowledge import KnowledgeBase
 from .storage import PgStorage, Storage
 from .threads_api import ThreadsClient
 
-VOICE_PROMPT = Path(__file__).resolve().parent.parent / "prompts" / "brand_voice.md"
+PROMPTS = Path(__file__).resolve().parent.parent / "prompts"
+VOICE_PROMPT = PROMPTS / "brand_voice.md"
 
 
 async def main() -> None:
@@ -32,9 +34,13 @@ async def main() -> None:
     dp["db"] = storage
     dp["generator"] = generator
     dp["threads"] = threads
-    dp.include_router(create_router(cfg))
+    times = parse_times(cfg.autopost_times)
+    plan = ContentPlan(times, parse_times(cfg.autopost_channel_times) or times, load_rubrics(PROMPTS / "content_plan.md"))
+    if plan.enabled:
+        logging.info("Автопостинг: %s", ", ".join(f"{t:%H:%M}" for t in plan.times))
+    dp.include_router(create_router(cfg, plan))
 
-    scheduler = asyncio.create_task(run_scheduler(bot, cfg, storage, threads))
+    scheduler = asyncio.create_task(run_scheduler(bot, cfg, storage, threads, generator, plan))
     try:
         await bot.set_my_commands([BotCommand(command=c, description=d) for c, d in COMMANDS])
         await dp.start_polling(bot)

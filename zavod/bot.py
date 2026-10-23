@@ -9,6 +9,7 @@ from aiogram.filters.callback_data import CallbackData
 from aiogram.types import BufferedInputFile, CallbackQuery, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
+from .autopost import ContentPlan
 from .config import Config
 from .generator import GenerationError, Generator
 from .storage import PgStorage, Post, Storage
@@ -30,6 +31,7 @@ COMMANDS = [
     ("queue", "черновики и запланированные посты"),
     ("stats", "статистика в Threads"),
     ("status", "модель, база знаний, подключения"),
+    ("plan", "контент-план: ближайшие автопосты"),
     ("help", "справка"),
 ]
 
@@ -42,6 +44,7 @@ HELP = (
     "/queue — черновики и запланированные посты\n"
     "/stats — статистика аккаунта в Threads\n"
     "/status — какая модель, база знаний и подключения\n"
+    "/plan — расписание и темы ближайших автопостов\n"
     "/help — эта справка"
 )
 
@@ -172,7 +175,7 @@ async def send_voice(bot: Bot, chat_id: int, post: Post, cfg: Config) -> None:
     )
 
 
-def create_router(cfg: Config) -> Router:
+def create_router(cfg: Config, plan: ContentPlan) -> Router:
     router = Router()
     router.message.filter(F.from_user.id.in_(cfg.admin_ids))
     router.callback_query.filter(F.from_user.id.in_(cfg.admin_ids))
@@ -219,6 +222,21 @@ def create_router(cfg: Config) -> Router:
             f"Telegram-канал: {cfg.telegram_channel or 'не подключён (TELEGRAM_CHANNEL)'}\n"
             f"Автоозвучка: {'включена' if cfg.tts_auto else 'выключена'}"
         )
+
+    @router.message(Command("plan", ignore_case=True))
+    async def on_plan(message: Message) -> None:
+        if not plan.enabled:
+            await message.answer(
+                "Автопостинг выключен. Чтобы включить, задайте на Railway AUTOPOST_TIMES, "
+                "например 9:00,12:00,15:00,18:00,21:00."
+            )
+            return
+        mode = "черновиком на одобрение" if cfg.autopost_approval else "сразу публикуются"
+        lines = [f"🗓 Автопостинг: {len(plan.times)} в день, {mode}.", ""]
+        for when, topic in plan.upcoming(datetime.now(cfg.timezone), 8):
+            channel = " + канал" if cfg.telegram_channel and when.time() in plan.channel_times else ""
+            lines.append(f"{when:%d.%m %H:%M}{channel} — {topic}")
+        await message.answer("\n".join(lines))
 
     @router.message(Command("queue", ignore_case=True))
     async def on_queue(message: Message, db: Storage) -> None:
@@ -319,14 +337,53 @@ def create_router(cfg: Config) -> Router:
     return router
 
 
-async def run_scheduler(bot: Bot, cfg: Config, db: Storage, threads: ThreadsClient | None) -> None:
-    """Раз в 30 секунд публикует посты, у которых наступило время."""
+async def notify_admins(bot: Bot, cfg: Config, text: str, post: Post | None = None) -> None:
+    for admin_id in cfg.admin_ids:
+        try:
+            await bot.send_message(admin_id, text, reply_markup=post_keyboard(post) if post else None)
+        except TelegramAPIError:
+            log.exception("Не удалось написать админу %s", admin_id)
+
+
+async def autopost(
+    bot: Bot, cfg: Config, db: Storage, threads: ThreadsClient | None, generator: Generator, plan: ContentPlan
+) -> None:
+    """Пишет и публикует посты для наступивших слотов контент-плана."""
+    for slot, topic, to_channel in plan.due(datetime.now(cfg.timezone)):
+        if not await db.claim_slot(slot):
+            continue
+        log.info("Автопост %s: %s", slot, topic)
+        try:
+            text = await generator.write_post(topic)
+            if len(text) > MAX_LENGTH:
+                text = await generator.write_post(f"{topic} Строго короче 450 символов.")
+        except GenerationError as e:
+            await notify_admins(bot, cfg, f"❌ Автопост {slot} не написан: {e}\nТема: {topic}")
+            continue
+        post = await db.get(await db.add_draft(topic, text))
+        if cfg.autopost_approval:
+            await notify_admins(bot, cfg, "🤖 Автопост на одобрение\n\n" + post_card(post, cfg), post)
+            continue
+        post = await publish(post, db, threads, bot, cfg.telegram_channel if to_channel else "")
+        await notify_admins(bot, cfg, "🤖 Автопост\n\n" + post_card(post, cfg), post)
+
+
+async def run_scheduler(
+    bot: Bot,
+    cfg: Config,
+    db: Storage,
+    threads: ThreadsClient | None,
+    generator: Generator,
+    plan: ContentPlan,
+) -> None:
+    """Раз в 30 секунд публикует запланированные посты и автопосты по контент-плану."""
     while True:
         try:
             for post in await db.due():
                 post = await publish(post, db, threads, bot, cfg.telegram_channel)
-                for admin_id in cfg.admin_ids:
-                    await bot.send_message(admin_id, post_card(post, cfg), reply_markup=post_keyboard(post))
+                await notify_admins(bot, cfg, post_card(post, cfg), post)
+            if plan.enabled:
+                await autopost(bot, cfg, db, threads, generator, plan)
         except Exception:
             log.exception("Scheduler iteration failed")
         await asyncio.sleep(30)

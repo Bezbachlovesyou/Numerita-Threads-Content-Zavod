@@ -69,6 +69,15 @@ class KnowledgeBase:
             doubles = {str(n): compound[str(n)] for n in found if str(n) in compound}
             if doubles:
                 part["compound"] = doubles
+            lowered = topic.lower()
+            if "аркан" in lowered:
+                arcana = kb.get("arcana", {})
+                part["arcana"] = {str(n): arcana[str(n)] for n in found if str(n) in arcana}
+            if ("совмест" in lowered or "пар" in lowered) and len(found) >= 2:
+                a, b = sorted(reduce_number(n) for n in found[:2])
+                pair = kb.get("pairs", {}).get(f"{a}-{b}")
+                if pair:
+                    part["pairs"] = {f"{a}-{b}": pair}
         else:
             # Тема без числа: краткая шпаргалка по всем числам 1–9.
             part["numbers"] = {
