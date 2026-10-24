@@ -10,6 +10,7 @@ import random
 import re
 from datetime import datetime, timedelta, timezone
 
+from .autopost import BOT_LINK
 from .cards import grid_hint
 from .generator import GenerationError, Generator
 from .storage import Storage
@@ -21,6 +22,18 @@ LOOKBACK = timedelta(days=3)  # под какими постами смотри�
 # Правила присутствия (prompts/threads_rules.md): отвечаем как живой человек, а не как спам-бот.
 PER_AUTHOR_PER_DAY = 3  # не больше 3 ответов одному человеку за сутки — без бесконечных переписок
 PAUSE = (20, 60)  # секунд между ответами внутри одного прохода
+# Ссылка в ответе — только если человек сам попросил (не навязываемся): не больше 3 в час на всех
+# и не чаще раза в неделю одному человеку. Остальных зовём «в шапку профиля» или не зовём вовсе.
+LINKS_PER_HOUR = 3
+ASKS_LINK = re.compile(
+    r"ссылк|линк|\blink|где\b[^?]{0,40}(посчита|узна|найти|получ|бот|сайт)|как\b[^?]{0,40}(посчита|узна|найти)"
+    r"|(ваш|ваше|вашего|вашем)\s+(бот|сайт|канал)|есть\s+(бот|сайт|канал)|куда\s+(писать|перейти)", re.I,
+)
+
+
+def asks_link(message: str) -> bool:
+    """Человек сам спрашивает, где посчитать или узнать больше."""
+    return bool(ASKS_LINK.search(message))
 MAX_REPLY_LENGTH = 500
 
 
@@ -104,11 +117,14 @@ async def answer_comments(
             if await db.replies_to_author(author, now - timedelta(days=1)) >= PER_AUTHOR_PER_DAY:
                 await db.record_comment(comment["id"], post_id, author, comment["message"], "", "skipped")
                 continue
-            # Ссылок в ответах нет совсем: Threads считает их спамом и может заблокировать аккаунт.
-            # Кто написал своё число — того мягко зовём в профиль, там ссылка на бота.
-            to_profile = gave_number(comment["message"])
+            # Ссылка — только по просьбе и в пределах лимитов; кто написал своё число — зовём в профиль.
+            mode = "profile" if gave_number(comment["message"]) else "plain"
+            if (asks_link(comment["message"])
+                    and await db.link_replies(now - timedelta(hours=1)) < LINKS_PER_HOUR
+                    and not await db.link_replies(now - timedelta(days=7), author)):
+                mode = "link"
             try:
-                text = (await generator.write_reply(post_text, comment["message"], author, to_profile)).strip()
+                text = (await generator.write_reply(post_text, comment["message"], author, mode)).strip()
             except GenerationError as e:
                 log.warning("Не удалось написать ответ на комментарий %s: %s", comment["id"], e)
                 await db.kv_set("autoreply_error", f"{now:%d.%m %H:%M} нейросеть: {e}")
@@ -122,11 +138,13 @@ async def answer_comments(
             recent = {(r.get("reply") or "")[:60] for r in await db.recent_comments(50)}
             if text[:60] in recent:
                 try:
-                    text = finish_reply(await generator.write_reply(post_text, comment["message"], author, to_profile))
+                    text = finish_reply(await generator.write_reply(post_text, comment["message"], author, mode))
                 except GenerationError:
                     continue
                 if text[:60] in recent:
                     continue
+            if mode == "link":
+                text = f"{text[: MAX_REPLY_LENGTH - 45]}\n{BOT_LINK}r{post_id or 0}"
             if sent:
                 await asyncio.sleep(random.uniform(*PAUSE))
 

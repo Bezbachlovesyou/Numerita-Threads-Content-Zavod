@@ -242,6 +242,16 @@ class Storage:
         )
         return int(rows[0]["n"])
 
+    async def link_replies(self, since: datetime, author: str | None = None) -> int:
+        """Сколько ответов со ссылкой отправлено (всего или одному человеку)."""
+        sql = "SELECT COUNT(*) AS n FROM comment_replies WHERE status = 'replied' AND reply LIKE ? AND created_at >= ?"
+        params: tuple = ("%t.me/%", since.astimezone(timezone.utc).isoformat())
+        if author:
+            sql += " AND author = ?"
+            params += (author,)
+        rows = await self._rows(sql, params)
+        return int(rows[0]["n"])
+
     async def recent_comments(self, limit: int) -> list[dict]:
         return await self._rows(
             "SELECT * FROM comment_replies ORDER BY created_at DESC LIMIT ?", (limit,)

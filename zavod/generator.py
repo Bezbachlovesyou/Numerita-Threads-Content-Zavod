@@ -57,13 +57,21 @@ class Generator:
         """Свободный запрос к модели (самоулучшение контент-плана)."""
         return await self._complete(system, prompt)
 
-    async def write_reply(self, post: str, comment: str, author: str, to_profile: bool) -> str:
-        """Ответ на комментарий под постом. «SKIP» — отвечать не нужно."""
+    async def write_reply(self, post: str, comment: str, author: str, mode: str = "plain") -> str:
+        """Ответ на комментарий под постом. «SKIP» — отвечать не нужно.
+
+        mode: plain — без бота и профиля; profile — позвать «в шапку профиля»;
+        link — человек сам попросил, где посчитать: бот добавит ссылку после ответа.
+        """
+        endings = {
+            "plain": "Про бота и профиль не пиши.",
+            "profile": "В конце мягко позови за полным разбором по имени и дате — «ссылка в шапке профиля».",
+            "link": "Человек сам спросил, где узнать больше: ответь по сути и последней фразой скажи, что посчитать "
+                    "своё число души и судьбы можно у Нумериты в Telegram — ссылку бот добавит сам строкой ниже.",
+        }
         prompt = (
             f"Наш пост:\n{post}\n\nКомментарий от @{author}:\n{comment}\n\n"
-            + "Никаких ссылок, адресов и @упоминаний — Threads за них блокирует. "
-            + ("В конце мягко позови за полным разбором по имени и дате — «ссылка в шапке профиля»."
-               if to_profile else "Про бота и профиль не пиши.")
+            + "Сам не пиши никаких ссылок, адресов и @упоминаний. " + endings[mode]
         )
         return await self._complete(self.reply_system, await self._with_knowledge(prompt, comment))
 
