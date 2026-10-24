@@ -4,6 +4,23 @@ from datetime import datetime, timedelta, timezone
 import aiosqlite
 import asyncpg
 
+MEMORY_SCHEMA = """
+CREATE TABLE IF NOT EXISTS dialogue_messages (
+    target_id TEXT NOT NULL,
+    root_id TEXT NOT NULL,
+    message_id TEXT NOT NULL,
+    parent_id TEXT,
+    author_id TEXT NOT NULL,
+    author TEXT NOT NULL,
+    role TEXT NOT NULL,
+    body TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    observed_at TEXT NOT NULL,
+    PRIMARY KEY (target_id, message_id)
+);
+CREATE INDEX IF NOT EXISTS dialogue_root_idx ON dialogue_messages(target_id, root_id, created_at);
+"""
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS posts (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -136,13 +153,45 @@ class Storage:
 
     async def init(self) -> None:
         async with aiosqlite.connect(self.path) as db:
-            await db.executescript(SCHEMA)
+            await db.executescript(SCHEMA + MEMORY_SCHEMA)
             for column in ("tg_message_id", "rubric", "first_comment", "card", "image_url", "link_mode"):  # базы, созданные до этих колонок
                 try:
                     await db.execute(f"ALTER TABLE posts ADD COLUMN {column} TEXT")
                 except aiosqlite.OperationalError:
                     pass
             await db.commit()
+
+    async def remember_message(self, target, root, message_id, parent, author_id, author, role, body, created):
+        try:
+            stamp = datetime.fromisoformat(created.replace("Z", "+00:00"))
+            if stamp.tzinfo is None:
+                stamp = stamp.replace(tzinfo=timezone.utc)
+            created = stamp.astimezone(timezone.utc).isoformat()
+        except (ValueError, AttributeError):
+            created = _now()
+        await self._execute(
+            "INSERT INTO dialogue_messages "
+            "(target_id,root_id,message_id,parent_id,author_id,author,role,body,created_at,observed_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?) ON CONFLICT (target_id,message_id) DO UPDATE SET "
+            "body=excluded.body, author=excluded.author",
+            (target,root,message_id,parent,author_id,author,role,body,created,_now()),
+        )
+
+    async def dialogue_message(self, target, message_id):
+        rows = await self._rows(
+            "SELECT * FROM dialogue_messages WHERE target_id=? AND message_id=?", (target,message_id))
+        return rows[0] if rows else None
+
+    async def dialogue_history(self, target, root):
+        return await self._rows(
+            "SELECT * FROM dialogue_messages WHERE target_id=? AND root_id=? ORDER BY created_at,message_id",
+            (target,root))
+
+    async def active_dialogue_targets(self, since):
+        return await self._rows(
+            "SELECT target_id FROM dialogue_messages WHERE observed_at>=? "
+            "GROUP BY target_id ORDER BY MAX(observed_at) DESC LIMIT 100",
+            (since.astimezone(timezone.utc).isoformat(),))
 
     async def add_draft(
         self, topic: str, text: str, rubric: str | None = None, first_comment: str | None = None,
@@ -448,7 +497,7 @@ class PgStorage(Storage):
 
     async def init(self) -> None:
         self.pool = await asyncpg.create_pool(self.dsn, min_size=1, max_size=5)
-        await self.pool.execute(PG_SCHEMA)
+        await self.pool.execute(PG_SCHEMA + MEMORY_SCHEMA)
         await self.pool.execute("ALTER TABLE posts ADD COLUMN IF NOT EXISTS tg_message_id TEXT")
         await self.pool.execute("ALTER TABLE posts ADD COLUMN IF NOT EXISTS rubric TEXT")
         await self.pool.execute("ALTER TABLE posts ADD COLUMN IF NOT EXISTS first_comment TEXT")
@@ -484,3 +533,4 @@ class PgStorage(Storage):
             " ON CONFLICT (post_id) DO UPDATE SET likes = $2, impressions = $3, updated_at = $4",
             post_id, likes, impressions, _now(),
         )
+

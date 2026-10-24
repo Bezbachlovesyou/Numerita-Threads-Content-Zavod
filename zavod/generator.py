@@ -58,9 +58,9 @@ class Generator:
             f"{excerpt}\n\n{prompt}"
         )
 
-    async def improve(self, system: str, prompt: str) -> str:
+    async def improve(self, system: str, prompt: str, max_tokens: int | None = None) -> str:
         """Свободный запрос к модели (самоулучшение контент-плана)."""
-        return await self._complete(system, prompt)
+        return await self._complete(system, prompt, max_tokens=max_tokens)
 
     async def write_reply(self, post: str, comment: str, author: str, mode: str = "plain") -> str:
         """Ответ на комментарий под постом. «SKIP» — отвечать не нужно.
@@ -80,7 +80,7 @@ class Generator:
             f"Наш пост:\n{post}\n\nКомментарий от @{author}:\n{comment}\n\n"
             + "Сам не пиши никаких ссылок, адресов и @упоминаний. " + endings[mode]
         )
-        return await self._complete(self.reply_system, await self._with_knowledge(prompt, comment))
+        return await self._complete(self.reply_system, await self._with_knowledge(prompt, comment), max_tokens=700)
 
     async def check_key(self) -> None:
         """Проверяет ключ при запуске и пишет результат в логи Railway."""
@@ -108,7 +108,7 @@ class Generator:
             )
         return await self._complete(self.system, prompt)
 
-    async def _complete(self, system: str, prompt: str) -> str:
+    async def _complete(self, system: str, prompt: str, max_tokens: int | None = None) -> str:
         try:
             async with httpx.AsyncClient(timeout=180) as http:
                 response = await http.post(
@@ -119,6 +119,7 @@ class Generator:
                     },
                     json={
                         "model": self.model,
+                        **({"max_tokens": max_tokens} if max_tokens is not None else {}),
                         "messages": [
                             {"role": "system", "content": system},
                             {"role": "user", "content": prompt},
@@ -147,3 +148,4 @@ class Generator:
         if not text:
             raise GenerationError("Модель вернула пустой ответ.")
         return text
+
