@@ -1,3 +1,4 @@
+import hashlib
 import json
 """Публикация постов в Threads и их статистика через Zernio.
 
@@ -121,7 +122,8 @@ class ThreadsClient:
             "POST",
             f"/inbox/comments/{post_id}",
             json={"accountId": self.account_id, "commentId": comment_id, "message": message},
-            headers={"Idempotency-Key": f"reply-{comment_id}"},
+            # ключ зависит и от текста: повтор того же ответа не задвоится, а новый текст не ловит «ключ уже занят»
+            headers={"Idempotency-Key": f"reply-{comment_id}-{hashlib.sha1(message.encode()).hexdigest()[:12]}"},
         )
 
     async def account_stats(self, limit: int = 10) -> dict:
