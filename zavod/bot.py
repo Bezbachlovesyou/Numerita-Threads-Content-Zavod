@@ -14,7 +14,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from .autopost import BOT_LINK, MIN_GAP, ContentPlan, ScriptedPost, Slot, topic_tag_for
 from .cards import (
-    GRID_TITLES, Card, card_from_text, carousel_from_json, carousel_json, grid_json, make_grid, render_card,
+    GRID_TITLES, PLANETS, Card, birth_days, card_from_text, carousel_from_json, carousel_json, grid_json, make_grid, render_card,
     render_grid, soul_carousel,
 )
 from .autoreply import answer_comments
@@ -24,6 +24,7 @@ from .generator import GenerationError, Generator
 from .storage import PgStorage, Post, Storage
 from .threads_api import MAX_LENGTH, ThreadsClient, ThreadsError
 from .tts import synthesize
+from . import video as vid
 
 log = logging.getLogger(__name__)
 
@@ -182,9 +183,10 @@ async def publish(
     errors = []
     if threads is not None and not post.threads_id:
         try:
-            image_urls = await ensure_images(post, db, threads) if cards else []
+            video_url = (json.loads(post.card) or {}).get("video") if post.card else None
+            image_urls = await ensure_images(post, db, threads) if cards and not video_url else []
             threads_id = await threads.publish_text(
-                post.text, topic_tag_for(post.rubric), post.first_comment, image_urls
+                post.text, topic_tag_for(post.rubric), post.first_comment, image_urls, video_url
             )
             await db.set_threads_id(post.id, threads_id or "published")
         except ThreadsError as e:
@@ -335,6 +337,22 @@ def create_router(cfg: Config, plan: ContentPlan) -> Router:
             return
         await message.answer(format_account_stats(payload))
 
+    @router.message(F.photo)
+    async def on_photo(message: Message, bot: Bot, db: Storage, threads: ThreadsClient | None) -> None:
+        """Картинка Нумериты — образец лица для видео."""
+        if threads is None:
+            await message.answer("Сначала нужен Zernio — туда я сохраняю картинку.")
+            return
+        buffer = await bot.download(message.photo[-1])
+        try:
+            url = await threads.upload_image(buffer.read(), f"numerita_reference_{message.message_id}.jpg")
+        except ThreadsError as e:
+            await message.answer(f"❌ Не удалось сохранить картинку: {e}")
+            return
+        await db.kv_set("numerita_reference", url)
+        await db.kv_set("numerita_portrait", "")  # следующий портрет — по этой картинке
+        await message.answer("✨ Запомнила. Следующие видео — с этой Нумеритой.")
+
     @router.message(F.text.startswith("/"))
     async def on_unknown_command(message: Message) -> None:
         await message.answer("Не знаю такую команду.\n\n" + HELP)
@@ -484,6 +502,32 @@ async def write_autopost(generator: Generator, slot: Slot, style: str = "intrigu
     return text, first_comment_for(slot) if slot.rubric.cta == "link" else None, hook
 
 
+async def post_from_bank(
+    cfg: Config, db: Storage, threads: ThreadsClient | None, bot: Bot, plan: ContentPlan, slot: Slot,
+    rng: random.Random,
+) -> bool:
+    """Следующий готовый пост «не подарок — джекпот». False — банк закончился, пишет нейросеть."""
+    used = set(json.loads(await db.kv_get("jackpot_used") or "[]"))
+    fresh = [i for i, item in enumerate(plan.bank) if i not in used]
+    if not fresh:
+        return False
+    i = fresh[0]
+    item = plan.bank[i]
+    await db.kv_set("jackpot_used", json.dumps(sorted(used | {i})))
+    lines = item.text.splitlines()
+    hook = lines[1] if len(lines) > 1 else lines[0]
+    digit = int(item.number) if item.number.isdigit() else None
+    label = item.label or (PLANETS.get(digit) if digit and digit <= 9 else None)
+    palette, style = plan.choose_card(rng)
+    card = Card(hook, item.number, label, "reply", None, palette, style,
+                birth_days(digit) if digit and digit <= 9 and not item.label else None)
+    post = await db.get(await db.add_draft(f"Банк: {lines[0]}", item.text, "jackpot", None, card.to_json()))
+    post = await publish(post, db, threads, bot, "", cfg.cards)
+    if post.status == "failed":
+        await notify_admins(bot, cfg, "⚠️ Пост не опубликован\n\n" + post_card(post, cfg), post)
+    return True
+
+
 async def post_next(
     bot: Bot, cfg: Config, db: Storage, threads: ThreadsClient | None, generator: Generator,
     plan: ContentPlan, now: datetime, rng: random.Random,
@@ -499,6 +543,8 @@ async def post_next(
     else:
         slot = plan.render(plan.choose(recent, rng), now, rng)
         if not await db.claim_slot(slot.key):
+            return True
+        if slot.rubric.key == "jackpot" and await post_from_bank(cfg, db, threads, bot, plan, slot, rng):
             return True
         grid = None
         if slot.rubric.key == "grid":
@@ -568,6 +614,107 @@ async def import_script(db: Storage, script: list[ScriptedPost]) -> int:
     return added
 
 
+VIDEO_RETRY = timedelta(hours=1)
+_video_busy = False
+
+
+async def numerita_references(db: Storage, threads: ThreadsClient) -> list[str]:
+    """Картинки Нумериты для образца: присланная владельцем или из assets/numerita (загружаем в Zernio один раз)."""
+    sent = await db.kv_get("numerita_reference")
+    if sent:
+        return [sent]
+    stored = json.loads(await db.kv_get("numerita_assets") or "[]")
+    if not stored:
+        for path in sorted(vid.REFERENCES.glob("*.jpg")):
+            stored.append(await threads.upload_image(path.read_bytes(), f"numerita_ref_{path.name}"))
+        await db.kv_set("numerita_assets", json.dumps(stored))
+    return stored
+
+
+async def video_tick(
+    bot: Bot, cfg: Config, db: Storage, threads: ThreadsClient, generator: Generator, rng: random.Random,
+) -> None:
+    """Видео с Нумеритой: сначала три главных ролика, потом новые — не больше VIDEO_PER_DAY в сутки."""
+    global _video_busy
+    now = datetime.now(cfg.timezone)
+    retry = await db.kv_get("video_retry_at")
+    if _video_busy or (retry and now < datetime.fromisoformat(retry)):
+        return
+    done = json.loads(await db.kv_get("video_done") or "[]")
+    count_key = f"videos {now.date().isoformat()}"
+    made_today = int(await db.kv_get(count_key) or 0)
+    # Два ролика — сразу, главный (hero) — к утру.
+    pending = sorted((s for s in vid.SCENES if s.key not in done), key=lambda s: s.key == "hero")
+    if not pending and made_today >= cfg.video_per_day:
+        return
+    _video_busy = True
+    asyncio.create_task(_make_video(bot, cfg, db, threads, generator, rng, pending, done, count_key, made_today))
+
+
+async def _make_video(
+    bot: Bot, cfg: Config, db: Storage, threads: ThreadsClient, generator: Generator, rng: random.Random,
+    pending: list, done: list, count_key: str, made_today: int,
+) -> None:
+    global _video_busy
+    fal = vid.FalClient(cfg.fal_key)
+    try:
+        if pending:
+            scene, resolution = pending[0], "1080p"  # первые ролики — в лучшем качестве
+        else:
+            previous = json.loads(await db.kv_get("video_speeches") or "[]")
+            scene, resolution = await vid.invent_scene(generator, previous, rng), cfg.video_resolution
+        image_url = await db.kv_get("numerita_portrait")
+        if not image_url:
+            raw = await vid.download(await vid.portrait(fal, await numerita_references(db, threads)))
+            jpeg = vid.to_jpeg(raw)
+            image_url = await threads.upload_image(jpeg, "numerita_portrait.jpg")
+            await db.kv_set("numerita_portrait", image_url)
+            for admin_id in cfg.admin_ids:  # портрет пригодится и для аватарок, и для сторис
+                try:
+                    await bot.send_document(admin_id, BufferedInputFile(jpeg, "numerita_portrait.jpg"),
+                                            caption="✨ Новый портрет Нумериты — с него сниму видео.")
+                except TelegramAPIError:
+                    log.exception("Не удалось отправить портрет админу %s", admin_id)
+        data = await vid.download(await vid.shoot(fal, image_url, scene, resolution))
+        video_url = await threads.upload_image(data, f"numerita_{scene.key}.mp4", "video/mp4")
+
+        now = datetime.now(cfg.timezone)
+        when = vid.morning_after(now) if scene.key == "hero" else now
+        tag = f"v{scene.key}_{now:%d%m}"
+        first_comment = FIRST_COMMENTS[1].format(link=BOT_LINK + tag)
+        card = json.dumps({"video": video_url, "scene": scene.key, "speech": scene.speech}, ensure_ascii=False)
+        post_id = await db.add_draft(f"Видео: {scene.key}", scene.caption, "video", first_comment, card)
+        await db.schedule(post_id, when)
+
+        done.append(scene.key)
+        await db.kv_set("video_done", json.dumps(done))
+        await db.kv_set(count_key, str(made_today + 1))
+        speeches = json.loads(await db.kv_get("video_speeches") or "[]") + [scene.speech]
+        await db.kv_set("video_speeches", json.dumps(speeches[-10:], ensure_ascii=False))
+        caption = (
+            f"🎬 Новое видео с Нумеритой. В Threads выйдет {when:%d.%m в %H:%M}.\n"
+            f"Для сторис, канала и Инстаграма — сохраняй отсюда.\n\nОна говорит: «{scene.speech}»\n\n"
+            f"Стоило ≈ ${vid.cost(resolution):.1f} ({resolution}, 15 сек)."
+        )
+        for admin_id in cfg.admin_ids:
+            try:
+                await bot.send_video(admin_id, BufferedInputFile(data, f"numerita_{scene.key}.mp4"),
+                                     caption=caption[:1024], supports_streaming=True)
+            except TelegramAPIError:
+                log.exception("Не удалось отправить видео админу %s", admin_id)
+    except (vid.VideoError, ThreadsError, GenerationError) as e:
+        log.warning("Видео не сделано: %s", e)
+        await db.kv_set("video_retry_at", (datetime.now(cfg.timezone) + VIDEO_RETRY).isoformat())
+        if await db.kv_get("video_last_error") != str(e)[:300]:  # об одной и той же ошибке пишем один раз
+            await db.kv_set("video_last_error", str(e)[:300])
+            await notify_admins(bot, cfg, f"⚠️ Видео не получилось, попробую через час.\n{e}")
+    except Exception:
+        log.exception("Видео: непредвиденная ошибка")
+        await db.kv_set("video_retry_at", (datetime.now(cfg.timezone) + VIDEO_RETRY).isoformat())
+    finally:
+        _video_busy = False
+
+
 async def run_scheduler(
     bot: Bot,
     cfg: Config,
@@ -587,6 +734,8 @@ async def run_scheduler(
                     await notify_admins(bot, cfg, "⚠️ Пост не опубликован\n\n" + post_card(post, cfg), post)
             if plan.enabled and threads is not None:
                 await autopost_tick(bot, cfg, db, threads, generator, plan, rng)
+            if cfg.video and cfg.fal_key and threads is not None:
+                await video_tick(bot, cfg, db, threads, generator, rng)
         except Exception:
             log.exception("Scheduler iteration failed")
         now = datetime.now(cfg.timezone)

@@ -21,6 +21,9 @@ from .knowledge import reduce_number
 
 log = logging.getLogger(__name__)
 
+DIGIT_WORDS = {1: "единица", 2: "двойка", 3: "тройка", 4: "четвёрка", 5: "пятёрка", 6: "шестёрка",
+               7: "семёрка", 8: "восьмёрка", 9: "девятка"}
+GENDERS = ["Женщина", "Парень", "Мужчина", "Девушка"]
 WEEKDAYS = ["понедельник", "вторник", "среда", "четверг", "пятница", "суббота", "воскресенье"]
 CTAS = ("link", "reply", "profile", "none")
 BOT_LINK = "t.me/Numeritabot?start=ad_th_"
@@ -33,7 +36,7 @@ DAY_GAP = (70, 100)  # минут, 07:00–23:59
 NIGHT_GAP = (110, 160)  # минут, 00:00–06:59
 
 # Тема Threads для рубрики: пост показывают тем, кто следит за темой. По умолчанию — нумерология.
-TOPIC_TAGS = {"love": "Отношения", "pair": "Отношения", "wisdom": "Саморазвитие", "money": "Саморазвитие"}
+TOPIC_TAGS = {"love": "Отношения", "pair": "Отношения", "ex": "Отношения", "wisdom": "Саморазвитие", "money": "Саморазвитие"}
 DEFAULT_TOPIC_TAG = "Нумерология"
 
 
@@ -105,6 +108,7 @@ class ContentPlan:
         self.hour_weights: dict[str, float] = {}  # >1 — в эти часы постим чаще
         self.custom: list[Rubric] = []  # новые рубрики, которые бот придумал сам
         self.card_weights: dict[str, float] = {}  # «palette:0», «style:question» → вес
+        self.bank: list[BankPost] = []  # готовые посты «не подарок — джекпот» (prompts/jackpot.md)
 
     def choose_card(self, rng: random.Random) -> tuple[int, str]:
         """Палитра и стиль фразы для картинки: удачные чаще, но остальные тоже пробуем."""
@@ -147,6 +151,8 @@ class ContentPlan:
             a=a,
             b=b,
             arcana=arcana,
+            gender=rng.choice(GENDERS),
+            digit_word=DIGIT_WORDS[digit],
         )
         number, label, cta_text, dates = None, None, None, None
         if "{a}" in rubric.text and "{b}" in rubric.text:
@@ -182,6 +188,26 @@ class ContentPlan:
 class ScriptedPost:
     key: str
     text: str
+
+
+@dataclass(frozen=True)
+class BankPost:
+    number: str
+    label: str | None
+    text: str
+
+
+def load_bank(path: Path) -> list[BankPost]:
+    """Готовые посты: заголовок «## <число> [подпись]», под ним текст поста."""
+    if not path.exists():
+        return []
+    bank = []
+    for block in re.split(r"^## ", path.read_text(encoding="utf-8"), flags=re.M)[1:]:
+        head, _, text = block.partition("\n")
+        number, _, label = head.strip().partition(" ")
+        if text.strip():
+            bank.append(BankPost(number, label.strip() or None, text.strip()))
+    return bank
 
 
 def load_script(path: Path) -> list[ScriptedPost]:

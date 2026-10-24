@@ -53,7 +53,7 @@ class Card:
     @staticmethod
     def from_json(raw: str | None) -> "Card | None":
         data = json.loads(raw) if raw else None
-        return Card(**data) if data and "carousel" not in data and "grid" not in data else None
+        return Card(**data) if data and not {"carousel", "grid", "video"} & data.keys() else None
 
 
 def carousel_from_json(raw: str | None) -> list[Card] | None:

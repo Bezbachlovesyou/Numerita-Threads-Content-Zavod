@@ -28,6 +28,10 @@ class Config:
     cards: bool
     autoreply: bool
     autoreply_per_hour: int
+    fal_key: str = ""
+    video: bool = True
+    video_per_day: int = 1
+    video_resolution: str = "720p"
 
     @property
     def threads_enabled(self) -> bool:
@@ -85,4 +89,9 @@ def load_config() -> Config:
         # Автоответы на комментарии в Threads: включены по умолчанию, AUTOREPLY=0 — выключить.
         autoreply=os.getenv("AUTOREPLY", "1") != "0",
         autoreply_per_hour=int(os.getenv("AUTOREPLY_PER_HOUR", "30") or 30),
+        # Видео с Нумеритой (fal.ai, Seedance 2.0). Без FAL_KEY видео не делаются, VIDEO=off — выключить.
+        fal_key=os.getenv("FAL_KEY", "").strip(),
+        video=os.getenv("VIDEO", "on").strip().lower() not in ("off", "0", "no", "нет"),
+        video_per_day=int(os.getenv("VIDEO_PER_DAY", "1") or 1),
+        video_resolution=os.getenv("VIDEO_RESOLUTION", "720p").strip() or "720p",
     )

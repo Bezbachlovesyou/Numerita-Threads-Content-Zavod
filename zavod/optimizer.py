@@ -27,11 +27,12 @@ WINDOW = timedelta(days=7)
 MIN_POSTS = 3
 TRIAL = timedelta(days=3)
 EXPERIMENT_EVERY = timedelta(days=2)
-PLACEHOLDERS = {"part_of_day", "weekday", "day_number", "tomorrow_number", "digit", "group", "n", "a", "b", "arcana"}
+PLACEHOLDERS = {"part_of_day", "weekday", "day_number", "tomorrow_number", "digit", "group", "n", "a", "b", "arcana", "gender", "digit_word"}
 PLACEHOLDER_HELP = (
     "{digit} — число 1–9, {group} — дни рождения с этим числом души, {n} — день рождения 1–31, "
     "{a} и {b} — пара чисел, {arcana} — аркан 1–22, {weekday} — день недели, {part_of_day} — время суток, "
-    "{day_number} — число дня, {tomorrow_number} — число завтрашнего дня"
+    "{day_number} — число дня, {tomorrow_number} — число завтрашнего дня, {gender} — «Женщина»/«Парень»…, "
+    "{digit_word} — «восьмёрка» для {digit}"
 )
 
 IMPROVE_SYSTEM = (

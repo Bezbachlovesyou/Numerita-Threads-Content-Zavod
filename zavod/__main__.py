@@ -7,7 +7,7 @@ from aiogram.types import BotCommand
 
 from datetime import datetime
 
-from .autopost import ContentPlan, load_rubrics, load_script
+from .autopost import ContentPlan, load_bank, load_rubrics, load_script
 from .bot import COMMANDS, create_router, import_script, run_scheduler
 from .config import load_config
 from .generator import Generator
@@ -38,6 +38,7 @@ async def main() -> None:
     dp["generator"] = generator
     dp["threads"] = threads
     plan = ContentPlan(load_rubrics(PROMPTS / "content_plan.md"), enabled=cfg.autopost)
+    plan.bank = load_bank(PROMPTS / "jackpot.md")
     await apply_state(storage, plan, datetime.now(cfg.timezone))
     added = await import_script(storage, load_script(PROMPTS / "threads_script.md"))
     if added:

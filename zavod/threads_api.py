@@ -42,23 +42,23 @@ class ThreadsClient:
             raise ThreadsError(f"Zernio: {error}")
         return response.status_code, payload
 
-    async def upload_image(self, data: bytes, filename: str) -> str:
-        """Загружает JPEG в хранилище Zernio, возвращает публичный адрес для mediaItems."""
+    async def upload_image(self, data: bytes, filename: str, content_type: str = "image/jpeg") -> str:
+        """Загружает картинку (или видео) в хранилище Zernio, возвращает публичный адрес для mediaItems."""
         _, presigned = await self._request(
-            "POST", "/media/presign", json={"filename": filename, "contentType": "image/jpeg", "size": len(data)}
+            "POST", "/media/presign", json={"filename": filename, "contentType": content_type, "size": len(data)}
         )
         try:
-            async with httpx.AsyncClient(timeout=60) as http:
-                response = await http.put(presigned["uploadUrl"], content=data, headers={"Content-Type": "image/jpeg"})
+            async with httpx.AsyncClient(timeout=180) as http:
+                response = await http.put(presigned["uploadUrl"], content=data, headers={"Content-Type": content_type})
         except httpx.HTTPError as e:
-            raise ThreadsError(f"Не удалось загрузить картинку: {e}") from e
+            raise ThreadsError(f"Не удалось загрузить файл: {e}") from e
         if response.is_error:
-            raise ThreadsError(f"Хранилище Zernio не приняло картинку: {response.status_code}")
+            raise ThreadsError(f"Хранилище Zernio не приняло файл: {response.status_code}")
         return presigned["publicUrl"]
 
     async def publish_text(
         self, text: str, topic_tag: str | None = None, first_comment: str | None = None,
-        image_urls: list[str] | None = None,
+        image_urls: list[str] | None = None, video_url: str | None = None,
     ) -> str:
         """Публикует пост. topic_tag — тема Threads (показ подписчикам темы), first_comment — первый комментарий."""
         if len(text) > MAX_LENGTH:
@@ -72,7 +72,9 @@ class ThreadsClient:
         if extra:
             platform["platformSpecificData"] = extra
         body: dict = {"content": text, "platforms": [platform], "publishNow": True}
-        if image_urls:  # одна картинка или карусель до 10
+        if video_url:
+            body["mediaItems"] = [{"type": "video", "url": video_url}]
+        elif image_urls:  # одна картинка или карусель до 10
             body["mediaItems"] = [{"type": "image", "url": url} for url in image_urls[:10]]
         _, payload = await self._request("POST", "/posts", json=body)
         post = payload.get("post") or {}
