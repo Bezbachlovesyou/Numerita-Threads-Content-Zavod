@@ -385,10 +385,11 @@ class Storage:
         await self._execute("UPDATE posts SET status = 'queued' WHERE id = ?", (post_id,))
 
     async def drop_credited_posts(self) -> None:
-        """Готовые посты «по мотивам» чужих авторов не выпускаем: владелец удалил такой пост (24.10.2026)."""
+        """Готовые посты «по мотивам» чужих авторов и их схем не выпускаем: слово владельца 24.10.2026."""
         await self._execute(
             "UPDATE posts SET status = 'deleted' WHERE rubric = 'script' AND status IN ('queued', 'failed', 'scheduled')"
-            " AND threads_id IS NULL AND (text LIKE ? OR text LIKE ?)", ("%по мотивам%", "%keyto%")
+            " AND threads_id IS NULL AND (text LIKE ? OR text LIKE ? OR text LIKE ?)",
+            ("%по мотивам%", "%keyto%", "%кармический урок по дню рождения%")
         )
 
     async def requeue_scheduled_scripts(self) -> None:
