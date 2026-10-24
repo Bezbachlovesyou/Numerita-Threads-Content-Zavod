@@ -42,6 +42,11 @@ class Generator:
             self.system += "\n\n" + playbook.read_text(encoding="utf-8")
         reply_path = voice_path.with_name("reply_voice.md")
         self.reply_system = reply_path.read_text(encoding="utf-8") if reply_path.exists() else self.system
+        abundance = voice_path.with_name("abundance.md")  # деньги и изобилие: вдохновляем, не обесцениваем
+        if abundance.exists():
+            text = abundance.read_text(encoding="utf-8")
+            self.system += "\n\n" + text
+            self.reply_system += "\n\n" + text
         self.knowledge = knowledge
 
     async def _with_knowledge(self, prompt: str, about: str) -> str:
