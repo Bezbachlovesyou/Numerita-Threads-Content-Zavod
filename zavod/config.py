@@ -4,7 +4,10 @@ from zoneinfo import ZoneInfo
 
 from dotenv import load_dotenv
 
-DEFAULT_MODEL = "anthropic/claude-opus-5.5"
+DEFAULT_MODEL = "anthropic/claude-sonnet-5.5"  # посты; Opus вдвое дороже без заметной разницы в коротких постах
+# Ответы на комментарии — короткие и массовые: Haiku 5.5 в 20 раз дешевле Sonnet. Часть — на Sonnet (A/B качества).
+DEFAULT_REPLY_MODEL = "anthropic/claude-haiku-5.5"
+DEFAULT_REPLY_AB_MODEL = "anthropic/claude-sonnet-5.5"
 DEFAULT_KB_URL = "https://numerita.up.railway.app/kb.json"
 
 
@@ -28,6 +31,10 @@ class Config:
     cards: bool
     autoreply: bool
     autoreply_per_hour: int
+    reply_model: str
+    reply_ab_model: str
+    reply_ab_share: float
+    reply_budget_usd: float
     fal_key: str = ""
     video: bool = True
     video_per_day: int = 1
@@ -89,6 +96,11 @@ def load_config() -> Config:
         # Автоответы на комментарии в Threads: включены по умолчанию, AUTOREPLY=0 — выключить.
         autoreply=os.getenv("AUTOREPLY", "1") != "0",
         autoreply_per_hour=int(os.getenv("AUTOREPLY_PER_HOUR", "90") or 90),
+        reply_model=os.getenv("REPLY_MODEL", "").strip() or DEFAULT_REPLY_MODEL,
+        reply_ab_model=os.getenv("REPLY_AB_MODEL", "").strip() or DEFAULT_REPLY_AB_MODEL,
+        reply_ab_share=float(os.getenv("REPLY_AB_SHARE", "0.1") or 0.1),
+        # Потолок расходов на ответы и сводки диалогов в сутки, $ (закон «всегда в плюсе»).
+        reply_budget_usd=float(os.getenv("REPLY_BUDGET_USD", "1") or 1),
         # Видео с Нумеритой (fal.ai, Seedance 2.0). Без FAL_KEY видео не делаются, VIDEO=off — выключить.
         fal_key=os.getenv("FAL_KEY", "").strip(),
         video=os.getenv("VIDEO", "on").strip().lower() not in ("off", "0", "no", "нет"),

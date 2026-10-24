@@ -9,6 +9,7 @@ import json
 import logging
 import random
 import re
+import zlib
 from datetime import datetime, timedelta, timezone
 
 from .autopost import BOT_LINK, strip_credits
@@ -48,6 +49,28 @@ def asks_link(message: str) -> bool:
     """Человек сам спрашивает, где посчитать или узнать больше."""
     return bool(ASKS_LINK.search(message))
 MAX_REPLY_LENGTH = 500
+
+
+NOISE_RE = re.compile(r"^(\+|спасибо|спс|благодарю|пасиб[оа]?|ок|окей|лол|ха)+$", re.I)
+
+
+def is_noise(message: str) -> bool:
+    """Реплика без содержания («+», «спасибо», точки): на неё не тратим нейросеть. Эмодзи, числа, даты,
+    «да/нет» и вопросы — содержание (посты сами просят ответить эмодзи или «да/нет»)."""
+    text = re.sub(r"[\s.,!…)(\-—]+", "", (message or "").lower())
+    return not text or bool(NOISE_RE.match(text))
+
+
+def reply_model_for(author: str, main: str, ab: str | None, share: float) -> str:
+    """A/B качества ответов: один и тот же человек всегда говорит с одной моделью (по хэшу ника)."""
+    if not ab or share <= 0:
+        return main
+    return ab if zlib.crc32(author.encode()) % 100 < share * 100 else main
+
+
+async def spent_on_replies(db: Storage, tz) -> float:
+    data = json.loads(await db.kv_get(f"cost:{datetime.now(tz).date().isoformat()}") or "{}")
+    return sum(row[1] for kind, row in data.items() if kind.startswith(("reply", "summary")))
 
 
 def gave_number(message: str) -> bool:
@@ -152,9 +175,19 @@ async def answer_comments(
     generator: Generator,
     per_hour: int,
     per_run: int,
+    daily_usd: float = 0,
+    ab_model: str | None = None,
+    ab_share: float = 0,
+    tz=None,
 ) -> int:
     """Отвечает на новые комментарии. Возвращает, сколько ответов отправлено за этот прогон."""
     now = datetime.now(timezone.utc)
+    if daily_usd and await spent_on_replies(db, tz) >= daily_usd:
+        # Закон «всегда в плюсе»: дневной бюджет ответов исчерпан — ждём завтра, владельцу одна строка.
+        if await db.claim_slot(f"reply budget {datetime.now(tz).date().isoformat()}"):
+            await db.kv_set("autoreply_error", f"{now:%d.%m %H:%M} бюджет: ответы на сегодня "
+                                               f"исчерпали ${daily_usd:.2f}, продолжу завтра")
+        return 0
     budget = min(per_run, per_hour - await db.replies_since(now - timedelta(hours=1)),
                  DAILY_REPLY_CAP - await db.replies_since(now - timedelta(days=1)))
     if budget <= 0:
@@ -181,6 +214,11 @@ async def answer_comments(
             queue.append((target_id, post_id, context, item))
     handled = await db.handled_comments([item["id"] for *_, item in queue])
     queue = [q for q in queue if q[3]["id"] not in handled]
+    # Пустые реплики («+», смайлики, «спасибо») нейросети не отдаём — это бесплатно отсеивает код.
+    for q in [q for q in queue if is_noise(q[3]["message"])]:
+        author = (q[3].get("from") or {}).get("username") or "?"
+        await db.record_comment(q[3]["id"], q[1], author, q[3]["message"], "", "skipped")
+        queue.remove(q)
     # Порядок: сначала совсем свежие (до 30 минут — окно, когда Threads решает про охват), затем все остальные
     # от самых давно ждущих — чтобы под популярным постом никто не застревал навсегда за новыми комментариями.
     fresh_after = (now - FRESH_WINDOW).isoformat().replace("+00:00", "Z")
@@ -225,7 +263,8 @@ async def answer_comments(
             mode = "offer"
         try:
             generated += 1
-            text = (await generator.write_reply(post_text, comment["message"], author, mode)).strip()
+            model = reply_model_for(author, getattr(generator, "reply_model", None), ab_model, ab_share)
+            text = (await generator.write_reply(post_text, comment["message"], author, mode, model)).strip()
         except GenerationError as e:
             log.warning("Не удалось написать ответ на комментарий %s: %s", comment["id"], e)
             await db.kv_set("autoreply_error", f"{now:%d.%m %H:%M} нейросеть: {e}")
@@ -242,7 +281,7 @@ async def answer_comments(
                 break
             try:
                 generated += 1
-                text = finish_reply(await generator.write_reply(post_text, comment["message"], author, mode))
+                text = finish_reply(await generator.write_reply(post_text, comment["message"], author, mode, model))
             except GenerationError:
                 continue
             if text[:60] in recent:

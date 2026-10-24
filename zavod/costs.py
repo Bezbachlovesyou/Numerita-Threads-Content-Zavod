@@ -88,7 +88,9 @@ async def report(db, generator, tz) -> str:
         for kind, (n, usd, tin, tout, cached) in sorted(ledger.items(), key=lambda kv: -kv[1][1]):
             per = usd / n if n else 0
             share = f", из кэша {round(100 * cached / tin)}%" if tin and cached else ""
-            lines.append(f"• {KINDS.get(kind, kind)}: {n} запр. — {money(usd)} (≈{money(per)} за запрос{share})")
+            base, _, model = kind.partition("·")
+            label = KINDS.get(base, base) + (f" ({model})" if model else "")
+            lines.append(f"• {label}: {n} запр. — {money(usd)} (≈{money(per)} за запрос{share})")
 
     # Что бот сделал сегодня — по базе (это видно и за часы до включения учёта).
     posts = await db._rows("SELECT rubric, COUNT(*) AS n FROM posts WHERE created_at >= ? GROUP BY rubric", (since,))
@@ -113,5 +115,37 @@ async def report(db, generator, tz) -> str:
                   f"• пост: ≈{money(post_cost)} — голос, методичка, эмоции, изобилие ≈{post_in / 1000:.0f} тыс. токенов",
                   f"• итого по сделанному сегодня ≈{money(reply_cost * by_status.get('replied', 0) + post_cost * n_posts)}"
                   " (без переписываний, сводок и пропусков нейросетью)"]
+    ab = await reply_ab(db, generator, now)
+    if ab:
+        lines += ["", "A/B моделей ответов за 7 дней (продолжили разговор после нашего ответа):"] + ab
     lines += ["", "Картинки рисуются кодом — $0. Видео (fal.ai) не включено и с этого счёта не платится."]
     return "\n".join(lines)
+
+
+async def reply_ab(db, generator, now: datetime) -> list[str]:
+    """Качество ответов по моделям: доля людей, которые написали снова после нашего ответа в той же ветке."""
+    from .autoreply import reply_model_for
+    since = max((now - timedelta(days=7)).astimezone(timezone.utc).isoformat(),
+                await db.kv_get("reply_ab_since") or "")  # раньше A/B не было — старые ветки не считаем
+    rows = await db._rows("SELECT target_id, root_id, author, role, created_at FROM dialogue_messages "
+                          "WHERE created_at >= ? ORDER BY created_at", (since,))
+    first_reply: dict = {}
+    talked: dict = {}
+    authors: dict = {}
+    for r in rows:
+        thread = (r["target_id"], r["root_id"])
+        if r["role"] == "assistant":
+            first_reply.setdefault(thread, r["created_at"])
+        else:
+            authors.setdefault(thread, set()).add(r["author"])
+            if thread in first_reply and r["created_at"] > first_reply[thread]:
+                talked.setdefault(thread, set()).add(r["author"])
+    ab_model, share = getattr(generator, "reply_ab_model", None), getattr(generator, "reply_ab_share", 0)
+    stats: dict = {}
+    for thread in [t for t, at in first_reply.items() if at >= since]:
+        for author in authors.get(thread, ()):
+            model = reply_model_for(author, generator.reply_model, ab_model, share).split("/")[-1]
+            row = stats.setdefault(model, [0, 0])
+            row[0] += 1
+            row[1] += author in talked.get(thread, set())
+    return [f"• {m}: {t} из {n} ({round(100 * t / n)}%)" for m, (n, t) in sorted(stats.items()) if n]

@@ -74,6 +74,7 @@ class Generator:
             self.system += "\n\n" + text
             self.reply_system += "\n\n" + text
         self.knowledge = knowledge
+        self.reply_model = model  # модель ответов на комментарии (задаётся при запуске)
         self.cost_sink = None  # async (kind, usd, prompt_tokens, completion_tokens, cached_tokens) — учёт расходов
 
     async def _with_knowledge(self, prompt: str, about: str) -> str:
@@ -85,11 +86,13 @@ class Generator:
             f"{excerpt}\n\n{prompt}"
         )
 
-    async def improve(self, system: str, prompt: str, max_tokens: int | None = None, kind: str = "other") -> str:
+    async def improve(self, system: str, prompt: str, max_tokens: int | None = None, kind: str = "other",
+                      model: str | None = None) -> str:
         """Свободный запрос к модели (самоулучшение контент-плана)."""
-        return await self._complete(system, prompt, max_tokens=max_tokens, kind=kind)
+        return await self._complete(system, prompt, max_tokens=max_tokens, kind=kind, model=model)
 
-    async def write_reply(self, post: str, comment: str, author: str, mode: str = "plain") -> str:
+    async def write_reply(self, post: str, comment: str, author: str, mode: str = "plain",
+                          model: str | None = None) -> str:
         """Ответ на комментарий под постом. «SKIP» — отвечать не нужно.
 
         mode: plain — без бота и профиля; profile — позвать «в шапку профиля»;
@@ -109,12 +112,12 @@ class Generator:
             + "Сам не пиши никаких ссылок, адресов и @упоминаний. " + endings[mode]
         )
         return await self._complete(self.reply_system, await self._with_knowledge(prompt, comment), max_tokens=700,
-                                    kind="reply")
+                                    kind="reply", model=model or self.reply_model)
 
-    def _system_content(self, system: str):
+    def _system_content(self, system: str, model: str):
         """Длинные правила одинаковы у всех запросов — у моделей Anthropic кэшируем их: повторное чтение
         стоит десятую часть цены (кэш живёт 5 минут, а ответы идут каждые 2–5 минут)."""
-        if not self.model.startswith("anthropic/"):
+        if not model.startswith("anthropic/"):
             return system
         return [{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}]
 
@@ -160,7 +163,8 @@ class Generator:
         return await self._complete(self.system, prompt, kind="sharpen")
 
     async def _complete(self, system: str, prompt: str, max_tokens: int | None = None, _retry: bool = False,
-                        kind: str = "other") -> str:
+                        kind: str = "other", model: str | None = None) -> str:
+        model = model or self.model
         try:
             async with httpx.AsyncClient(timeout=180) as http:
                 response = await http.post(
@@ -170,11 +174,11 @@ class Generator:
                         "X-Title": "Numerita Threads Content Zavod",
                     },
                     json={
-                        "model": self.model,
+                        "model": model,
                         **({"max_tokens": max_tokens} if max_tokens is not None else {}),
                         "usage": {"include": True},  # цена каждого запроса — для отчёта о расходах
                         "messages": [
-                            {"role": "system", "content": self._system_content(system)},
+                            {"role": "system", "content": self._system_content(system, model)},
                             {"role": "user", "content": prompt},
                         ],
                     },
@@ -197,14 +201,15 @@ class Generator:
                 message = "закончились деньги на балансе OpenRouter"
             raise GenerationError(f"Ошибка OpenRouter: {message}")
 
-        await self._record_cost(kind, payload.get("usage") or {})
+        await self._record_cost(f"{kind}·{model.split('/')[-1]}" if kind in ("reply", "summary") else kind,
+                                payload.get("usage") or {})
         choice = payload["choices"][0]
         text = (choice["message"].get("content") or "").strip()
         if choice.get("finish_reason") == "length" and max_tokens and not _retry:
             # Модель упёрлась в предел длины (часть уходит на «размышления») — обрывок не публикуем:
             # повторяем с запасом, а если снова оборвалось — режем по последнему законченному предложению.
             log.warning("Ответ оборвался на пределе %s токенов — повторяю с запасом", max_tokens)
-            return await self._complete(system, prompt, max_tokens=max_tokens * 4, _retry=True, kind=kind)
+            return await self._complete(system, prompt, max_tokens=max_tokens * 4, _retry=True, kind=kind, model=model)
         if choice.get("finish_reason") == "length":
             text = complete_sentences(text)
         if not text:

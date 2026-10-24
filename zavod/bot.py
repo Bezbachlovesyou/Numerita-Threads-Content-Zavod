@@ -1050,6 +1050,9 @@ async def report_autoreply_error(bot: Bot, cfg: Config, db: Storage) -> None:
 def explain_autoreply_error(stage: str, reason: str) -> str:
     """Ошибка автоответов — простыми словами: что случилось, что бот делает сам, нужно ли что-то от владельца."""
     low = reason.lower()
+    if stage == "бюджет":
+        return (f"💰 Автоответы: {reason}.\nТак работает закон «всегда в плюсе»: дневной потолок расходов на ответы — "
+                "переменная REPLY_BUDGET_USD. Посты выходят как обычно.")
     if "inbox add-on" in low:
         what, todo = "в тарифе Zernio нет доступа к комментариям.", ADDON_HELP.strip()
     elif "401" in low or "unauthorized" in low or "api key" in low or "ключ" in low and stage != "нейросеть":
@@ -1116,7 +1119,9 @@ async def run_scheduler(
             fresh = last is not None and datetime.now(cfg.timezone) - last < timedelta(hours=1)
             next_replies = datetime.now() + (FAST_REPLY_INTERVAL if fresh else REPLY_INTERVAL)
             try:
-                await answer_comments(db, threads, generator, cfg.autoreply_per_hour, per_run=10)
+                await answer_comments(db, threads, generator, cfg.autoreply_per_hour, per_run=10,
+                                      daily_usd=cfg.reply_budget_usd, ab_model=cfg.reply_ab_model,
+                                      ab_share=cfg.reply_ab_share, tz=cfg.timezone)
                 await report_autoreply_error(bot, cfg, db)
             except Exception:
                 log.exception("Autoreply iteration failed")
