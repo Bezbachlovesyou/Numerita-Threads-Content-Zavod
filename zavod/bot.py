@@ -715,6 +715,26 @@ async def _make_video(
         _video_busy = False
 
 
+ADDON_HELP = (
+    "\n\nКак починить (2 минуты):\n1. Зайди на zernio.com → Billing (Оплата).\n"
+    "2. Включи дополнение Inbox.\n3. Всё — бот сам ответит всем, кто уже написал."
+)
+
+
+async def report_autoreply_error(bot: Bot, cfg: Config, db: Storage) -> None:
+    """Если автоответы сломались — сообщаем владельцу один раз на каждую новую причину."""
+    error = await db.kv_get("autoreply_error") or ""
+    reason = error.split(": ", 1)[-1] if error else ""
+    if reason == (await db.kv_get("autoreply_error_sent") or ""):
+        return
+    await db.kv_set("autoreply_error_sent", reason)
+    if reason:
+        help_text = ADDON_HELP if "Inbox add-on" in reason else ""
+        await notify_admins(bot, cfg, f"⚠️ Не получается отвечать на комментарии в Threads.\n{reason}{help_text}")
+    else:
+        await notify_admins(bot, cfg, "✅ Автоответы снова работают.")
+
+
 async def run_scheduler(
     bot: Bot,
     cfg: Config,
@@ -752,6 +772,7 @@ async def run_scheduler(
             next_replies = datetime.now() + (FAST_REPLY_INTERVAL if fresh else REPLY_INTERVAL)
             try:
                 await answer_comments(db, threads, generator, cfg.autoreply_per_hour, per_run=5)
+                await report_autoreply_error(bot, cfg, db)
             except Exception:
                 log.exception("Autoreply iteration failed")
         await asyncio.sleep(30)

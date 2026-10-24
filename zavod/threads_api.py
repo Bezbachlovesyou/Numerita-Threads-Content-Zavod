@@ -1,3 +1,4 @@
+import json
 """Публикация постов в Threads и их статистика через Zernio.
 
 Zernio сам ходит в Threads API, поэтому приложение Meta не нужно.
@@ -36,6 +37,8 @@ class ThreadsClient:
         if response.is_error:
             if payload.get("code") == "analytics_addon_required":
                 raise ThreadsError("В тарифе Zernio нет статистики (нужен Analytics add-on).")
+            if response.status_code == 403 and "inbox" in json.dumps(payload).lower():
+                raise ThreadsError("В тарифе Zernio нет комментариев (нужен Inbox add-on).")
             error = payload.get("error") or payload.get("message") or response.text
             if isinstance(error, dict):
                 error = error.get("message", error)
