@@ -15,6 +15,7 @@ import httpx
 log = logging.getLogger(__name__)
 
 REFRESH_SECONDS = 24 * 60 * 60
+MONEY_RE = re.compile(r"деньг|денеж|богат|изобил|достат|финанс|доход|процвет|щедр|дава|отда|благотвор|здоров", re.I)
 NUMBER_RE = re.compile(r"(?<!\d)(\d{1,4})(?!\d)")  # 1–31, пары и сочетания вроде 777, 1212
 
 
@@ -59,6 +60,13 @@ class KnowledgeBase:
         compound = kb.get("compound", {})
 
         found = [int(m) for m in NUMBER_RE.findall(topic) if 1 <= int(m) <= 9999][:12]
+        if MONEY_RE.search(topic):  # деньги и изобилие: азбука изобилия и денежные ключи чисел из базы Нумериты
+            if "abundance" in kb:
+                part["abundance"] = kb["abundance"]
+            money = kb.get("money", {})
+            digits = {reduce_number(n) for n in found} or set(range(1, 10))
+            if money:
+                part["money"] = {str(d): money[str(d)] for d in sorted(digits) if str(d) in money}
         if found:
             single: set[int] = set()
             for n in found:
