@@ -106,6 +106,23 @@ def _wrap(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont, wi
     return lines
 
 
+FOOTER = "Telegram · @Numeritabot"  # куда идти за разбором — на каждой картинке (слово владельца 24.10.2026)
+
+
+def _footer(draw: ImageDraw.ImageDraw, cx: float) -> None:
+    """Подпись внизу картинки: значок Telegram и @Numeritabot — чтобы человек знал, где найти Нумериту."""
+    font = _font("Montserrat.ttf", 32, "SemiBold")
+    tw = draw.textlength(FOOTER, font=font)
+    r = 19
+    x0 = cx - (tw + 2 * r + 14) / 2
+    y = H - 68
+    draw.ellipse((x0, y - r, x0 + 2 * r, y + r), fill=(42, 171, 238, 255))  # кружок цвета Telegram
+    ox, oy = x0 + r, y
+    draw.polygon([(ox - 10, oy - 1), (ox + 10, oy - 8), (ox + 6, oy + 9), (ox + 1, oy + 3)], fill=(255, 255, 255, 255))
+    draw.polygon([(ox - 10, oy - 1), (ox + 1, oy + 3), (ox - 2, oy + 9)], fill=(214, 236, 250, 255))
+    draw.text((x0 + 2 * r + 14, y), FOOTER, font=font, fill=(255, 255, 255, 235), anchor="lm")
+
+
 def _gradient(top: tuple, bottom: tuple) -> Image.Image:
     base = Image.new("RGB", (1, H))
     for y in range(H):
@@ -198,8 +215,7 @@ def render_card(card: Card, seed: str) -> bytes:
     draw.rounded_rectangle((bx0, by0, bx1, by1), radius=35, fill=accent + (255,))
     draw.text((cx, (by0 + by1) / 2), cta, font=font, fill=top + (255,), anchor="mm")
 
-    font = _font("Montserrat.ttf", 28, "Medium")
-    draw.text((cx, H - 70), "@numerita.ai", font=font, fill=(255, 255, 255, 170), anchor="mm")
+    _footer(draw, cx)
 
     out = io.BytesIO()
     img.convert("RGB").save(out, "JPEG", quality=90, optimize=True)
@@ -317,8 +333,7 @@ def render_grid(grid: dict, title: str, palette: int, seed: str) -> bytes:
     bx0, by0, bx1, by1 = W / 2 - tw / 2 - 36, H - 190, W / 2 + tw / 2 + 36, H - 124
     draw.rounded_rectangle((bx0, by0, bx1, by1), radius=33, fill=accent + (255,))
     draw.text((W / 2, (by0 + by1) / 2), cta, font=font, fill=top + (255,), anchor="mm")
-    font = _font("Montserrat.ttf", 28, "Medium")
-    draw.text((W / 2, H - 70), "@numerita.ai", font=font, fill=(255, 255, 255, 170), anchor="mm")
+    _footer(draw, W / 2)
 
     out = io.BytesIO()
     img.convert("RGB").save(out, "JPEG", quality=90, optimize=True)
