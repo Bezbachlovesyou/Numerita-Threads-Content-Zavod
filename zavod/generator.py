@@ -17,6 +17,8 @@ KEY_URL = "https://openrouter.ai/api/v1/key"
 log = logging.getLogger(__name__)
 
 
+REPLY_KB_CHARS = 4000  # ответу хватает сути чисел из комментария; вся выдержка — основная часть цены ответа
+
 SHARPEN = (
     "Ниже готовый пост из плана. Сам по себе он слабый: справка про число, какой полно везде, — без крючка, "
     "без юмора и без повода ответить. Перепиши его так, чтобы его хотелось прочитать до конца, переслать другу "
@@ -77,8 +79,8 @@ class Generator:
         self.reply_model = model  # модель ответов на комментарии (задаётся при запуске)
         self.cost_sink = None  # async (kind, usd, prompt_tokens, completion_tokens, cached_tokens) — учёт расходов
 
-    async def _with_knowledge(self, prompt: str, about: str) -> str:
-        excerpt = await self.knowledge.excerpt(about)
+    async def _with_knowledge(self, prompt: str, about: str, limit: int | None = None) -> str:
+        excerpt = (await self.knowledge.excerpt(about))[:limit]
         if not excerpt:
             return prompt
         return (
@@ -111,7 +113,7 @@ class Generator:
             f"Наш пост:\n{post}\n\nКомментарий от @{author}:\n{comment}\n\n"
             + "Сам не пиши никаких ссылок, адресов и @упоминаний. " + endings[mode]
         )
-        return await self._complete(self.reply_system, await self._with_knowledge(prompt, comment), max_tokens=700,
+        return await self._complete(self.reply_system, await self._with_knowledge(prompt, comment, REPLY_KB_CHARS), max_tokens=700,
                                     kind="reply", model=model or self.reply_model)
 
     def _system_content(self, system: str, model: str):

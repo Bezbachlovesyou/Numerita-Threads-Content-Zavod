@@ -23,6 +23,7 @@ log = logging.getLogger(__name__)
 
 LOOKBACK = timedelta(days=3)  # под какими постами смотрим комментарии
 # Правила присутствия (prompts/threads_rules.md): отвечаем как живой человек, а не как спам-бот.
+DIALOGUE_TURNS = 3  # наших ответов в одной ветке, дальше — только на вопросы
 MAX_GENERATIONS_PER_RUN = 10  # включая переписывания; лимит на человека отсутствует
 FRESH_WINDOW = timedelta(minutes=30)
 DAILY_REPLY_CAP = 900  # официальный предел Threads — 1000 ответов в сутки; держим запас
@@ -54,11 +55,14 @@ MAX_REPLY_LENGTH = 500
 NOISE_RE = re.compile(r"^(\+|спасибо|спс|благодарю|пасиб[оа]?|ок|окей|лол|ха)+$", re.I)
 
 
-def is_noise(message: str) -> bool:
-    """Реплика без содержания («+», «спасибо», точки): на неё не тратим нейросеть. Эмодзи, числа, даты,
-    «да/нет» и вопросы — содержание (посты сами просят ответить эмодзи или «да/нет»)."""
+def is_noise(message: str, post: str = "") -> bool:
+    """Реплика без содержания («+», «спасибо», точки, одни смайлики): на неё не тратим нейросеть.
+    Числа, даты, «да/нет» и вопросы — содержание; смайлик — только если пост сам просил ответить эмодзи."""
     text = re.sub(r"[\s.,!…)(\-—]+", "", (message or "").lower())
-    return not text or bool(NOISE_RE.match(text))
+    if not text or NOISE_RE.match(text):
+        return True
+    emoji_only = not re.search(r"\w", text)
+    return emoji_only and not re.search(r"эмодзи|смайл|эмоци", post, re.I)
 
 
 def reply_model_for(author: str, main: str, ab: str | None, share: float) -> str:
@@ -215,7 +219,7 @@ async def answer_comments(
     handled = await db.handled_comments([item["id"] for *_, item in queue])
     queue = [q for q in queue if q[3]["id"] not in handled]
     # Пустые реплики («+», смайлики, «спасибо») нейросети не отдаём — это бесплатно отсеивает код.
-    for q in [q for q in queue if is_noise(q[3]["message"])]:
+    for q in [q for q in queue if is_noise(q[3]["message"], q[2])]:
         author = (q[3].get("from") or {}).get("username") or "?"
         await db.record_comment(q[3]["id"], q[1], author, q[3]["message"], "", "skipped")
         queue.remove(q)
@@ -244,6 +248,14 @@ async def answer_comments(
         author = (comment.get("from") or {}).get("username") or (comment.get("from") or {}).get("name") or "?"
         if generated >= MAX_GENERATIONS_PER_RUN:
             break
+        # Длинные диалоги — главная статья расходов при малой отдаче: после DIALOGUE_TURNS наших ответов в ветке
+        # продолжаем, только если человек спрашивает (слово владельца 24.10.2026: «бла-бла-бла — роскошь»).
+        current = await db.dialogue_message(target_id, comment["id"])
+        if current and "?" not in comment["message"]:
+            ours = sum(r["role"] == "assistant" for r in await db.dialogue_history(target_id, current["root_id"]))
+            if ours >= DIALOGUE_TURNS:
+                await db.record_comment(comment["id"], post_id, author, comment["message"], "", "skipped")
+                continue
         memory = await conversation_context(db, generator, target_id, comment["id"])
         post_text += memory
         # Ссылка — только по просьбе и в пределах лимитов; кто написал своё число — зовём в профиль.
