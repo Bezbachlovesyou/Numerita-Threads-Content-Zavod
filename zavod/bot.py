@@ -543,6 +543,40 @@ async def post_from_bank(
     return True
 
 
+# «Второй шанс»: пост без реакций не удаляем (удаления и копии вредят аккаунту), а через несколько часов
+# выпускаем ту же идею заново — короче, с сильнее первой строкой и в другое время. Не чаще раза в 8 часов.
+DEAD_AFTER = timedelta(hours=6)
+RETRY_EVERY = timedelta(hours=8)
+NO_RETRY = {"script", "video", "grid", "jackpot", "carousel"}
+RETRY_TOPIC = (
+    "Этот наш пост не собрал ни одного ответа. Напиши на ту же идею НОВЫЙ пост, совсем другими словами:\n"
+    "- первая строка — сильный крючок про конкретных людей («Родился 9, 18 или 27?», «Есть тут…»), до 60 знаков;\n"
+    "- всего 2–4 короткие строки, без лекции и длинной истории;\n"
+    "- в конце вопрос, на который легко ответить одним словом или числом.\n"
+    "Старый пост (не повторяй его фразы):\n{old}"
+)
+
+
+async def find_dead_post(db: Storage, now: datetime, skip: set[str] = frozenset()) -> dict | None:
+    """Пост, на который за 6+ часов никто не ответил, — кандидат на «второй шанс»."""
+    last = await db.kv_get("last_retry")
+    if last and now - datetime.fromisoformat(last) < RETRY_EVERY:
+        return None
+    if await db.kv_get("autoreply_error"):  # комментарии не читаются — не знаем, кто живой, кто нет
+        return None
+    rows = await db.engagement(now - timedelta(hours=48))
+    if not any(r["comments"] for r in rows):  # ни одного комментария нигде — данных нет, не трогаем
+        return None
+    retried = set(json.loads(await db.kv_get("retried_posts") or "[]"))
+    dead = [
+        r for r in rows
+        if r["rubric"] not in NO_RETRY | skip and r["id"] not in retried and not r["comments"] and r["likes"] <= 1
+        and not (r.get("topic") or "").startswith(RETRY_TOPIC[:20])  # второй шанс — один
+        and now - datetime.fromisoformat(r["published_at"]) >= DEAD_AFTER
+    ]
+    return min(dead, key=lambda r: r["published_at"]) if dead else None
+
+
 async def post_next(
     bot: Bot, cfg: Config, db: Storage, threads: ThreadsClient | None, generator: Generator,
     plan: ContentPlan, now: datetime, rng: random.Random,
@@ -556,9 +590,24 @@ async def post_next(
     if queued and (not recent or recent[0] != "script"):
         post = await publish(queued, db, threads, bot, "", cfg.cards)
     else:
-        slot = plan.render(plan.choose(recent, rng), now, rng)
+        rubric = plan.choose(recent, rng)
+        # Рубрики со ссылкой не повторяем: у ссылок свои лимиты (prompts/threads_rules.md).
+        dead = await find_dead_post(db, now, {r.key for r in plan.all_rubrics() if r.cta == "link"})
+        if dead:
+            original = {r.key: r for r in plan.all_rubrics()}.get(dead["rubric"])
+            if original is None or original.cta == "link":  # ссылки — по своим правилам, не повторяем
+                dead = None
+            else:
+                rubric = plan.effective(original)
+        slot = plan.render(rubric, now, rng)
         if not await db.claim_slot(slot.key):
             return True
+        if dead:
+            retried = json.loads(await db.kv_get("retried_posts") or "[]")
+            await db.kv_set("retried_posts", json.dumps((retried + [dead["id"]])[-200:]))
+            await db.kv_set("last_retry", now.isoformat())
+            slot = replace(slot, topic=RETRY_TOPIC.format(old=dead["text"]) + "\n\nИсходное задание рубрики: " + slot.topic)
+            log.info("Второй шанс для поста #%s", dead["id"])
         if slot.rubric.key == "jackpot" and await post_from_bank(cfg, db, threads, bot, plan, slot, rng):
             return True
         grid = None
