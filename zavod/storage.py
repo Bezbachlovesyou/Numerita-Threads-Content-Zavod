@@ -239,6 +239,14 @@ class Storage:
             "UPDATE posts SET status = 'failed', error = ? WHERE id = ?", (error, post_id)
         )
 
+    async def find_published(self, fragment: str, since: datetime) -> list[Post]:
+        """Опубликованные посты, где в тексте или фразе картинки есть этот кусок."""
+        like = f"%{fragment}%"
+        return await self._fetch(
+            "SELECT * FROM posts WHERE status = 'published' AND published_at >= ? AND threads_id IS NOT NULL"
+            " AND (text LIKE ? OR card LIKE ?)", (since.astimezone(timezone.utc).isoformat(), like, like),
+        )
+
     async def delete(self, post_id: int) -> None:
         await self._execute("UPDATE posts SET status = 'deleted' WHERE id = ?", (post_id,))
 

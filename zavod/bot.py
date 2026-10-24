@@ -376,6 +376,16 @@ def create_router(cfg: Config, plan: ContentPlan) -> Router:
         for post in posts:
             await message.answer(post_card(post, cfg), reply_markup=post_keyboard(post))
 
+    @router.message(Command("delete", ignore_case=True))
+    async def on_delete(message: Message, command: CommandObject, db: Storage, threads: ThreadsClient | None) -> None:
+        """/delete <кусок текста поста> — снять неудачный пост из Threads."""
+        fragment = (command.args or "").strip()
+        if len(fragment) < 8 or threads is None:
+            await message.answer("Напиши: /delete и кусок текста поста (от 8 букв), например /delete Колесо крутится")
+            return
+        removed = await unpublish_matching(db, threads, [fragment])
+        await message.answer(f"🗑 Снято из Threads: {removed}." if removed else "Такой пост за 7 дней не нашла.")
+
     @router.message(Command("stats", ignore_case=True))
     async def on_stats(message: Message, threads: ThreadsClient | None) -> None:
         if threads is None:
@@ -929,6 +939,27 @@ ADDON_HELP = (
 )
 
 
+# Неудачные посты, которые владелец попросил снять (24.10.2026: «позорит красоту системы выкладки»).
+UNPUBLISH = ["Колесо крутится, пока ты раздумываешь"]
+
+
+async def unpublish_matching(db: Storage, threads: ThreadsClient, fragments: list[str]) -> int:
+    """Снимает из Threads опубликованные за неделю посты с этими кусками текста или фразы на картинке."""
+    removed = 0
+    since = datetime.now(timezone.utc) - timedelta(days=7)
+    for fragment in fragments:
+        for post in await db.find_published(fragment, since):
+            try:
+                await threads.unpublish(post.threads_id)
+            except ThreadsError as e:
+                log.warning("Не удалось снять пост #%s: %s", post.id, e)
+                continue
+            await db.delete(post.id)
+            removed += 1
+            log.info("Пост #%s снят из Threads по просьбе владельца", post.id)
+    return removed
+
+
 async def report_autoreply_error(bot: Bot, cfg: Config, db: Storage) -> None:
     """Если автоответы сломались — сообщаем владельцу один раз на каждую новую причину."""
     paused = await db.kv_get("reply_links_paused_until") or ""
@@ -981,6 +1012,11 @@ async def run_scheduler(
     """Раз в 30 секунд: посты по кнопкам «через час», автопостинг; раз в 5 минут — ответы на комментарии."""
     rng = random.Random()
     next_replies = datetime.now()
+    if threads is not None:
+        try:
+            await unpublish_matching(db, threads, UNPUBLISH)
+        except Exception:
+            log.exception("Снятие неудачных постов не удалось")
     while True:
         try:
             for post in await db.due():

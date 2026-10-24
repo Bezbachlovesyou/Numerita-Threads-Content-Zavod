@@ -88,6 +88,10 @@ class ThreadsClient:
             raise ThreadsError("Threads отклонил пост: " + ("; ".join(reasons) or payload.get("error", "без причины")))
         return post.get("_id", "")
 
+    async def unpublish(self, post_id: str) -> None:
+        """Снимает пост из Threads (запись в Zernio остаётся со статусом cancelled)."""
+        await self._request("POST", f"/posts/{post_id}/unpublish", json={"platform": "threads"})
+
     async def find_post(self, text: str, since: datetime) -> str | None:
         """Есть ли уже в Zernio пост с этим текстом (после сбоя связи) — чтобы не опубликовать дважды."""
         _, payload = await self._request("GET", "/posts", params={
