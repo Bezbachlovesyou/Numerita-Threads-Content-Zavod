@@ -20,6 +20,7 @@ from .cards import (
 )
 from .autoreply import answer_comments
 from .optimizer import optimize
+from . import costs
 from .config import Config
 from .generator import GenerationError, Generator
 from .storage import PgStorage, Post, Storage
@@ -43,6 +44,7 @@ COMMANDS = [
     ("new", "новый пост: /new <тема>"),
     ("queue", "черновики и запланированные посты"),
     ("stats", "статистика в Threads"),
+    ("costs", "расходы на нейросеть за сегодня"),
     ("status", "модель, база знаний, подключения"),
     ("plan", "контент-план: ближайшие автопосты"),
     ("replies", "последние автоответы на комментарии"),
@@ -385,6 +387,10 @@ def create_router(cfg: Config, plan: ContentPlan) -> Router:
             return
         removed = await unpublish_matching(db, threads, [fragment])
         await message.answer(f"🗑 Снято из Threads: {removed}." if removed else "Такой пост за 7 дней не нашла.")
+
+    @router.message(Command("costs", ignore_case=True))
+    async def on_costs(message: Message, db: Storage, generator: Generator) -> None:
+        await message.answer(await costs.report(db, generator, cfg.timezone))
 
     @router.message(Command("stats", ignore_case=True))
     async def on_stats(message: Message, threads: ThreadsClient | None) -> None:
@@ -1051,6 +1057,11 @@ async def run_scheduler(
     """Раз в 30 секунд: посты по кнопкам «через час», автопостинг; раз в 5 минут — ответы на комментарии."""
     rng = random.Random()
     next_replies = datetime.now()
+    if await db.claim_slot("cost report 2026-10-24"):  # владелец спросил, куда ушли деньги, — отчёт сразу
+        try:
+            await notify_admins(bot, cfg, await costs.report(db, generator, cfg.timezone))
+        except Exception:
+            log.exception("Отчёт о расходах не собран")
     if threads is not None:
         try:
             await unpublish_matching(db, threads, UNPUBLISH)
@@ -1073,6 +1084,7 @@ async def run_scheduler(
             try:
                 report = await optimize(db, threads, generator, plan, now)
                 await notify_admins(bot, cfg, "🧠 Отчёт за сутки: что я узнал и что поменял\n\n" + "\n".join(report))
+                await notify_admins(bot, cfg, await costs.report(db, generator, cfg.timezone))
             except Exception:
                 log.exception("Optimizer failed")
         if threads is not None and cfg.autoreply and datetime.now() >= next_replies:

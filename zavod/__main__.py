@@ -9,6 +9,7 @@ from datetime import datetime
 
 from .autopost import ContentPlan, load_bank, load_rubrics, load_script
 from .bot import COMMANDS, create_router, import_script, run_scheduler
+from .costs import make_sink
 from .config import load_config
 from .generator import Generator
 from .knowledge import KnowledgeBase
@@ -27,6 +28,7 @@ async def main() -> None:
     storage = PgStorage(cfg.database_url) if cfg.database_url else Storage(cfg.db_path)
     await storage.init()
     generator = Generator(cfg.openrouter_api_key, cfg.openrouter_model, VOICE_PROMPT, KnowledgeBase(cfg.kb_url))
+    generator.cost_sink = make_sink(storage, cfg.timezone)
     await generator.check_key()
     threads = ThreadsClient(cfg.zernio_api_key, cfg.zernio_account_id) if cfg.threads_enabled else None
     if threads is None:

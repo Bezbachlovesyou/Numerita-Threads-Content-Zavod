@@ -193,7 +193,7 @@ async def shoot(fal: FalClient, image_url: str, scene: Scene, resolution: str) -
 async def invent_scene(generator, previous: list[str], rng: random.Random) -> Scene:
     """Новое видео: текст пишет нейросеть, движение в кадре берём из проверенных вариантов."""
     theme = rng.choice(THEMES)
-    raw = await generator.improve(WRITE_SYSTEM, WRITE_PROMPT.format(theme=theme, previous=" | ".join(previous[-5:]) or "—"))
+    raw = await generator.improve(WRITE_SYSTEM, WRITE_PROMPT.format(theme=theme, previous=" | ".join(previous[-5:]) or "—"), kind="video")
     match = re.search(r"\{.*\}", raw, re.S)
     try:
         data = json.loads(match.group(0) if match else raw)

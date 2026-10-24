@@ -302,7 +302,7 @@ async def optimize(
         current = plan.overrides.get(weakest, by_key[weakest].text)
         try:
             new_text = (await generator.improve(
-                IMPROVE_SYSTEM, f"Задание слабой рубрики «{weakest}»:\n{current}\n\nЛучшие посты:\n{examples}"
+                IMPROVE_SYSTEM, f"Задание слабой рубрики «{weakest}»:\n{current}\n\nЛучшие посты:\n{examples}", kind="optimizer"
             )).strip().strip("«»\"")
         except GenerationError as e:
             report.append(f"⚠️ Не смог переписать рубрику {name(weakest)}: {e}")
@@ -320,7 +320,7 @@ async def optimize(
     if not trials and (last is None or now - datetime.fromisoformat(last) >= EXPERIMENT_EVERY):
         existing = "\n".join(f"- {r.cta} {r.key}: {plan.effective(r).text}" for r in plan.all_rubrics())
         try:
-            line = (await generator.improve(INVENT_SYSTEM, f"Существующие рубрики:\n{existing}")).strip()
+            line = (await generator.improve(INVENT_SYSTEM, f"Существующие рубрики:\n{existing}", kind="optimizer")).strip()
         except GenerationError as e:
             report.append(f"⚠️ Не смог придумать новый формат: {e}")
         else:
