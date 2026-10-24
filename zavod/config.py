@@ -88,7 +88,7 @@ def load_config() -> Config:
         autopost=os.getenv("AUTOPOST", "on").strip().lower() not in ("off", "0", "no", "нет"),
         # Автоответы на комментарии в Threads: включены по умолчанию, AUTOREPLY=0 — выключить.
         autoreply=os.getenv("AUTOREPLY", "1") != "0",
-        autoreply_per_hour=int(os.getenv("AUTOREPLY_PER_HOUR", "40") or 40),
+        autoreply_per_hour=int(os.getenv("AUTOREPLY_PER_HOUR", "60") or 60),
         # Видео с Нумеритой (fal.ai, Seedance 2.0). Без FAL_KEY видео не делаются, VIDEO=off — выключить.
         fal_key=os.getenv("FAL_KEY", "").strip(),
         video=os.getenv("VIDEO", "on").strip().lower() not in ("off", "0", "no", "нет"),

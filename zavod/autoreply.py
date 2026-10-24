@@ -25,7 +25,7 @@ LOOKBACK = timedelta(days=3)  # под какими постами смотри�
 MAX_GENERATIONS_PER_RUN = 10  # включая переписывания; лимит на человека отсутствует
 FRESH_WINDOW = timedelta(minutes=30)
 DAILY_REPLY_CAP = 900  # официальный предел Threads — 1000 ответов в сутки; держим запас
-PAUSE = (20, 60)  # секунд между ответами внутри одного прохода
+PAUSE = (15, 40)  # секунд между ответами внутри одного прохода
 # Ссылка в ответе — только если человек сам попросил (не навязываемся): не больше 3 в час на всех
 # и не чаще раза в неделю одному человеку. Остальных зовём «в шапку профиля» или не зовём вовсе.
 LINKS_PER_HOUR = 3
@@ -188,7 +188,16 @@ async def answer_comments(
                    key=lambda q: q[3].get("createdTime") or "", reverse=True)
     waiting = sorted((q for q in queue if (q[3].get("createdTime") or "") < fresh_after),
                      key=lambda q: q[3].get("createdTime") or "")
-    queue = fresh + waiting
+    # Посты — по кругу: гора старых комментариев под популярным постом не должна задерживать остальные посты.
+    by_post: dict[str, list] = {}
+    for q in waiting:
+        by_post.setdefault(q[0], []).append(q)
+    rounds = []
+    while any(by_post.values()):
+        for items in by_post.values():
+            if items:
+                rounds.append(items.pop(0))
+    queue = fresh + rounds
 
     queue = fair_queue(queue)
     generated = 0

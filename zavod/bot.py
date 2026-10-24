@@ -1042,7 +1042,7 @@ async def run_scheduler(
             fresh = last is not None and datetime.now(cfg.timezone) - last < timedelta(hours=1)
             next_replies = datetime.now() + (FAST_REPLY_INTERVAL if fresh else REPLY_INTERVAL)
             try:
-                await answer_comments(db, threads, generator, cfg.autoreply_per_hour, per_run=5)
+                await answer_comments(db, threads, generator, cfg.autoreply_per_hour, per_run=8)
                 await report_autoreply_error(bot, cfg, db)
             except Exception:
                 log.exception("Autoreply iteration failed")
