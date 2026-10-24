@@ -90,6 +90,7 @@ class Post:
     card: str | None
     image_url: str | None
     error: str | None
+    link_mode: str | None = None  # эксперимент со ссылкой: text | comment | profile
 
 
 def _now() -> str:
@@ -110,6 +111,7 @@ def _row_to_post(row: aiosqlite.Row) -> Post:
         card=row.get("card"),
         image_url=row.get("image_url"),
         error=row["error"],
+        link_mode=row.get("link_mode"),
     )
 
 
@@ -135,7 +137,7 @@ class Storage:
     async def init(self) -> None:
         async with aiosqlite.connect(self.path) as db:
             await db.executescript(SCHEMA)
-            for column in ("tg_message_id", "rubric", "first_comment", "card", "image_url"):  # базы, созданные до этих колонок
+            for column in ("tg_message_id", "rubric", "first_comment", "card", "image_url", "link_mode"):  # базы, созданные до этих колонок
                 try:
                     await db.execute(f"ALTER TABLE posts ADD COLUMN {column} TEXT")
                 except aiosqlite.OperationalError:
@@ -170,6 +172,9 @@ class Storage:
 
     async def set_threads_id(self, post_id: int, threads_id: str) -> None:
         await self._execute("UPDATE posts SET threads_id = ? WHERE id = ?", (threads_id, post_id))
+
+    async def set_link_mode(self, post_id: int, mode: str) -> None:
+        await self._execute("UPDATE posts SET link_mode = ? WHERE id = ?", (mode, post_id))
 
     async def set_tg_message_id(self, post_id: int, message_id: str) -> None:
         await self._execute("UPDATE posts SET tg_message_id = ? WHERE id = ?", (message_id, post_id))
@@ -261,7 +266,7 @@ class Storage:
         """Опубликованные посты с рубрикой: сколько комментариев и лайков собрали."""
         return await self._rows(
             "SELECT p.id AS id, p.rubric AS rubric, p.text AS text, p.topic AS topic, p.published_at AS published_at,"
-            " p.card AS card,"
+            " p.card AS card, p.link_mode AS link_mode,"
             " (SELECT COUNT(*) FROM comment_replies c WHERE c.post_id = p.id) AS comments,"
             " COALESCE((SELECT m.likes FROM post_metrics m WHERE m.post_id = p.id), 0) AS likes,"
             " COALESCE((SELECT m.impressions FROM post_metrics m WHERE m.post_id = p.id), 0) AS views"
@@ -449,6 +454,7 @@ class PgStorage(Storage):
         await self.pool.execute("ALTER TABLE posts ADD COLUMN IF NOT EXISTS first_comment TEXT")
         await self.pool.execute("ALTER TABLE posts ADD COLUMN IF NOT EXISTS card TEXT")
         await self.pool.execute("ALTER TABLE posts ADD COLUMN IF NOT EXISTS image_url TEXT")
+        await self.pool.execute("ALTER TABLE posts ADD COLUMN IF NOT EXISTS link_mode TEXT")
 
     async def _execute(self, sql: str, params: tuple = ()) -> None:
         await self.pool.execute(self._sql(sql), *params)

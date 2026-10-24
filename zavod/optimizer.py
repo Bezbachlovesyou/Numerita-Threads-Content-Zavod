@@ -25,6 +25,8 @@ log = logging.getLogger(__name__)
 
 WINDOW = timedelta(days=7)
 MIN_POSTS = 3
+LINK_WINDOW = timedelta(days=14)
+MIN_LINK_POSTS = 4  # столько постов каждого способа подачи ссылки, прежде чем делать вывод
 TRIAL = timedelta(days=3)
 EXPERIMENT_EVERY = timedelta(days=2)
 PLACEHOLDERS = {"part_of_day", "weekday", "day_number", "tomorrow_number", "digit", "group", "n", "a", "b", "arcana", "gender", "digit_word"}
@@ -238,6 +240,25 @@ async def optimize(
             + " — буду использовать чаще."
         )
     await db.kv_set("card_weights", json.dumps(card_weights))
+
+    # 4в. Эксперимент «где ставить ссылку»: в тексте, первым комментарием или «в профиле».
+    link_rows = [r for r in await db.engagement(now - LINK_WINDOW) if r.get("link_mode")]
+    modes: dict[str, list[float]] = {}
+    for row in link_rows:
+        modes.setdefault(row["link_mode"], []).append(post_score(row))
+    if len(modes) == 3 and min(len(v) for v in modes.values()) >= MIN_LINK_POSTS:
+        avg = {m: sum(v) / len(v) for m, v in modes.items()}
+        mean = statistics.mean(avg.values())
+        if mean > 0:
+            link_weights = {m: round(clamp(v / mean, 0.3, 2.5), 2) for m, v in avg.items()}
+            await db.kv_set("link_mode_weights", json.dumps(link_weights))
+            best = max(avg, key=avg.get)
+            names = {"text": "ссылка в тексте поста", "comment": "ссылка первым комментарием",
+                     "profile": "только ссылка в профиле"}
+            report.append(
+                f"🔗 Где ставить ссылку: больше всего реакций, когда «{names[best]}». "
+                "Буду делать так чаще, остальные способы — реже, но продолжу проверять."
+            )
 
     # 5. Переписываем самую слабую рубрику (если её сейчас не проверяем).
     testing = {row["key"] for row in await db.overrides() if row["previous"] != row["text"]}

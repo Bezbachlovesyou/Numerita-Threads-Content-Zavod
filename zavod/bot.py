@@ -198,7 +198,10 @@ async def publish(
         try:
             video_url = (json.loads(post.card) or {}).get("video") if post.card else None
             image_urls = await ensure_images(post, db, threads) if cards and not video_url else []
-            text, first_comment = links_to_comment(post.text, post.first_comment)
+            text, first_comment = (
+                (post.text, post.first_comment) if post.link_mode == "text"  # эксперимент: ссылка в тексте
+                else links_to_comment(post.text, post.first_comment)
+            )
             threads_id = await threads.publish_text(
                 text, topic_tag_for(post.rubric), first_comment, image_urls, video_url
             )
@@ -475,9 +478,33 @@ FIRST_COMMENTS = [
 ]
 
 
-def first_comment_for(slot: Slot) -> str:
-    template = FIRST_COMMENTS[sum(map(ord, slot.tag)) % len(FIRST_COMMENTS)]
-    return template.format(link=BOT_LINK + slot.tag)
+def first_comment_for(slot: Slot, tag: str | None = None) -> str:
+    tag = tag or slot.tag
+    template = FIRST_COMMENTS[sum(map(ord, tag)) % len(FIRST_COMMENTS)]
+    return template.format(link=BOT_LINK + tag)
+
+
+# Эксперимент «где ставить ссылку» (prompts/threads_rules.md): в тексте поста, первым комментарием
+# или только «ссылка в профиле». Буква режима — в метке ссылки (_lt / _lc), чтобы Нумерита видела переходы.
+LINK_MODES = ("text", "comment", "profile")
+LINK_MODE_MIN_POSTS = 4  # столько постов каждого способа — прежде чем выбирать лучший
+LINK_RULES = {
+    "text": "Закончи короткой фразой, что полный разбор — по ссылке ниже. Саму ссылку и @Numeritabot не пиши: "
+            "бот добавит ссылку последней строкой.",
+    "comment": None,  # обычное правило CTA_RULES["link"]
+    "profile": "Закончи фразой, что полный разбор своей даты — по ссылке в профиле. Без ссылок и без упоминания бота.",
+}
+LINK_CARD_TEXT = {"text": "Разбор — по ссылке в посте", "profile": "Разбор — по ссылке в профиле"}
+
+
+async def choose_link_mode(db: Storage, now: datetime, rng: random.Random) -> str:
+    """Сначала даём каждому способу набрать постов, потом чаще берём лучший (но остальные тоже пробуем)."""
+    rows = [r for r in await db.engagement(now - timedelta(days=14)) if r.get("link_mode")]
+    counts = {m: sum(1 for r in rows if r["link_mode"] == m) for m in LINK_MODES}
+    if min(counts.values()) < LINK_MODE_MIN_POSTS:
+        return min(LINK_MODES, key=lambda m: (counts[m], rng.random()))
+    weights = json.loads(await db.kv_get("link_mode_weights") or "{}")
+    return rng.choices(LINK_MODES, [max(0.15, weights.get(m, 1.0)) for m in LINK_MODES])[0]
 
 
 # Два стиля фразы на картинке — самоулучшение (optimizer.py) смотрит, какой лучше цепляет.
@@ -505,16 +532,28 @@ def split_card_hook(raw: str) -> tuple[str, str | None]:
     return "\n".join(lines).replace("{LINK}", "").strip(), hook  # маркер ссылки не к месту — убираем
 
 
-async def write_autopost(generator: Generator, slot: Slot, style: str = "intrigue") -> tuple[str, str | None, str]:
+async def write_autopost(
+    generator: Generator, slot: Slot, style: str = "intrigue", link_mode: str = "comment",
+) -> tuple[str, str | None, str]:
     """Текст поста, первый комментарий (для постов со ссылкой) и фраза для картинки."""
-    topic = f"{slot.topic}\n\n{CTA_RULES[slot.rubric.cta]}\n\n{CARD_RULES[style]}"
+    is_link = slot.rubric.cta == "link"
+    rule = (LINK_RULES.get(link_mode) if is_link else None) or CTA_RULES[slot.rubric.cta]
+    topic = f"{slot.topic}\n\n{rule}\n\n{CARD_RULES[style]}"
+    limit = MAX_LENGTH - (60 if is_link and link_mode == "text" else 0)  # место под ссылку в тексте
     text, hook = split_card_hook(await generator.write_post(topic))
-    if len(text) > MAX_LENGTH:
+    if len(text) > limit:
         text, hook = split_card_hook(
-            await generator.write_post(f"{topic} Пиши заметно короче: весь пост до 400 символов.")
+            await generator.write_post(f"{topic} Пиши заметно короче: весь пост до 380 символов.")
         )
     hook = hook or card_from_text(text).hook
-    return text, first_comment_for(slot) if slot.rubric.cta == "link" else None, hook
+    if not is_link:
+        return text, None, hook
+    tag = f"{slot.tag}_l{link_mode[0]}"
+    if link_mode == "text":
+        return f"{text[:limit].rstrip()}\n{BOT_LINK}{tag}", None, hook
+    if link_mode == "profile":
+        return text, None, hook
+    return text, first_comment_for(slot, tag), hook
 
 
 async def post_from_bank(
@@ -617,9 +656,10 @@ async def post_next(
             slot = replace(slot, topic=slot.topic + "\nНа картинке спрятаны: " + ", ".join(grid["hidden"])
                            + ". Не перечисляй их в тексте.")
         log.info("Автопост (%s): %s", slot.rubric.key, slot.topic)
+        link_mode = await choose_link_mode(db, now, rng) if slot.rubric.cta == "link" else None
         try:
             palette, style = plan.choose_card(rng)
-            text, first_comment, hook = await write_autopost(generator, slot, style)
+            text, first_comment, hook = await write_autopost(generator, slot, style, link_mode or "comment")
         except GenerationError as e:
             await notify_admins(bot, cfg, f"❌ Автопост не написан: {e}\nТема: {slot.topic}")
             return False
@@ -630,10 +670,13 @@ async def post_next(
             card_json = carousel_json(soul_carousel(numbers, palette))
         else:
             card_json = Card(
-                hook, slot.card_number, slot.card_label, slot.rubric.cta, slot.card_cta_text, palette, style,
-                slot.card_dates,
+                hook, slot.card_number, slot.card_label, slot.rubric.cta,
+                slot.card_cta_text or LINK_CARD_TEXT.get(link_mode or ""), palette, style, slot.card_dates,
             ).to_json()
-        post = await db.get(await db.add_draft(slot.topic, text, slot.rubric.key, first_comment, card_json))
+        post_id = await db.add_draft(slot.topic, text, slot.rubric.key, first_comment, card_json)
+        if link_mode:
+            await db.set_link_mode(post_id, link_mode)
+        post = await db.get(post_id)
         post = await publish(post, db, threads, bot, "", cfg.cards)
     if post.status == "failed":  # пишем владельцу только о проблемах
         await notify_admins(bot, cfg, "⚠️ Пост не опубликован\n\n" + post_card(post, cfg), post)
