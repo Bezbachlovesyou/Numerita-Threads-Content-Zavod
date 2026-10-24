@@ -4,7 +4,9 @@
 по базе знаний Нумериты, иногда со ссылкой на полный разбор в @Numeritabot.
 """
 
+import asyncio
 import logging
+import random
 import re
 from datetime import datetime, timedelta, timezone
 
@@ -16,6 +18,9 @@ from .threads_api import ThreadsClient, ThreadsError
 log = logging.getLogger(__name__)
 
 LOOKBACK = timedelta(days=3)  # под какими постами смотрим комментарии
+# Правила присутствия (prompts/threads_rules.md): отвечаем как живой человек, а не как спам-бот.
+PER_AUTHOR_PER_DAY = 3  # не больше 3 ответов одному человеку за сутки — без бесконечных переписок
+PAUSE = (20, 60)  # секунд между ответами внутри одного прохода
 MAX_REPLY_LENGTH = 500
 
 
@@ -96,6 +101,9 @@ async def answer_comments(
                 await db.record_comment(comment["id"], post_id, author, comment["message"], "", "skipped")
                 continue
 
+            if await db.replies_to_author(author, now - timedelta(days=1)) >= PER_AUTHOR_PER_DAY:
+                await db.record_comment(comment["id"], post_id, author, comment["message"], "", "skipped")
+                continue
             # Ссылок в ответах нет совсем: Threads считает их спамом и может заблокировать аккаунт.
             # Кто написал своё число — того мягко зовём в профиль, там ссылка на бота.
             to_profile = gave_number(comment["message"])
@@ -110,6 +118,17 @@ async def answer_comments(
                 await db.record_comment(comment["id"], post_id, author, comment["message"], "", "skipped")
                 continue
             text = finish_reply(text)
+            # Одинаковые ответы Threads считает спамом: похожий на недавний — переписываем или пропускаем.
+            recent = {(r.get("reply") or "")[:60] for r in await db.recent_comments(50)}
+            if text[:60] in recent:
+                try:
+                    text = finish_reply(await generator.write_reply(post_text, comment["message"], author, to_profile))
+                except GenerationError:
+                    continue
+                if text[:60] in recent:
+                    continue
+            if sent:
+                await asyncio.sleep(random.uniform(*PAUSE))
 
             try:
                 await threads.reply(target_id, comment["id"], text)

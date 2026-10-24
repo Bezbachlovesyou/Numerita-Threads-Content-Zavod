@@ -235,6 +235,13 @@ class Storage:
         )
         return int(rows[0]["n"])
 
+    async def replies_to_author(self, author: str, since: datetime) -> int:
+        rows = await self._rows(
+            "SELECT COUNT(*) AS n FROM comment_replies WHERE status = 'replied' AND author = ? AND created_at >= ?",
+            (author, since.astimezone(timezone.utc).isoformat()),
+        )
+        return int(rows[0]["n"])
+
     async def recent_comments(self, limit: int) -> list[dict]:
         return await self._rows(
             "SELECT * FROM comment_replies ORDER BY created_at DESC LIMIT ?", (limit,)

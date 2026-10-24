@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import random
+import re
 from dataclasses import replace
 from datetime import datetime, time, timedelta, timezone
 
@@ -169,6 +170,18 @@ async def ensure_images(post: Post, db: Storage, threads: ThreadsClient) -> list
     return urls
 
 
+LINK_LINE = re.compile(r"\S*t\.me/\S+")
+
+
+def links_to_comment(text: str, first_comment: str | None) -> tuple[str, str | None]:
+    """Ссылок в тексте поста не оставляем (prompts/threads_rules.md): переносим в первый комментарий."""
+    links = LINK_LINE.findall(text)
+    if not links:
+        return text, first_comment
+    clean = "\n".join(line.rstrip() for line in LINK_LINE.sub("", text).splitlines() if line.strip()).strip()
+    return clean, first_comment or FIRST_COMMENTS[0].format(link=links[0])
+
+
 async def publish(
     post: Post, db: Storage, threads: ThreadsClient | None, bot: Bot, channel: str, cards: bool = True
 ) -> Post:
@@ -185,8 +198,9 @@ async def publish(
         try:
             video_url = (json.loads(post.card) or {}).get("video") if post.card else None
             image_urls = await ensure_images(post, db, threads) if cards and not video_url else []
+            text, first_comment = links_to_comment(post.text, post.first_comment)
             threads_id = await threads.publish_text(
-                post.text, topic_tag_for(post.rubric), post.first_comment, image_urls, video_url
+                text, topic_tag_for(post.rubric), first_comment, image_urls, video_url
             )
             await db.set_threads_id(post.id, threads_id or "published")
         except ThreadsError as e:
@@ -447,6 +461,7 @@ CTA_RULES = {
     "none": "Без ссылок и без упоминания бота.",
 }
 REPLY_INTERVAL = timedelta(minutes=5)
+DAILY_POST_CAP = 20  # постов за сутки максимум (лимит Threads — 250, но живые авторы столько не пишут)
 FAST_REPLY_INTERVAL = timedelta(minutes=2)
 OPTIMIZE_AT = time(4, 10)  # ежедневный разбор рубрик, когда трафик минимальный
 RETRY_AFTER_ERROR = timedelta(minutes=15)
@@ -454,9 +469,9 @@ RETRY_AFTER_ERROR = timedelta(minutes=15)
 # Первый комментарий со ссылкой: ссылка в самом посте снижает его показы в Threads.
 FIRST_COMMENTS = [
     "Полный разбор твоей даты — {link}",
-    "Твоя личная карточка за 10 секунд 👉 {link}",
+    "Посчитать своё число души: {link}",
     "Узнать своё число души и судьбы: {link}",
-    "Разбор по имени и дате, бесплатно для начала ✨ {link}",
+    "Разбор по имени и дате ✨ {link}",
 ]
 
 
@@ -591,6 +606,9 @@ async def autopost_tick(
         next_at = now if last is None or now - last >= MIN_GAP else last + MIN_GAP
     if now < next_at:
         return
+    if len(await db.recent_published(now - timedelta(days=1))) >= DAILY_POST_CAP:
+        await db.kv_set("next_post_at", (now + timedelta(hours=1)).isoformat())
+        return
     if last is not None and now - last < MIN_GAP:  # пост уже вышел другим путём — выдерживаем паузу
         await db.kv_set("next_post_at", (last + MIN_GAP).isoformat())
         return
@@ -681,9 +699,11 @@ async def _make_video(
         now = datetime.now(cfg.timezone)
         when = vid.morning_after(now) if scene.key == "hero" else now
         tag = f"v{scene.key}_{now:%d%m}"
-        first_comment = FIRST_COMMENTS[1].format(link=BOT_LINK + tag)
+        first_comment = FIRST_COMMENTS[0].format(link=BOT_LINK + tag)
         card = json.dumps({"video": video_url, "scene": scene.key, "speech": scene.speech}, ensure_ascii=False)
-        post_id = await db.add_draft(f"Видео: {scene.key}", scene.caption, "video", first_comment, card)
+        # Meta требует помечать реалистичное видео и голос, сделанные ИИ; через API метку не поставить — пишем в тексте.
+        caption = scene.caption + "\n\n🤖 Видео создано с помощью ИИ"
+        post_id = await db.add_draft(f"Видео: {scene.key}", caption, "video", first_comment, card)
         await db.schedule(post_id, when)
 
         done.append(scene.key)
