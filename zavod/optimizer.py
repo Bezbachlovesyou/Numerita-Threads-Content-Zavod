@@ -14,7 +14,7 @@ import json
 import logging
 import re
 import statistics
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from .autopost import CTAS, ContentPlan, Rubric, hour_bucket
 from .generator import GenerationError, Generator
@@ -335,7 +335,7 @@ async def optimize(
                 log.info("Придуманная рубрика не прошла проверку: %s", line[:200])
 
     await apply_state(db, plan, now)
-    stats = summary(rows, ranked, name)
+    stats = summary(rows, ranked, name) + await conversations(db, now)
     asked = await db.link_replies(now - timedelta(days=1), pattern="%_a")
     offered = await db.link_replies(now - timedelta(days=1), pattern="%_p")
     paused = await db.kv_get("reply_links_paused_until")
@@ -345,6 +345,23 @@ async def optimize(
     if paused and now < datetime.fromisoformat(paused):
         stats.append(f"⛔ Ссылки в ответах на паузе до {datetime.fromisoformat(paused):%d.%m}: Threads не принял ответ со ссылкой.")
     return stats + ["", "🔧 Что я поменял:"] + (report or ["Пока ничего — жду больше реакций."])
+
+
+async def conversations(db: Storage, now: datetime) -> list[str]:
+    """Разговоры в Threads за сутки: сколько людей получили ответ и сколько продолжили диалог."""
+    since = (now - timedelta(days=1)).astimezone(timezone.utc).isoformat()
+    rows = [r for r in await db.recent_comments(2000) if r["created_at"] >= since]
+    replied = [r for r in rows if r["status"] == "replied"]
+    if not rows:
+        return ["", "💬 Разговоры за сутки: новых комментариев не было."]
+    people = {r["author"] for r in replied}
+    talks = {a for a in people if sum(r["author"] == a for r in replied) >= 2}
+    skipped = len(rows) - len(replied)
+    line = (f"💬 Разговоры за сутки: Нумерита ответила {plural(len(replied), 'раз', 'раза', 'раз')} — "
+            f"{plural(len(people), 'человеку', 'людям', 'людям')}")
+    line += f"; живой диалог (человек ответил снова) — с {len(talks)}" if talks else ""
+    line += f". Пропущено {skipped} (спам, смайлики, удалённые)." if skipped else "."
+    return ["", line]
 
 
 def summary(rows: list[dict], ranked: list, name) -> list[str]:

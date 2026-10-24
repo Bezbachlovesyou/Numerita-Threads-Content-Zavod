@@ -5,6 +5,7 @@
 """
 
 import asyncio
+import json
 import logging
 import random
 import re
@@ -89,7 +90,16 @@ async def reply_targets(db: Storage, threads: ThreadsClient, now: datetime) -> l
         target = row["target_id"]
         if target not in targets:
             targets[target] = (target, None, "Продолжение ранее начатой дискуссии.")
-    return list(targets.values())
+    gone = set(json.loads(await db.kv_get("gone_posts") or "[]"))  # удалённые или недоступные посты
+    return [t for t in targets.values() if t[0] not in gone]
+
+
+GONE_RE = re.compile(r"does not exist|cannot be loaded|Unsupported get request|not found|404", re.I)
+
+
+def is_gone(error: Exception) -> bool:
+    """Пост или комментарий удалён, скрыт или недоступен — это не поломка, а обычная жизнь соцсети."""
+    return bool(GONE_RE.search(str(error)))
 
 
 def reply_candidates(comments: list[dict]) -> list[tuple[dict, str | None]]:
@@ -130,7 +140,11 @@ async def answer_comments(
             comments = await threads.comments(target_id)
         except ThreadsError as e:
             log.warning("Не удалось получить комментарии к посту %s: %s", target_id, e)
-            await db.kv_set("autoreply_error", f"{now:%d.%m %H:%M} комментарии: {e}")
+            if is_gone(e):  # пост удалён или недоступен — больше не спрашиваем, тревогу не поднимаем
+                gone = json.loads(await db.kv_get("gone_posts") or "[]")
+                await db.kv_set("gone_posts", json.dumps((gone + [target_id])[-500:]))
+            else:
+                await db.kv_set("autoreply_error", f"{now:%d.%m %H:%M} комментарии: {e}")
             continue
         await archive_comments(db, target_id, comments)
         for item, our_last in reply_candidates(comments):
@@ -199,6 +213,9 @@ async def answer_comments(
             await threads.reply(target_id, comment["id"], text)
         except ThreadsError as e:
             log.warning("Не удалось ответить на комментарий %s: %s", comment["id"], e)
+            if is_gone(e):  # комментарий удалили или скрыли — просто пропускаем
+                await db.record_comment(comment["id"], post_id, author, comment["message"], "", "skipped")
+                continue
             if mode in ("link", "offer"):  # стоп-кран: Threads не принял ответ со ссылкой
                 await db.kv_set("reply_links_paused_until", (now + LINK_PAUSE).isoformat())
                 e = ThreadsError(f"{e} — ссылки в ответах выключил на 7 дней")

@@ -890,15 +890,37 @@ async def report_autoreply_error(bot: Bot, cfg: Config, db: Storage) -> None:
         await notify_admins(bot, cfg, "⛔ Threads не принял ответ со ссылкой. На всякий случай выключил ссылки "
                                       f"в ответах до {datetime.fromisoformat(paused):%d.%m}. Ответы без ссылок идут как обычно.")
     error = await db.kv_get("autoreply_error") or ""
-    reason = error.split(": ", 1)[-1] if error else ""
+    stage, _, reason = error.partition(": ")
+    stage = stage.split(" ")[-1] if reason else ""
     if reason == (await db.kv_get("autoreply_error_sent") or ""):
         return
     await db.kv_set("autoreply_error_sent", reason)
     if reason:
-        help_text = ADDON_HELP if "Inbox add-on" in reason else ""
-        await notify_admins(bot, cfg, f"⚠️ Не получается отвечать на комментарии в Threads.\n{reason}{help_text}")
+        await notify_admins(bot, cfg, explain_autoreply_error(stage, reason))
     else:
-        await notify_admins(bot, cfg, "✅ Автоответы снова работают.")
+        await notify_admins(bot, cfg, "✅ Автоответы снова работают: Нумерита отвечает людям в Threads как обычно.")
+
+
+def explain_autoreply_error(stage: str, reason: str) -> str:
+    """Ошибка автоответов — простыми словами: что случилось, что бот делает сам, нужно ли что-то от владельца."""
+    low = reason.lower()
+    if "inbox add-on" in low:
+        what, todo = "в тарифе Zernio нет доступа к комментариям.", ADDON_HELP.strip()
+    elif "401" in low or "unauthorized" in low or "api key" in low or "ключ" in low and stage != "нейросеть":
+        what, todo = "Zernio не принимает ключ доступа.", "Нужно от тебя: проверь ZERNIO_API_KEY в Railway (Variables)."
+    elif stage == "нейросеть":
+        what = "нейросеть, которая пишет ответы (OpenRouter), не ответила."
+        todo = ("Если повторится — проверь баланс OpenRouter. Бот сам попробует снова через 5 минут."
+                if "402" in low or "баланс" in low or "credit" in low else "Бот сам попробует снова через 5 минут.")
+    elif "429" in low or "rate" in low or "too many" in low:
+        what, todo = "Threads попросил отвечать реже.", "Бот сам делает паузу и продолжит позже — ничего делать не нужно."
+    else:
+        part = {"комментарии": "получить комментарии", "ответ": "отправить ответ",
+                "комментариями": "получить список постов"}.get(stage, "ответить")
+        what = f"не получилось {part}. Техническая причина: {reason[:200]}"
+        todo = "Бот сам повторит через 5 минут. Если сообщение будет повторяться — перешли его мне."
+    return ("⚠️ Автоответы в Threads: заминка.\n\n"
+            f"Что случилось: {what}\n{todo}\n\nПосты продолжают выходить как обычно.")
 
 
 async def run_scheduler(
