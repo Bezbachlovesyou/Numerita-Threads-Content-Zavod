@@ -104,6 +104,31 @@ def is_gone(error: Exception) -> bool:
     return bool(GONE_RE.search(str(error)))
 
 
+FRAGMENT_END = re.compile(r"[.!?…)»✨🌙💫🔥🤍😊🙂]\s*$")
+
+
+def is_fragment(text: str) -> bool:
+    """Оборванный ответ вроде «5 — это»: короткий и без законченного конца."""
+    text = (text or "").strip()
+    return len(text) < 25 and not FRAGMENT_END.search(text)
+
+
+async def repair_fragments(db: Storage, threads: ThreadsClient, target_id: str, comments: list[dict]) -> None:
+    """Наши оборванные ответы удаляем, а комментарий человека снова ставим в очередь — он получит нормальный ответ."""
+    for item, parent, _ in walk_comments(comments):
+        if not (item.get("from") or {}).get("isOwner") or not parent or not is_fragment(item.get("message") or ""):
+            continue
+        try:
+            await threads.delete_comment(target_id, item["id"])
+        except ThreadsError as e:
+            log.warning("Не удалось удалить оборванный ответ %s: %s", item["id"], e)
+            continue
+        await db.forget_comment(parent)
+        item["from"] = {}  # в этом проходе считаем, что нашего ответа нет
+        item["message"] = ""
+        log.info("Удалён оборванный ответ %s, комментарий %s снова в очереди", item["id"], parent)
+
+
 def reply_candidates(comments: list[dict]) -> list[tuple[dict, str | None]]:
     """На что отвечать: комментарий без нашего ответа — и ответы людей, пришедшие после нашего последнего
     ответа в этой ветке (с текстом нашего ответа, чтобы продолжить разговор)."""
@@ -150,6 +175,7 @@ async def answer_comments(
                 await db.kv_set("autoreply_error", f"{now:%d.%m %H:%M} комментарии: {e}")
             continue
         await archive_comments(db, target_id, comments)
+        await repair_fragments(db, threads, target_id, comments)
         for item, our_last in reply_candidates(comments):
             context = post_text + (f"\n\nТвой прошлый ответ этому человеку в ветке:\n{our_last}" if our_last else "")
             queue.append((target_id, post_id, context, item))

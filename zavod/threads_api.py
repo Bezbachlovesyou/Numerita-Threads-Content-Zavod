@@ -88,6 +88,11 @@ class ThreadsClient:
             raise ThreadsError("Threads отклонил пост: " + ("; ".join(reasons) or payload.get("error", "без причины")))
         return post.get("_id", "")
 
+    async def delete_comment(self, post_id: str, comment_id: str) -> None:
+        """Удаляет комментарий (наш собственный ответ) под постом."""
+        await self._request("DELETE", f"/inbox/comments/{post_id}",
+                            params={"accountId": self.account_id, "commentId": comment_id})
+
     async def unpublish(self, post_id: str) -> None:
         """Снимает пост из Threads (запись в Zernio остаётся со статусом cancelled)."""
         await self._request("POST", f"/posts/{post_id}/unpublish", json={"platform": "threads"})

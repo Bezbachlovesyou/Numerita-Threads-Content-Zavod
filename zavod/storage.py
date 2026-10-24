@@ -304,6 +304,10 @@ class Storage:
         )
         return int(rows[0]["n"])
 
+    async def forget_comment(self, comment_id: str) -> None:
+        """Снова считать комментарий неотвеченным (например, наш ответ на него оказался обрывком и удалён)."""
+        await self._execute("DELETE FROM comment_replies WHERE comment_id = ?", (comment_id,))
+
     async def link_replies(self, since: datetime, author: str | None = None, pattern: str = "%t.me/%") -> int:
         """Сколько ответов со ссылкой отправлено (всего или одному человеку; pattern — например, по метке)."""
         sql = "SELECT COUNT(*) AS n FROM comment_replies WHERE status = 'replied' AND reply LIKE ? AND created_at >= ?"
