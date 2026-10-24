@@ -13,7 +13,7 @@ from aiogram.filters.callback_data import CallbackData
 from aiogram.types import BufferedInputFile, CallbackQuery, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from .autopost import BOT_LINK, MIN_GAP, ContentPlan, ScriptedPost, Slot, topic_tag_for
+from .autopost import BOT_LINK, strip_credits, MIN_GAP, ContentPlan, ScriptedPost, Slot, topic_tag_for
 from .cards import (
     GRID_TITLES, PLANETS, Card, birth_days, card_from_text, carousel_from_json, carousel_json, grid_json, make_grid, render_card,
     render_grid, soul_carousel,
@@ -184,6 +184,11 @@ def links_to_comment(text: str, first_comment: str | None) -> tuple[str, str | N
     return clean, first_comment or FIRST_COMMENTS[0].format(link=links[0])
 
 
+NETWORK_ERROR = re.compile(r"Не удалось связаться|вернул ошибку 5\d\d|timed? ?out|502|503|504", re.I)
+PUBLISH_RETRIES = 3
+PUBLISH_RETRY_AFTER = timedelta(minutes=15)
+
+
 async def publish(
     post: Post, db: Storage, threads: ThreadsClient | None, bot: Bot, channel: str, cards: bool = True
 ) -> Post:
@@ -204,6 +209,7 @@ async def publish(
                 (post.text, post.first_comment) if post.link_mode == "text"  # эксперимент: ссылка в тексте
                 else links_to_comment(post.text, post.first_comment)
             )
+            text = strip_credits(text)  # без «по мотивам @…» и чужих @упоминаний
             threads_id = await threads.publish_text(
                 text, topic_tag_for(post.rubric), first_comment, image_urls, video_url
             )
@@ -218,6 +224,23 @@ async def publish(
         else:
             await db.set_tg_message_id(post.id, str(sent.message_id))
 
+    if errors and threads is not None and NETWORK_ERROR.search(errors[0]) and not post.threads_id:
+        # Сбой связи: сначала проверяем, не вышел ли пост на самом деле, потом сами повторяем — без кнопок владельцу.
+        attempts = int(await db.kv_get(f"publish_retry:{post.id}") or 0)
+        try:
+            found = await threads.find_post(strip_credits(links_to_comment(post.text, None)[0]),
+                                            datetime.now(timezone.utc) - timedelta(days=1))
+        except ThreadsError:
+            found = None
+            attempts = PUBLISH_RETRIES  # не можем проверить — повторять вслепую нельзя (дубль поста)
+        if found:
+            await db.set_threads_id(post.id, found)
+            errors = errors[1:]
+        elif attempts < PUBLISH_RETRIES:
+            await db.kv_set(f"publish_retry:{post.id}", str(attempts + 1))
+            await db.schedule(post.id, datetime.now(timezone.utc) + PUBLISH_RETRY_AFTER)
+            log.warning("Пост #%s: сбой связи с Zernio, повторю через 15 минут (%s)", post.id, errors[0])
+            return await db.get(post.id)
     if errors:
         await db.mark_failed(post.id, " ".join(errors))
     else:
@@ -761,6 +784,7 @@ async def autopost_tick(
 async def import_script(db: Storage, script: list[ScriptedPost]) -> int:
     """Ставит готовые тексты в очередь (каждый — один раз). Когда их выпускать, бот решает сам."""
     await db.requeue_scheduled_scripts()
+    await db.requeue_network_failures()
     added = 0
     for item in script:
         if len(item.text) > MAX_LENGTH:

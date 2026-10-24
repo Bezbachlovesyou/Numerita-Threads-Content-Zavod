@@ -88,6 +88,17 @@ class ThreadsClient:
             raise ThreadsError("Threads отклонил пост: " + ("; ".join(reasons) or payload.get("error", "без причины")))
         return post.get("_id", "")
 
+    async def find_post(self, text: str, since: datetime) -> str | None:
+        """Есть ли уже в Zernio пост с этим текстом (после сбоя связи) — чтобы не опубликовать дважды."""
+        _, payload = await self._request("GET", "/posts", params={
+            "limit": 20, "accountId": self.account_id, "fromDate": since.date().isoformat(),
+            "search": text.strip()[:40], "fields": "content,status",
+        })
+        for post in payload.get("posts") or []:
+            if (post.get("content") or "").strip()[:80] == text.strip()[:80] and post.get("status") != "failed":
+                return post.get("_id") or "published"
+        return None
+
     async def commented_posts(self, since: datetime) -> list[dict]:
         """Все посты аккаунта в Threads, под которыми есть комментарии (в том числе опубликованные не ботом)."""
         _, payload = await self._request(

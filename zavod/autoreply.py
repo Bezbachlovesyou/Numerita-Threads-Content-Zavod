@@ -11,7 +11,7 @@ import random
 import re
 from datetime import datetime, timedelta, timezone
 
-from .autopost import BOT_LINK
+from .autopost import BOT_LINK, strip_credits
 from .cards import grid_hint
 from .dialogue import archive_comments, conversation_context, fair_queue, walk_comments
 from .generator import GenerationError, Generator
@@ -58,7 +58,7 @@ LINK_RE = re.compile(r"(https?://\S+|t\.me/\S+|@Numeritabot\b)", re.I)
 
 def finish_reply(text: str) -> str:
     """Обрезает слишком длинный ответ и вычищает любые ссылки — в ответах их быть не должно."""
-    body = re.sub(r"[ \t]{2,}", " ", LINK_RE.sub("", text.replace("{LINK}", ""))).strip()
+    body = re.sub(r"[ \t]{2,}", " ", LINK_RE.sub("", strip_credits(text.replace("{LINK}", "")))).strip()
     if len(body) > MAX_REPLY_LENGTH:
         body = body[: MAX_REPLY_LENGTH - 1].rsplit(" ", 1)[0] + "…"
     return body

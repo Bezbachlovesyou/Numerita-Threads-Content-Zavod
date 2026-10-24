@@ -384,6 +384,13 @@ class Storage:
     async def queue_post(self, post_id: int) -> None:
         await self._execute("UPDATE posts SET status = 'queued' WHERE id = ?", (post_id,))
 
+    async def requeue_network_failures(self) -> None:
+        """Готовые посты, не вышедшие из-за сбоя связи с Zernio, — обратно в очередь (бот выпустит их сам)."""
+        await self._execute(
+            "UPDATE posts SET status = 'queued', error = NULL WHERE rubric = 'script' AND status = 'failed'"
+            " AND threads_id IS NULL AND error LIKE ?", ("%Не удалось связаться%",)
+        )
+
     async def requeue_scheduled_scripts(self) -> None:
         """Готовые тексты, стоявшие на точное время, переводим в очередь — время решает бот."""
         await self._execute("UPDATE posts SET status = 'queued' WHERE rubric = 'script' AND status = 'scheduled'")

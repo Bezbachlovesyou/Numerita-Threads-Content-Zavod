@@ -40,6 +40,19 @@ TOPIC_TAGS = {"love": "Отношения", "pair": "Отношения", "ex": 
 DEFAULT_TOPIC_TAG = "Нумерология"
 
 
+OWN_HANDLES = {"numerita.ai", "numeritabot", "numeritalovesyou"}
+CREDIT_RE = re.compile(r"(?i)\b(по мотивам|идея|источник|автор|вдохновил[аио]?сь|спасибо)\b[^\n]*@[\w.]+[^\n]*")
+MENTION_RE = re.compile(r"(?:\s*,|\s+и)?\s*(?<![\w/])@([A-Za-z0-9_.]*[A-Za-z0-9_])")
+
+
+def strip_credits(text: str) -> str:
+    """Убирает «по мотивам @…» и чужие @упоминания: наши посты и ответы — без рекламы других авторов."""
+    text = CREDIT_RE.sub("", text)
+    text = MENTION_RE.sub(lambda m: m.group(0) if m.group(1).lower() in OWN_HANDLES else "", text)
+    lines = [re.sub(r"[ \t]{2,}", " ", line).rstrip() for line in text.splitlines()]
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()
+
+
 def topic_tag_for(rubric: str | None) -> str:
     return TOPIC_TAGS.get(rubric or "", DEFAULT_TOPIC_TAG)
 
