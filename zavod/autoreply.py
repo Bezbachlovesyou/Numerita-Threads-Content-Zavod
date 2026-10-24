@@ -5,6 +5,7 @@
 """
 
 import logging
+import re
 from datetime import datetime, timedelta, timezone
 
 from .autopost import BOT_LINK
@@ -17,6 +18,11 @@ log = logging.getLogger(__name__)
 
 LOOKBACK = timedelta(days=3)  # под какими постами смотрим комментарии
 MAX_REPLY_LENGTH = 500
+
+
+def gave_number(message: str) -> bool:
+    """В комментарии есть число дня рождения (1–31) или дата."""
+    return any(1 <= int(n) <= 31 for n in re.findall(r"(?<!\d)(\d{1,2})(?!\d)", message))
 
 
 def finish_reply(text: str, tag: str | None) -> str:
@@ -91,7 +97,9 @@ async def answer_comments(
                 continue
 
             replied_total = await db.replies_since(now - timedelta(days=3650))
-            with_link = replied_total % 2 == 1  # ссылка примерно в каждом втором ответе
+            # Написал свою дату — он уже заинтересован: ссылку на полный разбор даём всегда.
+            # Остальным (спасибо, вопросы) — примерно в каждом втором ответе.
+            with_link = gave_number(comment["message"]) or replied_total % 2 == 1
             try:
                 text = (await generator.write_reply(post_text, comment["message"], author, with_link)).strip()
             except GenerationError as e:
