@@ -99,12 +99,21 @@ class ThreadsClient:
         )
         return payload.get("data") or []
 
-    async def comments(self, post_id: str) -> list[dict]:
-        """Комментарии под постом (ответы людей в Threads)."""
-        _, payload = await self._request(
-            "GET", f"/inbox/comments/{post_id}", params={"accountId": self.account_id, "limit": 50}
-        )
-        return payload.get("comments") or []
+    async def comments(self, post_id: str, max_pages: int = 10) -> list[dict]:
+        """Все комментарии под постом (ответы людей в Threads) — постранично, до 500."""
+        out: list[dict] = []
+        cursor = None
+        for _ in range(max_pages):
+            params = {"accountId": self.account_id, "limit": 50}
+            if cursor:
+                params["cursor"] = cursor
+            _, payload = await self._request("GET", f"/inbox/comments/{post_id}", params=params)
+            out += payload.get("comments") or []
+            page = payload.get("pagination") or {}
+            cursor = page.get("cursor")
+            if not page.get("hasMore") or not cursor:
+                break
+        return out
 
     async def reply(self, post_id: str, comment_id: str, message: str) -> None:
         """Отвечает на комментарий. Ключ идемпотентности не даст ответить дважды при повторе."""

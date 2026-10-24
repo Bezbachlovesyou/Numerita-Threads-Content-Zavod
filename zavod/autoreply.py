@@ -86,6 +86,26 @@ async def reply_targets(db: Storage, threads: ThreadsClient, now: datetime) -> l
     return list(targets.values())
 
 
+def reply_candidates(comments: list[dict]) -> list[tuple[dict, str | None]]:
+    """На что отвечать: комментарий без нашего ответа — и ответы людей, пришедшие после нашего последнего
+    ответа в этой ветке (с текстом нашего ответа, чтобы продолжить разговор)."""
+    def ok(c: dict) -> bool:
+        return bool(c.get("id") and c.get("message")) and not (c.get("from") or {}).get("isOwner") \
+            and c.get("canReply", True)
+
+    out: list[tuple[dict, str | None]] = []
+    for comment in comments:
+        replies = comment.get("replies") or []
+        ours = [i for i, r in enumerate(replies) if (r.get("from") or {}).get("isOwner")]
+        if not ours:
+            if ok(comment):
+                out.append((comment, None))
+            continue
+        last = ours[-1]
+        out += [(r, replies[last].get("message")) for r in replies[last + 1:] if ok(r)]
+    return out
+
+
 async def answer_comments(
     db: Storage,
     threads: ThreadsClient,
@@ -99,7 +119,9 @@ async def answer_comments(
     if budget <= 0:
         return 0
 
-    sent = 0
+    # Собираем всё, на что ещё не ответили, со всех постов: и новые комментарии, и ответы людей
+    # на наши ответы (живой диалог). Свежие — первыми: первые 15–30 минут решают охват поста.
+    queue: list[tuple[str, int | None, str, dict]] = []
     for target_id, post_id, post_text in await reply_targets(db, threads, now):
         try:
             comments = await threads.comments(target_id)
@@ -107,76 +129,72 @@ async def answer_comments(
             log.warning("Не удалось получить комментарии к посту %s: %s", target_id, e)
             await db.kv_set("autoreply_error", f"{now:%d.%m %H:%M} комментарии: {e}")
             continue
+        for item, our_last in reply_candidates(comments):
+            context = post_text + (f"\n\nТвой прошлый ответ этому человеку в ветке:\n{our_last}" if our_last else "")
+            queue.append((target_id, post_id, context, item))
+    handled = await db.handled_comments([item["id"] for *_, item in queue])
+    queue = [q for q in queue if q[3]["id"] not in handled]
+    queue.sort(key=lambda q: q[3].get("createdTime") or "", reverse=True)
 
-        fresh = [
-            c for c in comments
-            if c.get("id") and c.get("message") and not (c.get("from") or {}).get("isOwner")
-            and c.get("canReply", True)
-        ]
-        handled = await db.handled_comments([c["id"] for c in fresh])
-        for comment in fresh:
-            if comment["id"] in handled:
-                continue
-            author = (comment.get("from") or {}).get("username") or (comment.get("from") or {}).get("name") or "?"
-            # Если мы уже ответили в этой ветке (например, до перезапуска), второй раз не отвечаем.
-            if any((r.get("from") or {}).get("isOwner") for r in comment.get("replies") or []):
-                await db.record_comment(comment["id"], post_id, author, comment["message"], "", "skipped")
-                continue
+    sent = 0
+    for target_id, post_id, post_text, comment in queue:
+        author = (comment.get("from") or {}).get("username") or (comment.get("from") or {}).get("name") or "?"
+        if await db.replies_to_author(author, now - timedelta(days=1)) >= PER_AUTHOR_PER_DAY:
+            await db.record_comment(comment["id"], post_id, author, comment["message"], "", "skipped")
+            continue
+        # Ссылка — только по просьбе и в пределах лимитов; кто написал своё число — зовём в профиль.
+        mode = "profile" if gave_number(comment["message"]) else "plain"
+        if mode == "profile" and "Твой прошлый ответ" in post_text:  # в диалоге второй раз «в профиль» не зовём
+            mode = "plain"
+        paused = await db.kv_get("reply_links_paused_until")
+        links_ok = (
+            not (paused and now < datetime.fromisoformat(paused))
+            and await db.link_replies(now - timedelta(hours=1)) < LINKS_PER_HOUR
+            and not await db.link_replies(now - timedelta(days=7), author)
+        )
+        if links_ok and asks_link(comment["message"]):
+            mode = "link"
+        elif (links_ok and mode == "profile" and random.random() < OFFER_SHARE
+                and await db.link_replies(now - timedelta(hours=1), pattern="%_p") < OFFERS_PER_HOUR):
+            mode = "offer"
+        try:
+            text = (await generator.write_reply(post_text, comment["message"], author, mode)).strip()
+        except GenerationError as e:
+            log.warning("Не удалось написать ответ на комментарий %s: %s", comment["id"], e)
+            await db.kv_set("autoreply_error", f"{now:%d.%m %H:%M} нейросеть: {e}")
+            return sent
 
-            if await db.replies_to_author(author, now - timedelta(days=1)) >= PER_AUTHOR_PER_DAY:
-                await db.record_comment(comment["id"], post_id, author, comment["message"], "", "skipped")
-                continue
-            # Ссылка — только по просьбе и в пределах лимитов; кто написал своё число — зовём в профиль.
-            mode = "profile" if gave_number(comment["message"]) else "plain"
-            paused = await db.kv_get("reply_links_paused_until")
-            links_ok = (
-                not (paused and now < datetime.fromisoformat(paused))
-                and await db.link_replies(now - timedelta(hours=1)) < LINKS_PER_HOUR
-                and not await db.link_replies(now - timedelta(days=7), author)
-            )
-            if links_ok and asks_link(comment["message"]):
-                mode = "link"
-            elif (links_ok and mode == "profile" and random.random() < OFFER_SHARE
-                    and await db.link_replies(now - timedelta(hours=1), pattern="%_p") < OFFERS_PER_HOUR):
-                mode = "offer"
+        if text.upper().strip(" .!\"'«»") == "SKIP":
+            await db.record_comment(comment["id"], post_id, author, comment["message"], "", "skipped")
+            continue
+        text = finish_reply(text)
+        # Одинаковые ответы Threads считает спамом: похожий на недавний — переписываем или пропускаем.
+        recent = {(r.get("reply") or "")[:60] for r in await db.recent_comments(50)}
+        if text[:60] in recent:
             try:
-                text = (await generator.write_reply(post_text, comment["message"], author, mode)).strip()
-            except GenerationError as e:
-                log.warning("Не удалось написать ответ на комментарий %s: %s", comment["id"], e)
-                await db.kv_set("autoreply_error", f"{now:%d.%m %H:%M} нейросеть: {e}")
-                return sent
-
-            if text.upper().strip(" .!\"'«»") == "SKIP":
-                await db.record_comment(comment["id"], post_id, author, comment["message"], "", "skipped")
+                text = finish_reply(await generator.write_reply(post_text, comment["message"], author, mode))
+            except GenerationError:
                 continue
-            text = finish_reply(text)
-            # Одинаковые ответы Threads считает спамом: похожий на недавний — переписываем или пропускаем.
-            recent = {(r.get("reply") or "")[:60] for r in await db.recent_comments(50)}
             if text[:60] in recent:
-                try:
-                    text = finish_reply(await generator.write_reply(post_text, comment["message"], author, mode))
-                except GenerationError:
-                    continue
-                if text[:60] in recent:
-                    continue
-            if mode in ("link", "offer"):
-                text = f"{text[: MAX_REPLY_LENGTH - 45]}\n{BOT_LINK}r{post_id or 0}_{'a' if mode == 'link' else 'p'}"
-            if sent:
-                await asyncio.sleep(random.uniform(*PAUSE))
-
-            try:
-                await threads.reply(target_id, comment["id"], text)
-            except ThreadsError as e:
-                log.warning("Не удалось ответить на комментарий %s: %s", comment["id"], e)
-                if mode in ("link", "offer"):  # стоп-кран: Threads не принял ответ со ссылкой
-                    await db.kv_set("reply_links_paused_until", (now + LINK_PAUSE).isoformat())
-                    e = ThreadsError(f"{e} — ссылки в ответах выключил на 7 дней")
-                await db.kv_set("autoreply_error", f"{now:%d.%m %H:%M} ответ: {e}")
                 continue
-            await db.record_comment(comment["id"], post_id, author, comment["message"], text, "replied")
-            await db.kv_set("autoreply_error", "")
-            log.info("Ответ @%s под постом %s", author, target_id)
-            sent += 1
-            if sent >= budget:
-                return sent
+        if mode in ("link", "offer"):
+            text = f"{text[: MAX_REPLY_LENGTH - 45]}\n{BOT_LINK}r{post_id or 0}_{'a' if mode == 'link' else 'p'}"
+        if sent:
+            await asyncio.sleep(random.uniform(*PAUSE))
+
+        try:
+            await threads.reply(target_id, comment["id"], text)
+        except ThreadsError as e:
+            log.warning("Не удалось ответить на комментарий %s: %s", comment["id"], e)
+            if mode in ("link", "offer"):  # стоп-кран: Threads не принял ответ со ссылкой
+                await db.kv_set("reply_links_paused_until", (now + LINK_PAUSE).isoformat())
+                e = ThreadsError(f"{e} — ссылки в ответах выключил на 7 дней")
+            await db.kv_set("autoreply_error", f"{now:%d.%m %H:%M} ответ: {e}")
+            continue
+        await db.record_comment(comment["id"], post_id, author, comment["message"], text, "replied")
+        await db.kv_set("autoreply_error", "")
+        log.info("Ответ @%s под постом %s", author, target_id)
+        sent += 1
+        if sent >= budget:
+            return sent
     return sent
