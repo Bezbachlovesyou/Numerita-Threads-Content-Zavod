@@ -26,6 +26,8 @@ from .storage import PgStorage, Post, Storage
 from .threads_api import MAX_LENGTH, ThreadsClient, ThreadsError
 from .tts import synthesize
 from . import video as vid
+from .knowledge import reduce_number
+from .news import GoodNews
 
 log = logging.getLogger(__name__)
 
@@ -498,7 +500,12 @@ LINK_CARD_TEXT = {"text": "Разбор — по ссылке в посте", "p
 
 
 async def choose_link_mode(db: Storage, now: datetime, rng: random.Random) -> str:
-    """Сначала даём каждому способу набрать постов, потом чаще берём лучший (но остальные тоже пробуем)."""
+    """Сначала даём каждому способу набрать постов, потом чаще берём лучший (но остальные тоже пробуем).
+
+    Если самоулучшение выяснило, что ссылка в посте убивает ответы, — 9 из 10 постов без ссылки.
+    """
+    if await db.kv_get("links_in_posts") == "off" and rng.random() < 0.9:
+        return "profile"
     rows = [r for r in await db.engagement(now - timedelta(days=14)) if r.get("link_mode")]
     counts = {m: sum(1 for r in rows if r["link_mode"] == m) for m in LINK_MODES}
     if min(counts.values()) < LINK_MODE_MIN_POSTS:
@@ -616,6 +623,25 @@ async def find_dead_post(db: Storage, now: datetime, skip: set[str] = frozenset(
     return min(dead, key=lambda r: r["published_at"]) if dead else None
 
 
+NEWS = GoodNews()
+NEWS_PAUSE = timedelta(hours=3)  # если доброго повода не нашлось — не пробуем новости пару часов
+NEWS_RULES = (
+    "\n\nДобрые новости последних часов (только заголовки):\n{items}\n\n"
+    "Выбери ОДНУ — самую светлую и радостную: доброта, любовь, дети, природа, вера, добрые дела. "
+    "Перескажи её своими словами одной-двумя фразами, назови источник («пишет РИА Новости»), ничего не добавляй "
+    "к фактам из заголовка. Дальше — свой лёгкий, умный и тёплый взгляд: улыбнись, поддержи, свяжи с числом дня "
+    "{day} или числом души — как опора для людей. Никакой политики, войны и трагедий. "
+    "Последней строкой напиши «ИСТОЧНИК: <номер новости>». Если ни одна новость не радостная — верни только SKIP."
+)
+
+
+def split_news_source(text: str) -> tuple[str, int | None]:
+    match = re.search(r"^\s*ИСТОЧНИК:\s*(\d+)\s*$", text, re.M | re.I)
+    if not match:
+        return text, None
+    return (text[: match.start()] + text[match.end():]).strip(), int(match.group(1))
+
+
 async def post_next(
     bot: Bot, cfg: Config, db: Storage, threads: ThreadsClient | None, generator: Generator,
     plan: ContentPlan, now: datetime, rng: random.Random,
@@ -630,6 +656,11 @@ async def post_next(
         post = await publish(queued, db, threads, bot, "", cfg.cards)
     else:
         rubric = plan.choose(recent, rng)
+        news_pause = await db.kv_get("news_pause_until")
+        for _ in range(5):  # новости — только когда есть свежий добрый повод
+            if rubric.key != "news" or not (news_pause and now < datetime.fromisoformat(news_pause)):
+                break
+            rubric = plan.choose(recent, rng)
         # Рубрики со ссылкой не повторяем: у ссылок свои лимиты (prompts/threads_rules.md).
         dead = await find_dead_post(db, now, {r.key for r in plan.all_rubrics() if r.cta == "link"})
         if dead:
@@ -649,6 +680,15 @@ async def post_next(
             log.info("Второй шанс для поста #%s", dead["id"])
         if slot.rubric.key == "jackpot" and await post_from_bank(cfg, db, threads, bot, plan, slot, rng):
             return True
+        news = []
+        if slot.rubric.key == "news":
+            used = set(json.loads(await db.kv_get("news_used") or "[]"))
+            news = await NEWS.candidates(used, rng)
+            if not news:
+                await db.kv_set("news_pause_until", (now + NEWS_PAUSE).isoformat())
+                return False
+            items = "\n".join(f"{i}. {h.title} ({h.source})" for i, h in enumerate(news, 1))
+            slot = replace(slot, topic=slot.topic + NEWS_RULES.format(items=items, day=reduce_number(now.day)))
         grid = None
         if slot.rubric.key == "grid":
             grid = make_grid(rng)
@@ -660,6 +700,14 @@ async def post_next(
         try:
             palette, style = plan.choose_card(rng)
             text, first_comment, hook = await write_autopost(generator, slot, style, link_mode or "comment")
+            if news:
+                text, number = split_news_source(text)
+                if text.strip().upper().startswith("SKIP"):
+                    await db.kv_set("news_pause_until", (now + NEWS_PAUSE).isoformat())
+                    return False
+                if number and 1 <= number <= len(news):
+                    used = json.loads(await db.kv_get("news_used") or "[]") + [news[number - 1].title]
+                    await db.kv_set("news_used", json.dumps(used[-300:], ensure_ascii=False))
         except GenerationError as e:
             await notify_admins(bot, cfg, f"❌ Автопост не написан: {e}\nТема: {slot.topic}")
             return False

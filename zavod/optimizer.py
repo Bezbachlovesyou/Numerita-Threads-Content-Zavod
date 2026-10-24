@@ -26,7 +26,8 @@ log = logging.getLogger(__name__)
 WINDOW = timedelta(days=7)
 MIN_POSTS = 3
 LINK_WINDOW = timedelta(days=14)
-MIN_LINK_POSTS = 4  # столько постов каждого способа подачи ссылки, прежде чем делать вывод
+MIN_LINK_POSTS = 4
+MIN_COMPARE = 6  # постов со ссылкой и без — прежде чем решать, вредит ли ссылка  # столько постов каждого способа подачи ссылки, прежде чем делать вывод
 TRIAL = timedelta(days=3)
 EXPERIMENT_EVERY = timedelta(days=2)
 PLACEHOLDERS = {"part_of_day", "weekday", "day_number", "tomorrow_number", "digit", "group", "n", "a", "b", "arcana", "gender", "digit_word"}
@@ -240,6 +241,34 @@ async def optimize(
             + " — буду использовать чаще."
         )
     await db.kv_set("card_weights", json.dumps(card_weights))
+
+    # 4б2. Правда ли на посты со ссылкой отвечают меньше? Сравниваем ответы на пост за 2 недели.
+    #      Если со ссылкой заметно хуже (меньше 70% от постов без ссылки) — посты пишем без ссылок
+    #      (только «ссылка в профиле»), оставив 10% на контроль; если выровнялось — возвращаем.
+    ctas = {r.key: r.cta for r in plan.all_rubrics()}
+    all_rows = [r for r in await db.engagement(now - LINK_WINDOW) if r["rubric"] not in ("video", "script")]
+    with_link = [r for r in all_rows if r.get("link_mode") in ("text", "comment")
+                 or (not r.get("link_mode") and ctas.get(r["rubric"]) == "link")]
+    no_link = [r for r in all_rows if r not in with_link]
+    if len(with_link) >= MIN_COMPARE and len(no_link) >= MIN_COMPARE:
+        avg_link = sum(r["comments"] for r in with_link) / len(with_link)
+        avg_plain = sum(r["comments"] for r in no_link) / len(no_link)
+        was_off = await db.kv_get("links_in_posts") == "off"
+        if avg_plain > 0 and avg_link < 0.7 * avg_plain:
+            await db.kv_set("links_in_posts", "off")
+            report.append(
+                f"🔗 Проверил: на посты со ссылкой отвечают меньше — {avg_link:.1f} ответа против {avg_plain:.1f} "
+                f"без ссылки ({len(with_link)} и {len(no_link)} постов). "
+                + ("Посты и дальше без ссылок" if was_off else "Перехожу на посты без ссылок")
+                + " — зову «по ссылке в профиле», 1 пост из 10 оставляю со ссылкой для контроля."
+            )
+        elif was_off and avg_link >= 0.9 * avg_plain:
+            await db.kv_set("links_in_posts", "on")
+            report.append(f"🔗 Посты со ссылкой снова собирают ответы не хуже ({avg_link:.1f} против {avg_plain:.1f}) "
+                          "— возвращаю ссылки.")
+        elif not was_off:
+            report.append(f"🔗 Проверил: со ссылкой и без ответов почти поровну ({avg_link:.1f} против "
+                          f"{avg_plain:.1f}) — ссылки оставляю.")
 
     # 4в. Эксперимент «где ставить ссылку»: в тексте, первым комментарием или «в профиле».
     link_rows = [r for r in await db.engagement(now - LINK_WINDOW) if r.get("link_mode")]
