@@ -20,7 +20,7 @@ from .cards import (
 )
 from .autoreply import answer_comments
 from .optimizer import optimize
-from . import costs
+from . import costs, constraint
 from .config import Config
 from .generator import GenerationError, Generator
 from .storage import PgStorage, Post, Storage
@@ -759,6 +759,9 @@ async def post_next(
             else:
                 rubric = plan.effective(original)
         slot = plan.render(rubric, now, rng)
+        post_focus = await constraint.focus(db, "post_focus")  # обход по Голдратту: фокус на узкое звено
+        if post_focus:
+            slot = replace(slot, topic=slot.topic + "\n\nФокус на сегодня (узкое звено): " + post_focus)
         if not await db.claim_slot(slot.key):
             return True
         if dead:
@@ -1106,6 +1109,8 @@ async def run_scheduler(
     """Раз в 30 секунд: посты по кнопкам «через час», автопостинг; раз в 5 минут — ответы на комментарии."""
     rng = random.Random()
     next_replies = datetime.now()
+    if await db.claim_slot("toc summary"):  # владелец попросил выжимку теории ограничений
+        await notify_admins(bot, cfg, constraint.SUMMARY)
     if await db.claim_slot("cost report 2026-10-24"):  # владелец спросил, куда ушли деньги, — отчёт сразу
         try:
             await notify_admins(bot, cfg, await costs.report(db, generator, cfg.timezone))
@@ -1136,6 +1141,15 @@ async def run_scheduler(
                 await notify_admins(bot, cfg, await costs.report(db, generator, cfg.timezone))
             except Exception:
                 log.exception("Optimizer failed")
+        for hour in constraint.RUN_HOURS:  # обход по Голдратту дважды в день
+            due = hour <= now.hour < hour + 2 and await db.claim_slot(f"toc {now.date().isoformat()} {hour}")
+            if due or (hour == constraint.RUN_HOURS[0] and await db.claim_slot("toc first run")):
+                try:
+                    text = await constraint.review(db, generator, now, cfg.timezone)
+                    if text:
+                        await notify_admins(bot, cfg, text)
+                except Exception:
+                    log.exception("Обход по Голдратту упал")
         if threads is not None and cfg.autoreply and datetime.now() >= next_replies:
             # Первые 15–30 минут решают, покажет ли Threads пост шире: в первый час после поста отвечаем быстрее.
             last = await db.last_published_at()

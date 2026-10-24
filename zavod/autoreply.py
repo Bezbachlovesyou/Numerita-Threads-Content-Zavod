@@ -14,6 +14,7 @@ from datetime import datetime, timedelta, timezone
 
 from .autopost import BOT_LINK, strip_credits
 from .cards import grid_hint
+from .constraint import focus
 from .dialogue import archive_comments, conversation_context, fair_queue, walk_comments
 from .generator import GenerationError, Generator
 from .storage import Storage
@@ -242,6 +243,7 @@ async def answer_comments(
     queue = fresh + rounds
 
     queue = fair_queue(queue)
+    reply_focus = await focus(db, "reply_focus")  # обход по Голдратту: фокус ответов на 12 часов
     generated = 0
     sent = 0
     for target_id, post_id, post_text, comment in queue:
@@ -257,7 +259,7 @@ async def answer_comments(
                 await db.record_comment(comment["id"], post_id, author, comment["message"], "", "skipped")
                 continue
         memory = await conversation_context(db, generator, target_id, comment["id"])
-        post_text += memory
+        post_text += memory + (f"\n\nФокус на сегодня: {reply_focus}" if reply_focus else "")
         # Ссылка — только по просьбе и в пределах лимитов; кто написал своё число — зовём в профиль.
         mode = "profile" if gave_number(comment["message"]) else "plain"
         if mode == "profile" and ("Твой прошлый ответ" in post_text or "assistant @" in memory or "Сводка ранних" in memory):  # в диалоге второй раз «в профиль» не зовём
