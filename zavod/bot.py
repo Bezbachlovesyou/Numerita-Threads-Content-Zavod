@@ -650,7 +650,7 @@ async def write_autopost(
 
 async def post_from_bank(
     cfg: Config, db: Storage, threads: ThreadsClient | None, bot: Bot, plan: ContentPlan, slot: Slot,
-    rng: random.Random,
+    rng: random.Random, generator: Generator | None = None,
 ) -> bool:
     """Следующий готовый пост «не подарок — джекпот». False — банк закончился, пишет нейросеть."""
     used = set(json.loads(await db.kv_get("jackpot_used") or "[]"))
@@ -667,7 +667,8 @@ async def post_from_bank(
     palette, style = plan.choose_card(rng)
     card = Card(hook, item.number, label, "reply", None, palette, style,
                 birth_days(digit) if digit and digit <= 9 and not item.label else None)
-    post = await db.get(await db.add_draft(f"Банк: {lines[0]}", item.text, "jackpot", None, card.to_json()))
+    text = await hook_gate(generator, item.text) if generator else item.text
+    post = await db.get(await db.add_draft(f"Банк: {lines[0]}", text, "jackpot", None, card.to_json()))
     post = await publish(post, db, threads, bot, "", cfg.cards)
     if post.status == "failed":
         await notify_admins(bot, cfg, "⚠️ Пост не опубликован\n\n" + post_card(post, cfg), post)
@@ -766,7 +767,7 @@ async def post_next(
             await db.kv_set("last_retry", now.isoformat())
             slot = replace(slot, topic=RETRY_TOPIC.format(old=dead["text"]) + "\n\nИсходное задание рубрики: " + slot.topic)
             log.info("Второй шанс для поста #%s", dead["id"])
-        if slot.rubric.key == "jackpot" and await post_from_bank(cfg, db, threads, bot, plan, slot, rng):
+        if slot.rubric.key == "jackpot" and await post_from_bank(cfg, db, threads, bot, plan, slot, rng, generator):
             return True
         news = []
         if slot.rubric.key == "news":
@@ -799,6 +800,7 @@ async def post_next(
         except GenerationError as e:
             await notify_admins(bot, cfg, f"❌ Автопост не написан: {e}\nТема: {slot.topic}")
             return False
+        text = await hook_gate(generator, text)
         if grid:
             card_json = grid_json(grid, rng.choice(GRID_TITLES), palette)
         elif slot.rubric.key == "carousel":
@@ -836,6 +838,27 @@ async def sharpen_script(db: Storage, generator: Generator, post: Post) -> Post:
         return post
     await db.update_text(post.id, text)
     return await db.get(post.id) or post
+
+
+HOOK_MIN = 8  # ниже — пост переписывается (слово владельца 24.10.2026: «в каждом посте интрига и хук»)
+
+
+async def hook_gate(generator: Generator, text: str) -> str:
+    """Каждый пост перед выходом проходит проверку крючка: не цепляет — переписываем один раз.
+    Ссылки с меткой сохраняем как были."""
+    links = SCRIPT_LINK_LINE.findall(text)
+    body = SCRIPT_LINK_LINE.sub("", text).strip()
+    try:
+        score, why = await generator.hook_score(body)
+        if score >= HOOK_MIN:
+            return text
+        log.info("Пост без крючка (%s/10: %s) — переписываю", score, why)
+        better = strip_credits(SCRIPT_LINK_LINE.sub("", (await generator.strengthen(body, why)).strip()).strip())
+    except GenerationError as e:
+        log.warning("Проверка крючка не удалась, пост выходит как есть: %s", e)
+        return text
+    result = "\n".join([better] + links)
+    return result if better and len(result) <= MAX_LENGTH else text
 
 
 # Перерывы в постах по слову владельца: с, по (время Config.timezone).
