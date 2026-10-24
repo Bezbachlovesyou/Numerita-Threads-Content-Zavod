@@ -40,6 +40,9 @@ class Generator:
         playbook = voice_path.with_name("playbook.md")  # хуки, сторителлинг, что заходит в Threads
         if playbook.exists():
             self.system += "\n\n" + playbook.read_text(encoding="utf-8")
+        emotions = voice_path.with_name("emotions.md")  # палитра эмоций: как вовлекать осознанно и бережно
+        if emotions.exists():
+            self.system += "\n\n" + emotions.read_text(encoding="utf-8")
         reply_path = voice_path.with_name("reply_voice.md")
         self.reply_system = reply_path.read_text(encoding="utf-8") if reply_path.exists() else self.system
         abundance = voice_path.with_name("abundance.md")  # деньги и изобилие: вдохновляем, не обесцениваем

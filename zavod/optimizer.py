@@ -30,12 +30,13 @@ MIN_LINK_POSTS = 4
 MIN_COMPARE = 6  # постов со ссылкой и без — прежде чем решать, вредит ли ссылка  # столько постов каждого способа подачи ссылки, прежде чем делать вывод
 TRIAL = timedelta(days=3)
 EXPERIMENT_EVERY = timedelta(days=2)
-PLACEHOLDERS = {"part_of_day", "weekday", "day_number", "tomorrow_number", "digit", "group", "n", "a", "b", "arcana", "gender", "digit_word"}
+PLACEHOLDERS = {"part_of_day", "weekday", "day_number", "tomorrow_number", "digit", "group", "n", "a", "b", "arcana", "gender", "digit_word", "emotion"}
 PLACEHOLDER_HELP = (
     "{digit} — число 1–9, {group} — дни рождения с этим числом души, {n} — день рождения 1–31, "
     "{a} и {b} — пара чисел, {arcana} — аркан 1–22, {weekday} — день недели, {part_of_day} — время суток, "
     "{day_number} — число дня, {tomorrow_number} — число завтрашнего дня, {gender} — «Женщина»/«Парень»…, "
-    "{digit_word} — «восьмёрка» для {digit}"
+    "{digit_word} — «восьмёрка» для {digit}, {emotion} — вопрос-эмоция для переклички («Какая мелочь в людях выводит "
+    "вас из себя?»)"
 )
 
 IMPROVE_SYSTEM = (
@@ -65,7 +66,7 @@ RUBRIC_NAMES = {
     "money": "работа и деньги", "wisdom": "мудрость дня", "offer": "приглашение в бота", "day": "число дня",
     "story": "истории", "unpopular": "непопулярное мнение", "list": "списки «сохрани»", "humor": "юмор",
     "carousel": "карусель 9 чисел", "grid": "головоломка из цифр", "callout": "«Есть тут рождённые…?»",
-    "ex": "«кто-то из прошлого вернулся»", "jackpot": "«не подарок — джекпот»", "video": "видео с Нумеритой", "news": "добрые новости", "abundance": "изобилие и богатство",
+    "ex": "«кто-то из прошлого вернулся»", "emotion": "перекличка с эмоцией", "jackpot": "«не подарок — джекпот»", "video": "видео с Нумеритой", "news": "добрые новости", "abundance": "изобилие и богатство",
 }
 
 
@@ -335,7 +336,7 @@ async def optimize(
                 log.info("Придуманная рубрика не прошла проверку: %s", line[:200])
 
     await apply_state(db, plan, now)
-    stats = summary(rows, ranked, name) + await conversations(db, now)
+    stats = summary(rows, ranked, name) + await conversations(db, now) + emotion_stats(rows)
     asked = await db.link_replies(now - timedelta(days=1), pattern="%_a")
     offered = await db.link_replies(now - timedelta(days=1), pattern="%_p")
     paused = await db.kv_get("reply_links_paused_until")
@@ -362,6 +363,21 @@ async def conversations(db: Storage, now: datetime) -> list[str]:
     line += f"; живой диалог (человек ответил снова) — с {len(talks)}" if talks else ""
     line += f". Пропущено {skipped} (спам, смайлики, удалённые)." if skipped else "."
     return ["", line]
+
+
+def emotion_stats(rows: list[dict]) -> list[str]:
+    """Какие эмоции в перекличках собирают больше ответов (пометка «[эмоция: …]» в теме поста)."""
+    by: dict[str, list[int]] = {}
+    for row in rows:
+        match = re.search(r"\[эмоция: ([^\]]+)\]", row.get("topic") or "")
+        if match:
+            by.setdefault(match.group(1), []).append(row["comments"])
+    avg = {e: sum(v) / len(v) for e, v in by.items() if len(v) >= 2}
+    if len(avg) < 2:
+        return []
+    order = sorted(avg, key=avg.get, reverse=True)
+    return ["", f"🎭 Эмоции в перекличках: больше всего ответов — «{order[0]}» ({avg[order[0]]:.0f} на пост), "
+                f"меньше всего — «{order[-1]}» ({avg[order[-1]]:.0f})."]
 
 
 def summary(rows: list[dict], ranked: list, name) -> list[str]:
