@@ -247,10 +247,10 @@ class Storage:
         )
         return int(rows[0]["n"])
 
-    async def link_replies(self, since: datetime, author: str | None = None) -> int:
-        """Сколько ответов со ссылкой отправлено (всего или одному человеку)."""
+    async def link_replies(self, since: datetime, author: str | None = None, pattern: str = "%t.me/%") -> int:
+        """Сколько ответов со ссылкой отправлено (всего или одному человеку; pattern — например, по метке)."""
         sql = "SELECT COUNT(*) AS n FROM comment_replies WHERE status = 'replied' AND reply LIKE ? AND created_at >= ?"
-        params: tuple = ("%t.me/%", since.astimezone(timezone.utc).isoformat())
+        params: tuple = (pattern, since.astimezone(timezone.utc).isoformat())
         if author:
             sql += " AND author = ?"
             params += (author,)

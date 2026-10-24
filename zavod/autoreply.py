@@ -31,6 +31,15 @@ ASKS_LINK = re.compile(
 )
 
 
+# Эксперимент: иногда ссылку даём и без просьбы — только тем, кто сам написал своё число (тёплый интерес).
+# Осторожно: не больше 1 такого ответа в час, ~15% подходящих ответов, одному человеку — раз в неделю.
+# Метки: _a — по просьбе, _p — сами предложили. Если Threads откажет в ответе со ссылкой — ссылки в ответах
+# выключаются на 7 дней (стоп-кран), владельцу приходит сообщение.
+OFFER_SHARE = 0.15
+OFFERS_PER_HOUR = 1
+LINK_PAUSE = timedelta(days=7)
+
+
 def asks_link(message: str) -> bool:
     """Человек сам спрашивает, где посчитать или узнать больше."""
     return bool(ASKS_LINK.search(message))
@@ -119,10 +128,17 @@ async def answer_comments(
                 continue
             # Ссылка — только по просьбе и в пределах лимитов; кто написал своё число — зовём в профиль.
             mode = "profile" if gave_number(comment["message"]) else "plain"
-            if (asks_link(comment["message"])
-                    and await db.link_replies(now - timedelta(hours=1)) < LINKS_PER_HOUR
-                    and not await db.link_replies(now - timedelta(days=7), author)):
+            paused = await db.kv_get("reply_links_paused_until")
+            links_ok = (
+                not (paused and now < datetime.fromisoformat(paused))
+                and await db.link_replies(now - timedelta(hours=1)) < LINKS_PER_HOUR
+                and not await db.link_replies(now - timedelta(days=7), author)
+            )
+            if links_ok and asks_link(comment["message"]):
                 mode = "link"
+            elif (links_ok and mode == "profile" and random.random() < OFFER_SHARE
+                    and await db.link_replies(now - timedelta(hours=1), pattern="%_p") < OFFERS_PER_HOUR):
+                mode = "offer"
             try:
                 text = (await generator.write_reply(post_text, comment["message"], author, mode)).strip()
             except GenerationError as e:
@@ -143,8 +159,8 @@ async def answer_comments(
                     continue
                 if text[:60] in recent:
                     continue
-            if mode == "link":
-                text = f"{text[: MAX_REPLY_LENGTH - 45]}\n{BOT_LINK}r{post_id or 0}"
+            if mode in ("link", "offer"):
+                text = f"{text[: MAX_REPLY_LENGTH - 45]}\n{BOT_LINK}r{post_id or 0}_{'a' if mode == 'link' else 'p'}"
             if sent:
                 await asyncio.sleep(random.uniform(*PAUSE))
 
@@ -152,6 +168,9 @@ async def answer_comments(
                 await threads.reply(target_id, comment["id"], text)
             except ThreadsError as e:
                 log.warning("Не удалось ответить на комментарий %s: %s", comment["id"], e)
+                if mode in ("link", "offer"):  # стоп-кран: Threads не принял ответ со ссылкой
+                    await db.kv_set("reply_links_paused_until", (now + LINK_PAUSE).isoformat())
+                    e = ThreadsError(f"{e} — ссылки в ответах выключил на 7 дней")
                 await db.kv_set("autoreply_error", f"{now:%d.%m %H:%M} ответ: {e}")
                 continue
             await db.record_comment(comment["id"], post_id, author, comment["message"], text, "replied")

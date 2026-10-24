@@ -835,6 +835,11 @@ ADDON_HELP = (
 
 async def report_autoreply_error(bot: Bot, cfg: Config, db: Storage) -> None:
     """Если автоответы сломались — сообщаем владельцу один раз на каждую новую причину."""
+    paused = await db.kv_get("reply_links_paused_until") or ""
+    if paused and paused != (await db.kv_get("reply_links_pause_sent") or ""):
+        await db.kv_set("reply_links_pause_sent", paused)
+        await notify_admins(bot, cfg, "⛔ Threads не принял ответ со ссылкой. На всякий случай выключил ссылки "
+                                      f"в ответах до {datetime.fromisoformat(paused):%d.%m}. Ответы без ссылок идут как обычно.")
     error = await db.kv_get("autoreply_error") or ""
     reason = error.split(": ", 1)[-1] if error else ""
     if reason == (await db.kv_get("autoreply_error_sent") or ""):
