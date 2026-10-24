@@ -29,10 +29,10 @@ PALETTES = [
 ]
 
 CTA_TEXT = {
-    "reply": "Напиши своё число в ответах",
+    "reply": "Напиши число — отвечу лично",
     "link": "Разбор — в первом комментарии",
     "profile": "Разбор — по ссылке в профиле",
-    "none": "Ответь в комментариях",
+    "none": "Напиши — отвечу лично",
 }
 
 
@@ -230,7 +230,7 @@ def card_from_text(text: str, cta: str | None = None) -> Card:
         # Крючок в комментарии важнее ссылки: каждый пост зовёт ответить (слово владельца 24.10.2026).
         if "?" in text or "напиш" in lowered or "ответ" in lowered:
             cta = "reply"
-            cta_text = "Ответь в комментариях" if "напиши" not in lowered or "числ" not in lowered else None
+            cta_text = "Напиши — отвечу лично" if "напиши" not in lowered or "числ" not in lowered else None
         elif "t.me/" in lowered:
             cta, cta_text = "link", "Разбор — по ссылке в посте"
         else:

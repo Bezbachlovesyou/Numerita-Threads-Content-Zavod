@@ -509,9 +509,17 @@ async def notify_admins(bot: Bot, cfg: Config, text: str, post: Post | None = No
 # Каждый пост заканчивается крючком к действию в комментариях (слово владельца 24.10.2026): конкретный
 # лёгкий ответ за 3 секунды — своё число, «да/нет», одно слово, свой пример. Не «сохрани», а «напиши».
 COMMENT_HOOK = (
-    "Последняя строка — призыв написать в комментариях конкретный, лёгкий ответ: своё число дня рождения, "
-    "одно слово, «да или нет», свой пример — так, чтобы ответить хотелось сразу и можно было за 3 секунды. "
-    "Пример: «Напиши своё число — скажу, какое «да» откладываешь именно ты 👇»."
+    "Последняя строка — крючок-обмен, а не просто призыв: «напиши X — и я лично сделаю для тебя Y». "
+    "X — лёгкий ответ за 3 секунды (своё число, две даты, одно слово, эмодзи). Y — игривый личный подарок, "
+    "которого в посте нет и ради которого хочется написать: твоя суперсила по числу, роль в фильме о твоей жизни, "
+    "запрет на ноябрь, фраза, которую тебе нужно услышать сегодня, пароль недели, честный вердикт пары, "
+    "какой ты персонаж или блюдо. Каждый раз новый подарок, с юмором и теплом. Ответ на всех чисел в посте "
+    "не выдавай — пусть за ним приходят в комментарии. Пример: «Напиши своё число — скажу, какую одну "
+    "вещь тебе запрещено делать до конца недели 😏»."
+)
+BUTTON_RULE = (
+    "\nПосле строки КАРТИНКА с новой строки напиши «КНОПКА: » — надпись на золотой кнопке картинки до 32 знаков: "
+    "тот же обмен коротко, с обещанием. Примеры: «Напиши число — выдам суперсилу», «Две даты — и вердикт пары»."
 )
 CTA_RULES = {
     "link": "Перед концом — короткая фраза, что полный разбор — по ссылке в первом комментарии. "
@@ -601,28 +609,43 @@ def split_card_hook(raw: str) -> tuple[str, str | None]:
     return "\n".join(lines).replace("{LINK}", "").strip(), hook  # маркер ссылки не к месту — убираем
 
 
+def split_button(text: str) -> tuple[str, str | None]:
+    """Отделяет строку «КНОПКА: …» — надпись с обещанием на кнопке картинки."""
+    lines, button = [], None
+    for line in text.splitlines():
+        stripped = line.strip().strip("*")
+        if stripped.upper().startswith("КНОПКА:"):
+            button = stripped.split(":", 1)[1].strip().strip("«»\"") or None
+        else:
+            lines.append(line)
+    if button and len(button) > 34:
+        button = None
+    return "\n".join(lines).strip(), button
+
+
 async def write_autopost(
     generator: Generator, slot: Slot, style: str = "intrigue", link_mode: str = "comment",
 ) -> tuple[str, str | None, str]:
     """Текст поста, первый комментарий (для постов со ссылкой) и фраза для картинки."""
     is_link = slot.rubric.cta == "link"
     rule = (LINK_RULES.get(link_mode) if is_link else None) or CTA_RULES[slot.rubric.cta]
-    topic = f"{slot.topic}\n\n{rule}\n\n{CARD_RULES[style]}"
+    topic = f"{slot.topic}\n\n{rule}\n\n{CARD_RULES[style]}" + ("" if is_link else BUTTON_RULE)
     limit = MAX_LENGTH - (60 if is_link and link_mode == "text" else 0)  # место под ссылку в тексте
     text, hook = split_card_hook(await generator.write_post(topic))
     if len(text) > limit:
         text, hook = split_card_hook(
             await generator.write_post(f"{topic} Пиши заметно короче: весь пост до 380 символов.")
         )
+    text, button = split_button(text)
     hook = hook or card_from_text(text).hook
     if not is_link:
-        return text, None, hook
+        return text, None, hook, button
     tag = f"{slot.tag}_l{link_mode[0]}"
     if link_mode == "text":
-        return f"{text[:limit].rstrip()}\n{BOT_LINK}{tag}", None, hook
+        return f"{text[:limit].rstrip()}\n{BOT_LINK}{tag}", None, hook, None
     if link_mode == "profile":
-        return text, None, hook
-    return text, first_comment_for(slot, tag), hook
+        return text, None, hook, None
+    return text, first_comment_for(slot, tag), hook, None
 
 
 async def post_from_bank(
@@ -764,7 +787,7 @@ async def post_next(
         link_mode = await choose_link_mode(db, now, rng) if slot.rubric.cta == "link" else None
         try:
             palette, style = plan.choose_card(rng)
-            text, first_comment, hook = await write_autopost(generator, slot, style, link_mode or "comment")
+            text, first_comment, hook, button = await write_autopost(generator, slot, style, link_mode or "comment")
             if news:
                 text, number = split_news_source(text)
                 if text.strip().upper().startswith("SKIP"):
@@ -784,7 +807,7 @@ async def post_next(
         else:
             card_json = Card(
                 hook, slot.card_number, slot.card_label, slot.rubric.cta,
-                slot.card_cta_text or LINK_CARD_TEXT.get(link_mode or ""), palette, style, slot.card_dates,
+                slot.card_cta_text or button or LINK_CARD_TEXT.get(link_mode or ""), palette, style, slot.card_dates,
             ).to_json()
         post_id = await db.add_draft(slot.topic, text, slot.rubric.key, first_comment, card_json)
         if link_mode:
