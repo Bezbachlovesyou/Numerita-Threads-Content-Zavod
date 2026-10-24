@@ -21,7 +21,12 @@ FEEDS = {
     "Правмир": "https://www.pravmir.ru/feed/",
     "Фома": "https://foma.ru/feed",
     "Naked Science": "https://naked-science.ru/feed",
+    # Наука и изобретения: открытия, прорывы, новые технологии.
+    "N + 1": "https://nplus1.ru/rss",
+    "Элементы": "https://elementy.ru/rss/news",
+    "Hi-News": "https://hi-news.ru/feed",
 }
+SCIENCE_FEEDS = {"Naked Science", "N + 1", "Элементы", "Hi-News"}
 REFRESH_SECONDS = 2 * 60 * 60
 PER_SOURCE = 6  # чтобы одна лента не забивала остальные
 
@@ -31,7 +36,25 @@ GOOD = re.compile(
     r"детск(ий|ого)\s+сад|храм|собор|монастыр|молитв|Бог|святын|паломни|"
     r"родил(ась|ся|ись)|малыш|новорожд|многодет|материнств|свадьб|"
     r"природ|заповедн|нацпарк|животн|приют|леопард|тигр|медвед|дельфин|птиц|редк(ий|их|ая)|высадил|деревь|"
+    r"учён|учен(ые|ых)|исследовател|изобр[её]л|изобретени|разработал|создал[иа]?\s|прорыв|открыти|телескоп|"
+    r"космос|галактик|планет|лекарств|вакцин|технолог|робот|"
     r"мир(но|ное|а)\s|примир|дружб|любов|счасть|улыбк|праздник|фестивал|рекорд|впервые|учёные|открыти[ея]",
+    re.I,
+)
+# В научных лентах берём только настоящую науку и изобретения, без быта и «желтизны».
+SCIENCE = re.compile(
+    r"учён|учен(ые|ый|ых)|физик|биолог|геолог|астроном|химик|инженер|исследова|впервые|открыл|обнаружил|"
+    r"создал|разработал|изобр[её]л|изобретени|прорыв|телескоп|космос|галактик|планет|звезд|робот|квант|"
+    r"ген(ом|ы|ов)?\b|клетк|лекарств|вакцин|технолог|нейросет",
+    re.I,
+)
+SCIENCE_BAD = re.compile(r"эякуляц|секс|психопат|псилоцибин|психодел|наркот|алкогол|маляри|паразит|токсичн", re.I)
+# Всегда табу — даже в научных лентах.
+HARD_BAD = re.compile(
+    r"СВО|войн|военн|армии|армия|солдат|фронт|обстрел|дрон|беспилот|ракетн|взрыв|теракт|"
+    r"погиб|гибел|смерт|скончал|умер|убий|убит|жертв|трагед|катастроф|"
+    r"санкц|выбор|президент|Путин|Зеленск|Трамп|Байден|Украин|ВСУ|НАТО|Пентагон|Кремл|Госдум|депутат|министр|"
+    r"политик|партия|митинг|протест|приговор|арест|преступ|наркот|иноагент|экстрем|террор|мобилиз|ядерн(ое|ый)\s+оруж",
     re.I,
 )
 BAD = re.compile(
@@ -76,7 +99,7 @@ class GoodNews:
                 taken = 0
                 for item in root.iter("item"):
                     title = re.sub(r"\s+", " ", (item.findtext("title") or "")).strip()
-                    if taken < PER_SOURCE and is_good(title):
+                    if taken < PER_SOURCE and is_good(title, science=source in SCIENCE_FEEDS):
                         found.append(Headline(title, source))
                         taken += 1
         seen, unique = set(), []
@@ -95,5 +118,10 @@ class GoodNews:
         return fresh[:limit]
 
 
-def is_good(title: str) -> bool:
-    return bool(title) and len(title) >= 25 and bool(GOOD.search(title)) and not BAD.search(title)
+def is_good(title: str, science: bool = False) -> bool:
+    """Научные ленты — почти всё, кроме табу (там и так открытия); общие — только явно доброе."""
+    if not title or len(title) < 25 or HARD_BAD.search(title):
+        return False
+    if science:
+        return bool(SCIENCE.search(title)) and not SCIENCE_BAD.search(title)
+    return bool(GOOD.search(title)) and not BAD.search(title)
