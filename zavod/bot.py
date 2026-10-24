@@ -710,6 +710,8 @@ async def post_next(
     recent = await db.recent_rubrics(6)
     queued = await db.next_queued()
     if queued and (not recent or recent[0] != "script"):
+        if queued.rubric == "script":
+            queued = await sharpen_script(db, generator, queued)
         post = await publish(queued, db, threads, bot, "", cfg.cards)
     else:
         rubric = plan.choose(recent, rng)
@@ -788,6 +790,37 @@ async def post_next(
     return True
 
 
+SCRIPT_LINK_LINE = re.compile(r"^.*t\.me/\S+.*$", re.M)
+
+
+async def sharpen_script(db: Storage, generator: Generator, post: Post) -> Post:
+    """Готовые посты из плана перед выходом проходят огранку: крючок, юмор, повод ответить (слово владельца 24.10.2026).
+    Ссылку с меткой сохраняем как была — бот сам решит, где ей стоять."""
+    links = SCRIPT_LINK_LINE.findall(post.text)
+    try:
+        text = (await generator.sharpen(SCRIPT_LINK_LINE.sub("", post.text).strip())).strip()
+    except GenerationError as e:
+        log.warning("Огранка поста #%s не удалась, выходит как есть: %s", post.id, e)
+        return post
+    text = "\n".join([strip_credits(SCRIPT_LINK_LINE.sub("", text).strip())] + links)
+    if not text.strip() or len(text) > MAX_LENGTH:
+        return post
+    await db.update_text(post.id, text)
+    return await db.get(post.id) or post
+
+
+# Перерывы в постах по слову владельца: с, по (время Config.timezone).
+POST_BREAKS = [("2026-10-25T04:00", "2026-10-25T06:00")]
+
+
+def post_break_end(now: datetime) -> datetime | None:
+    for start, end in POST_BREAKS:
+        a, b = (datetime.fromisoformat(x).replace(tzinfo=now.tzinfo) for x in (start, end))
+        if a <= now < b:
+            return b
+    return None
+
+
 async def autopost_tick(
     bot: Bot, cfg: Config, db: Storage, threads: ThreadsClient | None, generator: Generator,
     plan: ContentPlan, rng: random.Random,
@@ -802,6 +835,10 @@ async def autopost_tick(
         # Первый запуск: если давно ничего не выходило — постим сразу.
         next_at = now if last is None or now - last >= MIN_GAP else last + MIN_GAP
     if now < next_at:
+        return
+    pause_end = post_break_end(now)
+    if pause_end:
+        await db.kv_set("next_post_at", (pause_end + timedelta(minutes=rng.randint(3, 20))).isoformat())
         return
     if len(await db.recent_published(now - timedelta(days=1))) >= DAILY_POST_CAP:
         await db.kv_set("next_post_at", (now + timedelta(hours=1)).isoformat())
@@ -853,6 +890,8 @@ async def video_tick(
     """Видео с Нумеритой: сначала три главных ролика, потом новые — не больше VIDEO_PER_DAY в сутки."""
     global _video_busy
     now = datetime.now(cfg.timezone)
+    if post_break_end(now):
+        return
     retry = await db.kv_get("video_retry_at")
     if _video_busy or (retry and now < datetime.fromisoformat(retry)):
         return
@@ -1042,7 +1081,7 @@ async def run_scheduler(
             fresh = last is not None and datetime.now(cfg.timezone) - last < timedelta(hours=1)
             next_replies = datetime.now() + (FAST_REPLY_INTERVAL if fresh else REPLY_INTERVAL)
             try:
-                await answer_comments(db, threads, generator, cfg.autoreply_per_hour, per_run=8)
+                await answer_comments(db, threads, generator, cfg.autoreply_per_hour, per_run=10)
                 await report_autoreply_error(bot, cfg, db)
             except Exception:
                 log.exception("Autoreply iteration failed")

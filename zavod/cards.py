@@ -227,11 +227,12 @@ def card_from_text(text: str, cta: str | None = None) -> Card:
     cta_text = None
     if cta is None:
         lowered = text.lower()
-        if "t.me/" in lowered:
-            cta, cta_text = "link", "Разбор — по ссылке в посте"
-        elif "?" in text or "напиш" in lowered or "ответ" in lowered:
+        # Крючок в комментарии важнее ссылки: каждый пост зовёт ответить (слово владельца 24.10.2026).
+        if "?" in text or "напиш" in lowered or "ответ" in lowered:
             cta = "reply"
             cta_text = "Ответь в комментариях" if "напиши" not in lowered or "числ" not in lowered else None
+        elif "t.me/" in lowered:
+            cta, cta_text = "link", "Разбор — по ссылке в посте"
         else:
             cta = "none"
     first = re.split(r"(?<=[.!?…])\s|\n", _strip_emoji(text).strip(), maxsplit=1)[0]
