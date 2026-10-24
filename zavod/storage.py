@@ -384,11 +384,11 @@ class Storage:
     async def queue_post(self, post_id: int) -> None:
         await self._execute("UPDATE posts SET status = 'queued' WHERE id = ?", (post_id,))
 
-    async def requeue_network_failures(self) -> None:
-        """Готовые посты, не вышедшие из-за сбоя связи с Zernio, — обратно в очередь (бот выпустит их сам)."""
+    async def drop_credited_posts(self) -> None:
+        """Готовые посты «по мотивам» чужих авторов не выпускаем: владелец удалил такой пост (24.10.2026)."""
         await self._execute(
-            "UPDATE posts SET status = 'queued', error = NULL WHERE rubric = 'script' AND status = 'failed'"
-            " AND threads_id IS NULL AND error LIKE ?", ("%Не удалось связаться%",)
+            "UPDATE posts SET status = 'deleted' WHERE rubric = 'script' AND status IN ('queued', 'failed', 'scheduled')"
+            " AND threads_id IS NULL AND (text LIKE ? OR text LIKE ?)", ("%по мотивам%", "%keyto%")
         )
 
     async def requeue_scheduled_scripts(self) -> None:

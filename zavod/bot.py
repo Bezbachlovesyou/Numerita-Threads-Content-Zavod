@@ -201,6 +201,15 @@ async def publish(
         return await db.get(post.id)
 
     errors = []
+    if threads is not None and not post.threads_id and await db.kv_get(f"publish_retry:{post.id}"):
+        try:  # прошлый раз связь оборвалась — пост мог выйти; дубль недопустим
+            found = await threads.find_post(strip_credits(links_to_comment(post.text, None)[0]),
+                                            datetime.now(timezone.utc) - timedelta(days=2))
+        except ThreadsError:
+            found = "unknown"
+        if found:
+            await db.set_threads_id(post.id, found if found != "unknown" else "published")
+            post = await db.get(post.id)
     if threads is not None and not post.threads_id:
         try:
             video_url = (json.loads(post.card) or {}).get("video") if post.card else None
@@ -784,7 +793,7 @@ async def autopost_tick(
 async def import_script(db: Storage, script: list[ScriptedPost]) -> int:
     """Ставит готовые тексты в очередь (каждый — один раз). Когда их выпускать, бот решает сам."""
     await db.requeue_scheduled_scripts()
-    await db.requeue_network_failures()
+    await db.drop_credited_posts()
     added = 0
     for item in script:
         if len(item.text) > MAX_LENGTH:
