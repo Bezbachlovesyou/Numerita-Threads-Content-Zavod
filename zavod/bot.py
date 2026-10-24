@@ -762,7 +762,7 @@ async def run_scheduler(
         if plan.enabled and now.time() >= OPTIMIZE_AT and await db.claim_slot(f"optimize {now.date().isoformat()}"):
             try:
                 report = await optimize(db, threads, generator, plan, now)
-                await notify_admins(bot, cfg, "🧠 Самоулучшение за сутки\n\n" + "\n".join(report))
+                await notify_admins(bot, cfg, "🧠 Отчёт за сутки: что я узнал и что поменял\n\n" + "\n".join(report))
             except Exception:
                 log.exception("Optimizer failed")
         if threads is not None and cfg.autoreply and datetime.now() >= next_replies:

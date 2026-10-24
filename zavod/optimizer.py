@@ -56,6 +56,40 @@ INVENT_SYSTEM = (
 )
 
 
+RUBRIC_NAMES = {
+    "mood": "настроение часа", "hello": "«напиши число дня рождения»", "soul": "число души",
+    "debate": "спор про судьбу", "love": "любовь и отношения", "pair": "совместимость пары",
+    "money": "работа и деньги", "wisdom": "мудрость дня", "offer": "приглашение в бота", "day": "число дня",
+    "story": "истории", "unpopular": "непопулярное мнение", "list": "списки «сохрани»", "humor": "юмор",
+    "carousel": "карусель 9 чисел", "grid": "головоломка из цифр", "callout": "«Есть тут рождённые…?»",
+    "ex": "«кто-то из прошлого вернулся»", "jackpot": "«не подарок — джекпот»", "video": "видео с Нумеритой",
+}
+
+
+def rubric_name(key: str, plan: ContentPlan) -> str:
+    """Понятное название рубрики для отчёта владельцу."""
+    if key in RUBRIC_NAMES:
+        return RUBRIC_NAMES[key]
+    rubric = next((r for r in plan.all_rubrics() if r.key == key), None)
+    words = (plan.effective(rubric).text if rubric else key).split()
+    return "новый формат «" + readable(" ".join(words[:6])) + "…»"
+
+
+def readable(text: str) -> str:
+    """Задание рубрики без подстановок — для отчёта владельцу."""
+    words = {"digit": "N", "group": "дни рождения", "a": "A", "b": "B", "digit_word": "N",
+             "gender": "Женщина/Парень", "arcana": "аркан", "n": "N"}
+    return re.sub(r"\{(\w+)\}", lambda m: words.get(m.group(1), "…"), text)
+
+
+def plural(n: int, one: str, few: str, many: str) -> str:
+    if n % 10 == 1 and n % 100 != 11:
+        return f"{n} {one}"
+    if 2 <= n % 10 <= 4 and not 12 <= n % 100 <= 14:
+        return f"{n} {few}"
+    return f"{n} {many}"
+
+
 def post_score(row: dict) -> float:
     """Очки поста: ответы важнее всего, лайки и просмотры — дополнительно."""
     return row["comments"] + 0.2 * row["likes"] + row.get("views", 0) / 500
@@ -109,16 +143,14 @@ async def optimize(
     db: Storage, threads: ThreadsClient | None, generator: Generator, plan: ContentPlan, now: datetime
 ) -> list[str]:
     """Один ежедневный проход. Возвращает строки отчёта."""
-    report: list[str] = []
+    report: list[str] = []  # что изменил — попадает в раздел «Что я поменял»
     if threads is not None:
         await refresh_metrics(db, threads, now)
     rows = await db.engagement(now - WINDOW)
     scores = score_rubrics([r for r in rows if r["rubric"] != "script"])
     by_key = {r.key: r for r in plan.all_rubrics()}
     ranked = sorted(((k, v) for k, v in scores.items() if k in by_key), key=lambda item: -item[1][1])
-    if ranked:
-        report.append("Рубрики за 7 дней (очки на пост = ответы + 0,2 × лайки + просмотры / 500):")
-        report += [f"• {key}: {value:.1f} ({count} пост.)" for key, (count, value) in ranked]
+    name = lambda key: rubric_name(key, plan)  # noqa: E731
     confident = {k: v for k, (n, v) in scores.items() if n >= MIN_POSTS and k in by_key}
     base_scores = [v for k, v in confident.items() if not k.startswith("x")]
     median = statistics.median(base_scores) if base_scores else None
@@ -152,7 +184,8 @@ async def optimize(
         status = "kept" if value >= median else "dropped"
         await db.set_custom_status(row["key"], status)
         verdict = "оставляю" if status == "kept" else "убираю"
-        report.append(f"🧪 Новая рубрика {row['key']}: {value:.1f} против медианы {median:.1f} — {verdict}.")
+        better = "лучше" if status == "kept" else "хуже"
+        report.append(f"🧪 Проверка нового формата {name(row['key'])} закончена: он работает {better} среднего — {verdict}.")
 
     # 3. Веса рубрик: сильные чаще, слабые реже; рубрики на проверке — с запасом.
     weights: dict[str, float] = {}
@@ -165,7 +198,10 @@ async def optimize(
     strong = [k for k, w in weights.items() if w >= 1.3]
     weak = [k for k, w in weights.items() if w <= 0.7]
     if strong or weak:
-        report.append(f"⚖️ Чаще: {', '.join(strong) or '—'}; реже: {', '.join(weak) or '—'}.")
+        if strong:
+            report.append("⬆️ Чаще ставлю: " + ", ".join(map(name, strong)) + " — на них больше реакций.")
+        if weak:
+            report.append("⬇️ Реже ставлю: " + ", ".join(map(name, weak)) + " — реагируют слабее.")
 
     # 4. Веса часов: где реакция лучше — постим чаще (интервал короче), но не чаще раза в час.
     buckets: dict[str, list[float]] = {}
@@ -178,7 +214,7 @@ async def optimize(
         mean = statistics.mean(usable.values())
         hour_weights = {b: round(clamp(v / mean, 0.75, 1.35), 2) for b, v in usable.items()}
         best = max(hour_weights, key=hour_weights.get)
-        report.append(f"🕐 Лучшее время: {best}:00–{int(best) + 3}:00 — там посты будут выходить чаще.")
+        report.append(f"🕐 Лучше всего реагируют с {best}:00 до {int(best) + 3}:00 — в эти часы буду постить чаще.")
     await db.kv_set("hour_weights", json.dumps(hour_weights))
 
     # 4б. Картинки: какие палитры и стиль фразы дают больше реакции.
@@ -197,7 +233,7 @@ async def optimize(
         best_palette = max((k for k in card_weights if k.startswith("palette:")), key=card_weights.get, default=None)
         names = {"style:intrigue": "интрига", "style:question": "вопрос"}
         report.append(
-            "🎨 Картинки: лучше работает "
+            "🎨 На картинках лучше работает "
             + ", ".join(x for x in (names.get(best_style), best_palette and f"палитра {best_palette[8:]}") if x)
             + " — буду использовать чаще."
         )
@@ -218,13 +254,14 @@ async def optimize(
                 IMPROVE_SYSTEM, f"Задание слабой рубрики «{weakest}»:\n{current}\n\nЛучшие посты:\n{examples}"
             )).strip().strip("«»\"")
         except GenerationError as e:
-            report.append(f"⚠️ Не смог переписать {weakest}: {e}")
+            report.append(f"⚠️ Не смог переписать рубрику {name(weakest)}: {e}")
         else:
             if valid_rubric_text(new_text) and new_text != current:
                 await db.set_override(weakest, new_text, current, weak_value)
-                report.append(f"✍️ Переписал рубрику {weakest} ({weak_value:.1f}), проверю через 3 дня:\n{new_text}")
+                report.append(f"✍️ Рубрика {name(weakest)} собирала меньше всего реакций — написал для неё новое задание. "
+                              "Через 3 дня сравню и оставлю ту версию, что лучше.")
             else:
-                report.append(f"⚠️ Новая версия рубрики {weakest} не прошла проверку, оставил прежнюю.")
+                log.info("Новая версия рубрики %s не прошла проверку", weakest)
 
     # 6. Новшество: новая рубрика раз в 2 дня, если сейчас ничего не проверяем.
     last = await db.kv_get("last_experiment")
@@ -234,7 +271,7 @@ async def optimize(
         try:
             line = (await generator.improve(INVENT_SYSTEM, f"Существующие рубрики:\n{existing}")).strip()
         except GenerationError as e:
-            report.append(f"⚠️ Не смог придумать новую рубрику: {e}")
+            report.append(f"⚠️ Не смог придумать новый формат: {e}")
         else:
             match = re.match(r"^-?\s*(\w+)\s+([a-z]{3,12}):\s*(.+)$", line.splitlines()[0] if line else "")
             known = {r.key for r in plan.all_rubrics()} | {r["key"] for r in await db.custom_rubrics(("dropped",))}
@@ -242,11 +279,34 @@ async def optimize(
                 key = "x" + match.group(2)
                 await db.add_custom_rubric(key, match.group(1), match.group(3).strip())
                 await db.kv_set("last_experiment", now.isoformat())
-                report.append(f"🧪 Новая рубрика на проверку — {key} ({match.group(1)}):\n{match.group(3).strip()}")
+                report.append(f"🧪 Запускаю на проверку новый формат постов:\n«{readable(match.group(3).strip())}»\n"
+                              "Если наберёт больше реакций, чем обычно, — оставлю.")
             else:
-                report.append("⚠️ Придуманная рубрика не прошла проверку, попробую завтра.")
+                log.info("Придуманная рубрика не прошла проверку: %s", line[:200])
 
     await apply_state(db, plan, now)
-    if not ranked:
-        report.append("Пока мало данных: нужны опубликованные автопосты и реакции на них.")
-    return report
+    return summary(rows, ranked, name) + ["", "🔧 Что я поменял:"] + (report or ["Пока ничего — жду больше реакций."])
+
+
+def summary(rows: list[dict], ranked: list, name) -> list[str]:
+    """Первая часть отчёта: сколько вышло и что заходит лучше всего — обычными словами."""
+    if not rows:
+        return ["За неделю ещё нет опубликованных постов с реакциями — выводы будут позже."]
+    comments, likes = sum(r["comments"] for r in rows), sum(r["likes"] for r in rows)
+    views = sum(r.get("views", 0) for r in rows)
+    lines = [
+        f"📊 За 7 дней: {plural(len(rows), 'пост', 'поста', 'постов')}, "
+        f"{plural(comments, 'комментарий', 'комментария', 'комментариев')}, "
+        f"{plural(likes, 'лайк', 'лайка', 'лайков')}, {plural(views, 'просмотр', 'просмотра', 'просмотров')}."
+    ]
+    if ranked:
+        lines += ["", "🏆 Что заходит лучше всего (в среднем на один пост):"]
+        for i, (key, (count, _)) in enumerate(ranked[:5], 1):
+            own = [r for r in rows if r["rubric"] == key]
+            c, l = sum(r["comments"] for r in own) / count, sum(r["likes"] for r in own) / count
+            title = name(key)
+            lines.append(f"{i}. {title[:1].upper() + title[1:]} — "
+                         f"{c:.0f} комм., {l:.0f} лайк. ({plural(count, 'пост', 'поста', 'постов')})")
+    if not ranked or min(count for _, (count, _) in ranked) < MIN_POSTS:
+        lines.append("\nДанных пока мало — уверенные выводы будут, когда каждый вид постов выйдет хотя бы 2–3 раза.")
+    return lines
