@@ -8,7 +8,6 @@ import logging
 import re
 from datetime import datetime, timedelta, timezone
 
-from .autopost import BOT_LINK
 from .cards import grid_hint
 from .generator import GenerationError, Generator
 from .storage import Storage
@@ -25,14 +24,15 @@ def gave_number(message: str) -> bool:
     return any(1 <= int(n) <= 31 for n in re.findall(r"(?<!\d)(\d{1,2})(?!\d)", message))
 
 
-def finish_reply(text: str, tag: str | None) -> str:
-    """Обрезает слишком длинный ответ и подставляет ссылку (или убирает маркер, если ссылка не нужна)."""
-    link = BOT_LINK + tag if tag else ""
-    body = text.replace("{LINK}", "").strip()
-    limit = MAX_REPLY_LENGTH - (len(link) + 1 if link else 0)
-    if len(body) > limit:
-        body = body[: limit - 1].rsplit(" ", 1)[0] + "…"
-    return f"{body}\n{link}" if link else body
+LINK_RE = re.compile(r"(https?://\S+|t\.me/\S+|@Numeritabot\b)", re.I)
+
+
+def finish_reply(text: str) -> str:
+    """Обрезает слишком длинный ответ и вычищает любые ссылки — в ответах их быть не должно."""
+    body = re.sub(r"[ \t]{2,}", " ", LINK_RE.sub("", text.replace("{LINK}", ""))).strip()
+    if len(body) > MAX_REPLY_LENGTH:
+        body = body[: MAX_REPLY_LENGTH - 1].rsplit(" ", 1)[0] + "…"
+    return body
 
 
 async def reply_targets(db: Storage, threads: ThreadsClient, now: datetime) -> list[tuple[str, int | None, str]]:
@@ -96,12 +96,11 @@ async def answer_comments(
                 await db.record_comment(comment["id"], post_id, author, comment["message"], "", "skipped")
                 continue
 
-            replied_total = await db.replies_since(now - timedelta(days=3650))
-            # Написал свою дату — он уже заинтересован: ссылку на полный разбор даём всегда.
-            # Остальным (спасибо, вопросы) — примерно в каждом втором ответе.
-            with_link = gave_number(comment["message"]) or replied_total % 2 == 1
+            # Ссылок в ответах нет совсем: Threads считает их спамом и может заблокировать аккаунт.
+            # Кто написал своё число — того мягко зовём в профиль, там ссылка на бота.
+            to_profile = gave_number(comment["message"])
             try:
-                text = (await generator.write_reply(post_text, comment["message"], author, with_link)).strip()
+                text = (await generator.write_reply(post_text, comment["message"], author, to_profile)).strip()
             except GenerationError as e:
                 log.warning("Не удалось написать ответ на комментарий %s: %s", comment["id"], e)
                 await db.kv_set("autoreply_error", f"{now:%d.%m %H:%M} нейросеть: {e}")
@@ -110,7 +109,7 @@ async def answer_comments(
             if text.upper().strip(" .!\"'«»") == "SKIP":
                 await db.record_comment(comment["id"], post_id, author, comment["message"], "", "skipped")
                 continue
-            text = finish_reply(text, f"r{post_id or 0}" if with_link else None)
+            text = finish_reply(text)
 
             try:
                 await threads.reply(target_id, comment["id"], text)

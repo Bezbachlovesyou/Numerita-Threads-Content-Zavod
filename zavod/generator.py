@@ -57,12 +57,13 @@ class Generator:
         """Свободный запрос к модели (самоулучшение контент-плана)."""
         return await self._complete(system, prompt)
 
-    async def write_reply(self, post: str, comment: str, author: str, with_link: bool) -> str:
+    async def write_reply(self, post: str, comment: str, author: str, to_profile: bool) -> str:
         """Ответ на комментарий под постом. «SKIP» — отвечать не нужно."""
         prompt = (
             f"Наш пост:\n{post}\n\nКомментарий от @{author}:\n{comment}\n\n"
-            + ("В последней строке поставь только маркер {LINK} — бот заменит его ссылкой на полный разбор."
-               if with_link else "Без ссылок и без упоминания бота.")
+            + "Никаких ссылок, адресов и @упоминаний — Threads за них блокирует. "
+            + ("В конце мягко позови за полным разбором по имени и дате — «ссылка в шапке профиля»."
+               if to_profile else "Про бота и профиль не пиши.")
         )
         return await self._complete(self.reply_system, await self._with_knowledge(prompt, comment))
 
