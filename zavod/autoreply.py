@@ -23,6 +23,8 @@ log = logging.getLogger(__name__)
 LOOKBACK = timedelta(days=3)  # под какими постами смотрим комментарии
 # Правила присутствия (prompts/threads_rules.md): отвечаем как живой человек, а не как спам-бот.
 MAX_GENERATIONS_PER_RUN = 10  # включая переписывания; лимит на человека отсутствует
+FRESH_WINDOW = timedelta(minutes=30)
+DAILY_REPLY_CAP = 900  # официальный предел Threads — 1000 ответов в сутки; держим запас
 PAUSE = (20, 60)  # секунд между ответами внутри одного прохода
 # Ссылка в ответе — только если человек сам попросил (не навязываемся): не больше 3 в час на всех
 # и не чаще раза в неделю одному человеку. Остальных зовём «в шапку профиля» или не зовём вовсе.
@@ -128,7 +130,8 @@ async def answer_comments(
 ) -> int:
     """Отвечает на новые комментарии. Возвращает, сколько ответов отправлено за этот прогон."""
     now = datetime.now(timezone.utc)
-    budget = min(per_run, per_hour - await db.replies_since(now - timedelta(hours=1)))
+    budget = min(per_run, per_hour - await db.replies_since(now - timedelta(hours=1)),
+                 DAILY_REPLY_CAP - await db.replies_since(now - timedelta(days=1)))
     if budget <= 0:
         return 0
 
@@ -152,7 +155,14 @@ async def answer_comments(
             queue.append((target_id, post_id, context, item))
     handled = await db.handled_comments([item["id"] for *_, item in queue])
     queue = [q for q in queue if q[3]["id"] not in handled]
-    queue.sort(key=lambda q: q[3].get("createdTime") or "", reverse=True)
+    # Порядок: сначала совсем свежие (до 30 минут — окно, когда Threads решает про охват), затем все остальные
+    # от самых давно ждущих — чтобы под популярным постом никто не застревал навсегда за новыми комментариями.
+    fresh_after = (now - FRESH_WINDOW).isoformat().replace("+00:00", "Z")
+    fresh = sorted((q for q in queue if (q[3].get("createdTime") or "") >= fresh_after),
+                   key=lambda q: q[3].get("createdTime") or "", reverse=True)
+    waiting = sorted((q for q in queue if (q[3].get("createdTime") or "") < fresh_after),
+                     key=lambda q: q[3].get("createdTime") or "")
+    queue = fresh + waiting
 
     queue = fair_queue(queue)
     generated = 0
@@ -203,6 +213,9 @@ async def answer_comments(
             if text[:60] in recent:
                 continue
         if not text or text.upper().strip(" .!") == "SKIP":
+            continue
+        if len(text) < 25 and not re.search(r"[.!?…)»✨🌙💫🔥🤍😊🙂]\s*$", text):  # обрывок вроде «5 — это» — не отправляем
+            log.warning("Слишком короткий ответ на %s: %r — не отправляю", comment["id"], text)
             continue
         if mode in ("link", "offer"):
             text = f"{text[: MAX_REPLY_LENGTH - 45]}\n{BOT_LINK}r{post_id or 0}_{'a' if mode == 'link' else 'p'}"

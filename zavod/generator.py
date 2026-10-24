@@ -4,6 +4,7 @@ https://openrouter.ai/docs/api-reference/chat-completion
 """
 
 import logging
+import re
 from pathlib import Path
 
 import httpx
@@ -26,6 +27,12 @@ def clean_key(raw: str) -> str:
 
 def mask_key(key: str) -> str:
     return f"{key[:12]}…{key[-4:]} ({len(key)} симв.)" if len(key) > 16 else f"({len(key)} симв.)"
+
+
+def complete_sentences(text: str) -> str:
+    """Обрезает оборванный текст до последнего законченного предложения (или пусто, если такого нет)."""
+    match = list(re.finditer(r"[.!?…)»✨🌙💫🔥🤍]\s", text + " "))
+    return text[: match[-1].start() + 1].strip() if match else ""
 
 
 class GenerationError(Exception):
@@ -111,7 +118,7 @@ class Generator:
             )
         return await self._complete(self.system, prompt)
 
-    async def _complete(self, system: str, prompt: str, max_tokens: int | None = None) -> str:
+    async def _complete(self, system: str, prompt: str, max_tokens: int | None = None, _retry: bool = False) -> str:
         try:
             async with httpx.AsyncClient(timeout=180) as http:
                 response = await http.post(
@@ -147,7 +154,15 @@ class Generator:
                 message = "закончились деньги на балансе OpenRouter"
             raise GenerationError(f"Ошибка OpenRouter: {message}")
 
-        text = (payload["choices"][0]["message"].get("content") or "").strip()
+        choice = payload["choices"][0]
+        text = (choice["message"].get("content") or "").strip()
+        if choice.get("finish_reason") == "length" and max_tokens and not _retry:
+            # Модель упёрлась в предел длины (часть уходит на «размышления») — обрывок не публикуем:
+            # повторяем с запасом, а если снова оборвалось — режем по последнему законченному предложению.
+            log.warning("Ответ оборвался на пределе %s токенов — повторяю с запасом", max_tokens)
+            return await self._complete(system, prompt, max_tokens=max_tokens * 4, _retry=True)
+        if choice.get("finish_reason") == "length":
+            text = complete_sentences(text)
         if not text:
             raise GenerationError("Модель вернула пустой ответ.")
         return text
