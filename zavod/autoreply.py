@@ -34,7 +34,7 @@ DAILY_REPLY_CAP = 900  # официальный предел Threads — 1000 о
 PAUSE = (10, 30)  # секунд между ответами внутри одного прохода
 # Ссылка в ответе — только если человек сам попросил (не навязываемся): не больше 3 в час на всех
 # и не чаще раза в неделю одному человеку. Остальных зовём «в шапку профиля» или не зовём вовсе.
-LINKS_PER_HOUR = 3
+LINKS_PER_HOUR = 4
 ASKS_LINK = re.compile(
     r"ссылк|линк|\blink|где\b[^?]{0,40}(посчита|узна|найти|получ|бот|сайт)|как\b[^?]{0,40}(посчита|узна|найти)"
     r"|(ваш|ваше|вашего|вашем)\s+(бот|сайт|канал)|есть\s+(бот|сайт|канал)|куда\s+(писать|перейти)", re.I,
@@ -45,8 +45,8 @@ ASKS_LINK = re.compile(
 # Осторожно: не больше 1 такого ответа в час, ~15% подходящих ответов, одному человеку — раз в неделю.
 # Метки: _a — по просьбе, _p — сами предложили. Если Threads откажет в ответе со ссылкой — ссылки в ответах
 # выключаются на 7 дней (стоп-кран), владельцу приходит сообщение.
-OFFER_SHARE = 0.15
-OFFERS_PER_HOUR = 1
+OFFER_SHARE = 0.25  # 25.10.2026: оплат нет — чаще даём прямой путь к разбору (в лимитах и со стоп-краном)
+OFFERS_PER_HOUR = 2
 LINK_PAUSE = timedelta(days=7)
 
 
@@ -278,8 +278,8 @@ async def answer_comments(
         memory = await conversation_context(db, generator, target_id, comment["id"])
         post_text += memory + (f"\n\nФокус на сегодня: {reply_focus}" if reply_focus else "")
         # Ссылка — только по просьбе и в пределах лимитов; кто написал своё число — зовём в профиль.
-        mode = "profile" if gave_number(comment["message"]) else "plain"
-        if mode == "profile" and ("Твой прошлый ответ" in post_text or "assistant @" in memory or "Сводка ранних" in memory):  # в диалоге второй раз «в профиль» не зовём
+        mode = "profile" if gave_number(comment["message"]) else ("question" if "?" in comment["message"] else "plain")
+        if mode in ("profile", "question") and ("Твой прошлый ответ" in post_text or "assistant @" in memory or "Сводка ранних" in memory):  # в диалоге второй раз «в профиль» не зовём
             mode = "plain"
         paused = await db.kv_get("reply_links_paused_until")
         links_ok = (
