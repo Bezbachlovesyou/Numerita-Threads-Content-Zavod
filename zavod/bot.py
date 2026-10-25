@@ -18,7 +18,7 @@ from .cards import (
     GRID_TITLES, PLANETS, Card, birth_days, card_from_text, carousel_from_json, carousel_json, grid_json, make_grid, render_card,
     render_grid, soul_carousel,
 )
-from .autoreply import answer_comments
+from .autoreply import answer_comments, finish_reply
 from .optimizer import optimize
 from . import costs, constraint
 from .config import Config
@@ -45,6 +45,7 @@ COMMANDS = [
     ("queue", "черновики и запланированные посты"),
     ("stats", "статистика в Threads"),
     ("costs", "расходы на нейросеть за сегодня"),
+    ("compare", "сравнить ответы двух нейросетей"),
     ("status", "модель, база знаний, подключения"),
     ("plan", "контент-план: ближайшие автопосты"),
     ("replies", "последние автоответы на комментарии"),
@@ -387,6 +388,24 @@ def create_router(cfg: Config, plan: ContentPlan) -> Router:
             return
         removed = await unpublish_matching(db, threads, [fragment])
         await message.answer(f"🗑 Снято из Threads: {removed}." if removed else "Такой пост за 7 дней не нашла.")
+
+    @router.message(Command("compare", ignore_case=True))
+    async def on_compare(message: Message, command: CommandObject, generator: Generator) -> None:
+        """/compare <комментарий> — ответы обеих моделей на один комментарий, ровно как их получат люди."""
+        comment = (command.args or "").strip()
+        if not comment:
+            await message.answer("Напиши после команды комментарий, как его написал бы человек в Threads.\n"
+                                 "Например: /compare 6 и 17 — что скажешь про нашу пару?")
+            return
+        post = "Напишите в ответах два числа: день вашего рождения и день рождения партнёра. Скажу, как ладят ваши планеты."
+        mode = "profile" if re.search(r"\d", comment) else ("question" if "?" in comment else "plain")
+        await message.answer("✍️ Пишу двумя нейросетями, это 10–30 секунд…")
+        for model in dict.fromkeys([cfg.reply_model, cfg.reply_ab_model]):
+            try:
+                text = finish_reply(await generator.write_reply(post, comment, "test", mode, model))
+            except GenerationError as e:
+                text = f"❌ {e}"
+            await message.answer(f"🤖 {model.split('/')[-1]}\n\n{text}")
 
     @router.message(Command("costs", ignore_case=True))
     async def on_costs(message: Message, db: Storage, generator: Generator) -> None:
