@@ -125,6 +125,8 @@ async def report(db, generator, tz) -> str:
     ab = await reply_ab(db, generator, now)
     if ab:
         lines += ["", "A/B моделей ответов за 7 дней (продолжили разговор после нашего ответа):"] + ab
+    from . import funnel
+    lines += ["", "Что было дальше в боте:"] + ["• " + x for x in funnel.lines(await funnel.fetch(1))]
     lines += ["", "Картинки рисуются кодом — $0. Видео (fal.ai) не включено и с этого счёта не платится."]
     return "\n".join(lines)
 

@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 from pathlib import Path
 
 from aiogram import Bot, Dispatcher
@@ -10,6 +11,7 @@ from datetime import datetime, timezone
 from .autopost import ContentPlan, load_bank, load_rubrics, load_script
 from .bot import COMMANDS, create_router, import_script, run_scheduler
 from .costs import make_sink
+from . import funnel
 from .config import load_config
 from .generator import Generator
 from .knowledge import KnowledgeBase
@@ -29,6 +31,7 @@ async def main() -> None:
     await storage.init()
     generator = Generator(cfg.openrouter_api_key, cfg.openrouter_model, VOICE_PROMPT, KnowledgeBase(cfg.kb_url))
     generator.cost_sink = make_sink(storage, cfg.timezone)
+    funnel.KEY = os.getenv("NUMERITA_THREADS_KEY", "").strip()
     generator.reply_model = cfg.reply_model
     if not await storage.kv_get("reply_ab_since"):
         await storage.kv_set("reply_ab_since", datetime.now(timezone.utc).isoformat())

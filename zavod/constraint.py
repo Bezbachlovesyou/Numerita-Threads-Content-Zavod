@@ -11,6 +11,7 @@ import logging
 import re
 from datetime import datetime, timedelta, timezone
 
+from . import funnel
 from .generator import GenerationError, Generator
 from .storage import Storage
 
@@ -85,7 +86,7 @@ async def metrics(db: Storage, now: datetime, tz) -> str:
         if ledger:
             spent = ", ".join(f"{k} ${v[1]:.2f} ({v[0]} запр.)" for k, v in ledger.items())
             lines.append(f"расходы {day.astimezone(tz):%d.%m}: {spent}")
-    lines.append("переходы в бота и оплаты по меткам считает бот Нумериты; здесь их нет — это слепая зона.")
+    lines += funnel.lines(await funnel.fetch(7))
     return "\n".join(lines)
 
 
