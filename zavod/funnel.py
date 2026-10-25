@@ -5,6 +5,7 @@
 """
 
 import logging
+import time
 
 import httpx
 
@@ -14,9 +15,37 @@ URL = "https://numerita.up.railway.app/threads.json"
 KEY = ""  # задаётся при запуске из переменной NUMERITA_THREADS_KEY
 
 
+_cache: dict[int, tuple[float, dict | None]] = {}
+
+
 async def fetch(days: int = 7) -> dict | None:
     if not KEY:
         return None
+    hit = _cache.get(days)
+    if hit and time.monotonic() - hit[0] < 3600:
+        return hit[1]
+    data = await _fetch(days)
+    _cache[days] = (time.monotonic(), data)
+    return data
+
+
+def arrivals_by_link_mode(data: dict | None) -> dict[str, int] | None:
+    """Сколько людей пришло в бота по каждому способу подачи ссылки в постах (_lt, _lc, шапка профиля)."""
+    if not data:
+        return None
+    out = {"text": 0, "comment": 0, "profile": 0}
+    for r in data.get("labels", []):
+        label, came = str(r.get("label", "")), int(r.get("came") or 0)
+        if label.endswith("_lt"):
+            out["text"] += came
+        elif label.endswith("_lc"):
+            out["comment"] += came
+        elif label == "th_bio":
+            out["profile"] += came
+    return out
+
+
+async def _fetch(days: int) -> dict | None:
     try:
         async with httpx.AsyncClient(timeout=20) as http:
             r = await http.get(URL, params={"k": KEY, "days": days})

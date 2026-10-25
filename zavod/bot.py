@@ -20,7 +20,7 @@ from .cards import (
 )
 from .autoreply import answer_comments, finish_reply
 from .optimizer import optimize
-from . import costs, constraint
+from . import costs, constraint, funnel
 from .config import Config
 from .generator import GenerationError, Generator
 from .storage import PgStorage, Post, Storage
@@ -594,6 +594,12 @@ async def choose_link_mode(db: Storage, now: datetime, rng: random.Random) -> st
     if min(counts.values()) < LINK_MODE_MIN_POSTS:
         return min(LINK_MODES, key=lambda m: (counts[m], rng.random()))
     weights = json.loads(await db.kv_get("link_mode_weights") or "{}")
+    # Решают не комментарии, а люди в боте: способ, по которому за неделю не пришёл никто, пока шапка
+    # профиля приводит людей, — на минимум (данные бота Нумериты по меткам).
+    came = funnel.arrivals_by_link_mode(await funnel.fetch(7))
+    if came and came["profile"]:
+        weights = {m: (0.15 if came[m] == 0 and counts[m] >= LINK_MODE_MIN_POSTS and m != "profile"
+                       else weights.get(m, 1.0)) for m in LINK_MODES}
     return rng.choices(LINK_MODES, [max(0.15, weights.get(m, 1.0)) for m in LINK_MODES])[0]
 
 
