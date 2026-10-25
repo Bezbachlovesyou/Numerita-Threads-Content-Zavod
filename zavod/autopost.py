@@ -13,7 +13,7 @@ import logging
 import random
 import re
 from dataclasses import dataclass, replace
-from datetime import datetime, time, timedelta
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
 
 from .cards import PALETTES, PLANETS, birth_days
@@ -46,6 +46,14 @@ EMOTIONS = [
     ("досада", "Какой совет вы слышите чаще всего — и он вас раздражает?"),
 ]
 WEEKDAYS = ["понедельник", "вторник", "среда", "четверг", "пятница", "суббота", "воскресенье"]
+MONTHS_GEN = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября",
+              "ноября", "декабря"]
+
+
+def when_phrase(day: date) -> str:
+    """«начало ноября», «середина октября», «конец октября» — для своевременных постов."""
+    part = "начало" if day.day <= 10 else "середина" if day.day <= 20 else "конец"
+    return f"{part} {MONTHS_GEN[day.month - 1]}"
 CTAS = ("link", "reply", "profile", "none")
 BOT_LINK = "t.me/Numeritabot?start=ad_th_"
 
@@ -189,6 +197,7 @@ class ContentPlan:
             gender=rng.choice(GENDERS),
             emotion=emotion[1],
             digit_word=DIGIT_WORDS[digit],
+            when=when_phrase(today),
         )
         if "{emotion}" in rubric.text:  # пометка для самоулучшения: какая эмоция лучше вовлекает
             topic += f"\n[эмоция: {emotion[0]}]"

@@ -30,7 +30,7 @@ MIN_LINK_POSTS = 4
 MIN_COMPARE = 6  # постов со ссылкой и без — прежде чем решать, вредит ли ссылка  # столько постов каждого способа подачи ссылки, прежде чем делать вывод
 TRIAL = timedelta(days=3)
 EXPERIMENT_EVERY = timedelta(days=2)
-PLACEHOLDERS = {"part_of_day", "weekday", "day_number", "tomorrow_number", "digit", "group", "n", "a", "b", "arcana", "gender", "digit_word", "emotion"}
+PLACEHOLDERS = {"part_of_day", "weekday", "day_number", "tomorrow_number", "digit", "group", "n", "a", "b", "arcana", "gender", "digit_word", "emotion", "when"}
 PLACEHOLDER_HELP = (
     "{digit} — число 1–9, {group} — дни рождения с этим числом души, {n} — день рождения 1–31, "
     "{a} и {b} — пара чисел, {arcana} — аркан 1–22, {weekday} — день недели, {part_of_day} — время суток, "
