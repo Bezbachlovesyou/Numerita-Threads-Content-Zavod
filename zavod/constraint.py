@@ -49,6 +49,9 @@ SYSTEM = """Ты — операционный директор Нумериты 
 По данным найди ОДНО узкое звено и предложи, как его расшить. Обратимые меры — это только две подсказки
 на 12 часов: как писать посты (post_focus) и как отвечать на комментарии (reply_focus). Всё, что нельзя
 откатить или что тратит деньги, меняет правила, лимиты, цены, публичные обещания, — только вопрос владельцу (ask_owner).
+Неизменные правила (подсказки их не меняют, не предлагай их нарушить): ответы пишет дешёвая модель, сильную для ответов
+не используем; «+», «спасибо» и смайлики, а также согласие без вопроса — без ответа по коду (это экономия, не потеря людей);
+потолок расходов на ответы в сутки; ссылки в ответах — в лимитах. Пропуски по этим причинам — норма, а не узкое звено.
 Ответ — строго JSON без пояснений:
 {"bottleneck": "звено одной фразой", "why": "почему по цифрам", "step": "какой из пяти шагов и что делаем",
  "post_focus": "конкретная подсказка для постов или пусто", "reply_focus": "подсказка для ответов или пусто",
@@ -69,11 +72,16 @@ async def metrics(db: Storage, now: datetime, tz) -> str:
         heard = await db._rows("SELECT COUNT(*) AS n, COUNT(DISTINCT author) AS people FROM dialogue_messages "
                                "WHERE role='user' AND created_at >= ? AND created_at < ?", (iso(start), iso(end)))
         by = {r["status"]: int(r["n"]) for r in rep}
+        why = await db._rows("SELECT reply, COUNT(*) AS n FROM comment_replies WHERE status='skipped' AND created_at >= ? "
+                             "AND created_at < ? GROUP BY reply", (iso(start), iso(end)))
+        names = {"skip:noise": "«+», «спасибо», смайлики", "skip:dialog": "согласие или 3-я реплика без вопроса",
+                 "skip:model": "спам/грубость/бессмыслица", "skip:gone": "удалённые"}
+        skipped_why = ", ".join(f"{names.get(r['reply'], 'прочее')} {r['n']}" for r in why)
         n_posts = int(posts[0]["n"])
         comments = int(heard[0]["n"])
         lines.append(f"{label}: постов {n_posts}, комментариев людей {comments} от {heard[0]['people']} человек "
                      f"({comments / n_posts if n_posts else 0:.1f} на пост), наших ответов {by.get('replied', 0)}, "
-                     f"пропущено {by.get('skipped', 0)}")
+                     f"пропущено {by.get('skipped', 0)}" + (f" (из них {skipped_why})" if skipped_why else ""))
     top = await db._rows(
         "SELECT p.rubric, COUNT(c.comment_id) AS n FROM posts p LEFT JOIN comment_replies c ON c.post_id = p.id "
         "WHERE p.status='published' AND p.published_at >= ? GROUP BY p.rubric ORDER BY n DESC",

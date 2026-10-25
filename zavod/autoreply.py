@@ -244,7 +244,7 @@ async def answer_comments(
     # Пустые реплики («+», смайлики, «спасибо») нейросети не отдаём — это бесплатно отсеивает код.
     for q in [q for q in queue if is_noise(q[3]["message"], q[2])]:
         author = (q[3].get("from") or {}).get("username") or "?"
-        await db.record_comment(q[3]["id"], q[1], author, q[3]["message"], "", "skipped")
+        await db.record_comment(q[3]["id"], q[1], author, q[3]["message"], "skip:noise", "skipped")
         queue.remove(q)
     # Порядок: сначала совсем свежие (до 30 минут — окно, когда Threads решает про охват), затем все остальные
     # от самых давно ждущих — чтобы под популярным постом никто не застревал навсегда за новыми комментариями.
@@ -282,7 +282,7 @@ async def answer_comments(
             # Короткая реплика на наш ответ без вопроса и числа («точно», «да, это я») — согласие, не просьба.
             chit_chat = ours and len(comment["message"].strip()) < 30 and not re.search(r"\d", comment["message"])
             if ours >= DIALOGUE_TURNS or chit_chat:
-                await db.record_comment(comment["id"], post_id, author, comment["message"], "", "skipped")
+                await db.record_comment(comment["id"], post_id, author, comment["message"], "skip:dialog", "skipped")
                 continue
         memory = await conversation_context(db, generator, target_id, comment["id"])
         post_text += memory + (f"\n\nФокус на сегодня: {reply_focus}" if reply_focus else "")
@@ -320,7 +320,7 @@ async def answer_comments(
             return sent
 
         if text.upper().strip(" .!\"'«»") == "SKIP":
-            await db.record_comment(comment["id"], post_id, author, comment["message"], "", "skipped")
+            await db.record_comment(comment["id"], post_id, author, comment["message"], "skip:model", "skipped")
             continue
         text = finish_reply(text)
         # Одинаковые ответы Threads считает спамом: похожий на недавний — переписываем или пропускаем.
@@ -351,7 +351,7 @@ async def answer_comments(
         except ThreadsError as e:
             log.warning("Не удалось ответить на комментарий %s: %s", comment["id"], e)
             if is_gone(e):  # комментарий удалили или скрыли — просто пропускаем
-                await db.record_comment(comment["id"], post_id, author, comment["message"], "", "skipped")
+                await db.record_comment(comment["id"], post_id, author, comment["message"], "skip:gone", "skipped")
                 continue
             if mode in ("link", "offer"):  # стоп-кран: Threads не принял ответ со ссылкой
                 await db.kv_set("reply_links_paused_until", (now + LINK_PAUSE).isoformat())

@@ -13,6 +13,7 @@ log = logging.getLogger(__name__)
 
 URL = "https://numerita.up.railway.app/threads.json"
 KEY = ""  # задаётся при запуске из переменной NUMERITA_THREADS_KEY
+STATUS = ""  # почему нет данных — для отчёта владельцу простыми словами
 
 
 _cache: dict[int, tuple[float, dict | None]] = {}
@@ -46,19 +47,27 @@ def arrivals_by_link_mode(data: dict | None) -> dict[str, int] | None:
 
 
 async def _fetch(days: int) -> dict | None:
+    global STATUS
     try:
         async with httpx.AsyncClient(timeout=20) as http:
             r = await http.get(URL, params={"k": KEY, "days": days})
-        return r.json() if r.is_success else None
+        if r.status_code == 404:
+            STATUS = "бот Нумериты не принял ключ: проверь значение NUMERITA_THREADS_KEY (строка «🔑» в /threads)"
+            return None
+        r.raise_for_status()
+        STATUS = ""
+        return r.json()
     except (httpx.HTTPError, ValueError) as e:
         log.warning("Статистика бота Нумериты недоступна: %s", e)
+        STATUS = "бот Нумериты сейчас не отвечает, попробую позже"
         return None
 
 
 def lines(data: dict | None) -> list[str]:
     """Коротко: всего, посты против ответов, лучшие метки."""
     if not data:
-        return ["переходы в бота и оплаты: нет данных (ключ NUMERITA_THREADS_KEY не задан или бот недоступен)"]
+        why = STATUS if KEY else "на Railway не задана переменная NUMERITA_THREADS_KEY"
+        return [f"переходы в бота и оплаты: нет данных — {why or 'неизвестная причина'}"]
     labels = [r for r in data.get("labels", []) if str(r.get("label", "")).startswith("th_")]
     if not labels:
         return [f"переходы в бота за {data.get('days')} дн.: по меткам Threads пока никто не пришёл"]
