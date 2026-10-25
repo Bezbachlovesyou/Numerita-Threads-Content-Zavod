@@ -17,7 +17,8 @@ from .storage import Storage
 
 log = logging.getLogger(__name__)
 
-RUN_HOURS = (11, 19)  # по часовому поясу бота
+RUN_HOURS = (11, 15, 19)  # по часовому поясу бота; в 15:00 — обход по всем теориям роста
+GROWTH_HOUR = 15
 FOCUS_HOURS = 12
 SUMMARY = """📘 Теория ограничений Голдратта — коротко
 
@@ -107,10 +108,22 @@ async def focus(db: Storage, key: str) -> str:
     return raw.get("text", "")
 
 
-async def review(db: Storage, generator: Generator, now: datetime, tz) -> str | None:
+GROWTH = """Это дневной обход по всем нашим теориям роста (слово владельца 25.10.2026), а не только по Голдратту.
+Сверь данные с каждой линзой и выбери ОДНУ самую сильную меру:
+- Бережливый стартап (Рис, Мауря): какая наша главная догадка сейчас и какая цифра её проверит; не строим лишнего.
+- Воронка AARRR (Макклюр): привлечение → активация («вау») → удержание → рекомендации → доход; где теряем больше всего.
+- Кристенсен (работа, которую нанимают) и Хормози (ценность = результат × вера ÷ время и усилия): ясно ли обещание.
+- Эллис (40% «очень расстроятся») и Грэм (делай немасштабируемое для первых людей).
+- ИИ-скорость: ясные проверяемые задачи — агенту, вкус и необратимое — человеку; расходы на ИИ окупаются.
+- Психология вовлечения: крючок первой строки, эмоция высокой активации, узнавание, лёгкий ответ за 3 секунды.
+Формат ответа тот же JSON; в "step" назови линзу и меру."""
+
+
+async def review(db: Storage, generator: Generator, now: datetime, tz, growth: bool = False) -> str | None:
     data = await metrics(db, now, tz)
     try:
-        raw = await generator.improve(SYSTEM, f"Данные:\n{data}", max_tokens=900, kind="toc")
+        system = SYSTEM + ("\n\n" + GROWTH if growth else "")
+        raw = await generator.improve(system, f"Данные:\n{data}", max_tokens=900, kind="toc")
     except GenerationError as e:
         log.warning("Обход по Голдратту не удался: %s", e)
         return None
@@ -124,7 +137,8 @@ async def review(db: Storage, generator: Generator, now: datetime, tz) -> str | 
         if text:
             await db.kv_set(key, json.dumps({"text": text, "until": until}, ensure_ascii=False))
             applied.append(f"• {label}: {text}")
-    lines = [f"🔭 Обход по Голдратту, {now:%d.%m %H:%M}", "",
+    title = "🌱 Дневной обход по всем теориям роста" if growth else "🔭 Обход по Голдратту"
+    lines = [f"{title}, {now:%d.%m %H:%M}", "",
              f"Узкое звено: {plan['bottleneck']}", f"Почему: {plan.get('why', '')}", f"Шаг: {plan.get('step', '')}"]
     if applied:
         lines += ["", f"Включила на {FOCUS_HOURS} часов (откатится само):"] + applied
