@@ -1139,6 +1139,10 @@ async def run_scheduler(
     """Раз в 30 секунд: посты по кнопкам «через час», автопостинг; раз в 5 минут — ответы на комментарии."""
     rng = random.Random()
     next_replies = datetime.now()
+    if await db.claim_slot("owner note margarita"):  # владелец попросил прислать в Telegram (25.10.2026)
+        await notify_admins(bot, cfg, "👤 Маргарита — @Ruma7775\n\nТвоя личная клиентка продюсера (стримерша, мама двоих "
+                                      "детей). В боте Нумериты за 7 дней на неё ушло $2,3 нейросети, оплат 0 ⭐ — "
+                                      "40% всех расходов бота. Реши: ведём без ограничений или ставим потолок.")
     if await db.claim_slot("toc summary"):  # владелец попросил выжимку теории ограничений
         await notify_admins(bot, cfg, constraint.SUMMARY)
     if await db.claim_slot("cost report 2026-10-24"):  # владелец спросил, куда ушли деньги, — отчёт сразу
