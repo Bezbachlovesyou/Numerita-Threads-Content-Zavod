@@ -1175,14 +1175,19 @@ async def run_scheduler(
                 await notify_admins(bot, cfg, await costs.report(db, generator, cfg.timezone))
             except Exception:
                 log.exception("Optimizer failed")
-        for hour in constraint.RUN_HOURS:  # обходы в 11, 15 (все теории роста) и 19
+        for hour in constraint.RUN_HOURS:  # обходы в 11, 15, 19; владельцу — сводка в 19 и ‼️ сразу
             due = hour <= now.hour < hour + 2 and await db.claim_slot(f"toc {now.date().isoformat()} {hour}")
             if due or (hour == constraint.RUN_HOURS[0] and await db.claim_slot("toc first run")):
                 try:
-                    text = await constraint.review(db, generator, now, cfg.timezone,
-                                                   growth=hour == constraint.GROWTH_HOUR)
+                    text = await constraint.review(db, generator, now, cfg.timezone)
                     if text:
-                        await notify_admins(bot, cfg, text)
+                        await constraint.remember(db, now, text)
+                        if "‼️" in text:  # нужно слово владельца — сразу; остальное — в вечерней сводке
+                            await notify_admins(bot, cfg, text)
+                    if hour == constraint.DIGEST_HOUR:
+                        summary = await constraint.digest(db, now)
+                        if summary:
+                            await notify_admins(bot, cfg, summary)
                 except Exception:
                     log.exception("Обход по Голдратту упал")
         if threads is not None and cfg.autoreply and datetime.now() >= next_replies:

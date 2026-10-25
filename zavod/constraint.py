@@ -17,8 +17,9 @@ from .storage import Storage
 
 log = logging.getLogger(__name__)
 
-RUN_HOURS = (11, 15, 19)  # по часовому поясу бота; в 15:00 — обход по всем теориям роста
+RUN_HOURS = (11, 15, 19)  # по часовому поясу бота; каждый обход — по всем теориям (Голдратт, рост, ТРИЗ)
 GROWTH_HOUR = 15
+DIGEST_HOUR = 19  # владельцу — одна сводка дня; сразу пишем только с ‼️ (слово владельца 25.10.2026)
 FOCUS_HOURS = 12
 SUMMARY = """📘 Теория ограничений Голдратта — коротко
 
@@ -46,6 +47,10 @@ SYSTEM = """Ты — операционный директор Нумериты 
 Основа Нумериты — саттвическое даяние: польза человеку, любовь, радость, юмор, литературный стиль, ничего лишнего,
 максимум ценности на единицу времени человека. Закон «всегда в плюсе»: расходы не растут быстрее пользы.
 Правила Threads неприкосновенны: не больше 20 постов в сутки, ответы личные, ссылки только по правилам, без спама.
+Смотри шире одного звена: расходы и все наши действия, путь клиента (CJM) целиком — расширение первичных контактов
+(охват, комментарии, шапка профиля, ответы со ссылкой) и превращение их в «вау», возврат и оплату.
+Владельца беспокоим (ask_owner) ТОЛЬКО ради новых трат или необратимых решений, которые сильно меняют проект; всё
+остальное улучшаем сами обратимыми мерами.
 По данным найди ОДНО узкое звено и предложи, как его расшить. Обратимые меры — это только две подсказки
 на 12 часов: как писать посты (post_focus) и как отвечать на комментарии (reply_focus). Всё, что нельзя
 откатить или что тратит деньги, меняет правила, лимиты, цены, публичные обещания, — только вопрос владельцу (ask_owner).
@@ -129,7 +134,7 @@ GROWTH = """Это дневной обход по всем нашим теори
 Формат ответа тот же JSON; в "step" назови линзу и меру."""
 
 
-async def review(db: Storage, generator: Generator, now: datetime, tz, growth: bool = False) -> str | None:
+async def review(db: Storage, generator: Generator, now: datetime, tz, growth: bool = True) -> str | None:
     data = await metrics(db, now, tz)
     try:
         system = SYSTEM + ("\n\n" + GROWTH if growth else "")
@@ -147,7 +152,7 @@ async def review(db: Storage, generator: Generator, now: datetime, tz, growth: b
         if text:
             await db.kv_set(key, json.dumps({"text": text, "until": until}, ensure_ascii=False))
             applied.append(f"• {label}: {text}")
-    title = "🌱 Дневной обход по всем теориям роста" if growth else "🔭 Обход по Голдратту"
+    title = "🔭 Обход: Голдратт, теории роста и ТРИЗ"
     lines = [f"{title}, {now:%d.%m %H:%M}", "",
              f"Узкое звено: {plan['bottleneck']}", f"Почему: {plan.get('why', '')}", f"Шаг: {plan.get('step', '')}"]
     if applied:
@@ -156,3 +161,23 @@ async def review(db: Storage, generator: Generator, now: datetime, tz, growth: b
     if ask:
         lines += ["", f"‼️ Нужно твоё слово: {ask}"]
     return "\n".join(lines)
+
+
+async def remember(db: Storage, now: datetime, text: str) -> None:
+    """Обход за день — в копилку для вечерней сводки."""
+    key = f"toc_log:{now.date().isoformat()}"
+    log_ = json.loads(await db.kv_get(key) or "[]")
+    await db.kv_set(key, json.dumps(log_ + [text], ensure_ascii=False))
+
+
+async def digest(db: Storage, now: datetime) -> str | None:
+    """Вечерняя сводка всех обходов дня: узкие звенья и что включено — коротко."""
+    log_ = json.loads(await db.kv_get(f"toc_log:{now.date().isoformat()}") or "[]")
+    if not log_:
+        return None
+    parts = []
+    for text in log_:
+        head = text.splitlines()[0].split(", ")[-1]
+        keep = [ln for ln in text.splitlines() if ln.startswith(("Узкое звено", "Шаг", "•"))]
+        parts.append(f"⏱ {head}\n" + "\n".join(keep))
+    return f"📒 Сводка обходов за {now:%d.%m} — что я нашла и включила сама\n\n" + "\n\n".join(parts)
