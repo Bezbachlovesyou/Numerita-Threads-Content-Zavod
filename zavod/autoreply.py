@@ -24,6 +24,9 @@ log = logging.getLogger(__name__)
 
 LOOKBACK = timedelta(days=3)  # под какими постами смотрим комментарии
 # Правила присутствия (prompts/threads_rules.md): отвечаем как живой человек, а не как спам-бот.
+# Разовые потолки на день: 25.10 до полудня доллар съела дорогая модель — после перехода на дешёвую
+# продолжаем отвечать тем, кто пишет (слово владельца 25.10.2026).
+BUDGET_DAYS = {"2026-10-25": 1.6}
 DIALOGUE_TURNS = 2  # наших ответов в одной ветке, дальше — только на вопросы
 MAX_GENERATIONS_PER_RUN = 10  # включая переписывания; лимит на человека отсутствует
 FRESH_WINDOW = timedelta(minutes=30)
@@ -196,9 +199,10 @@ async def answer_comments(
 ) -> int:
     """Отвечает на новые комментарии. Возвращает, сколько ответов отправлено за этот прогон."""
     now = datetime.now(timezone.utc)
+    daily_usd = BUDGET_DAYS.get(datetime.now(tz).date().isoformat(), daily_usd) if daily_usd else daily_usd
     if daily_usd and await spent_on_replies(db, tz) >= daily_usd:
         # Закон «всегда в плюсе»: дневной бюджет ответов исчерпан — ждём завтра, владельцу одна строка.
-        if await db.claim_slot(f"reply budget {datetime.now(tz).date().isoformat()}"):
+        if await db.claim_slot(f"reply budget {datetime.now(tz).date().isoformat()} {daily_usd}"):
             await db.kv_set("autoreply_error", f"{now:%d.%m %H:%M} бюджет: ответы на сегодня "
                                                f"исчерпали ${daily_usd:.2f} ({await spend_lines(db, tz)}), продолжу завтра")
         return 0

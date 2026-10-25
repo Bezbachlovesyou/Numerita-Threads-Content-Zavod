@@ -105,6 +105,10 @@ async def report(db, generator, tz) -> str:
               f"• ответов в Threads: {by_status.get('replied', 0)}, пропущено комментариев: {by_status.get('skipped', 0)}",
               f"• постов написано: {n_posts}"]
 
+    spent = sum(v[1] for k, v in ledger.items() if k.startswith(("reply", "summary")))
+    sent = by_status.get("replied", 0)
+    if spent and sent:
+        lines.append(f"• цена одного отправленного ответа сегодня (со сводками): ${spent / sent:.4f}")
     price = state["price"]
     if price:
         pin, pout = float(price.get("prompt") or 0), float(price.get("completion") or 0)
