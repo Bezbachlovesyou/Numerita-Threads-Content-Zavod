@@ -14,6 +14,7 @@ from datetime import datetime, timedelta, timezone
 
 from .autopost import BOT_LINK, strip_credits
 from .cards import grid_hint
+from .codereply import reply as code_reply
 from .constraint import focus
 from .dialogue import archive_comments, conversation_context, fair_queue, walk_comments
 from .generator import GenerationError, Generator
@@ -292,10 +293,17 @@ async def answer_comments(
         elif (links_ok and mode == "profile" and random.random() < OFFER_SHARE
                 and await db.link_replies(now - timedelta(hours=1), pattern="%_p") < OFFERS_PER_HOUR):
             mode = "offer"
+        # 25.10.2026 (слово владельца): дата или день рождения без вопроса — ответ кодом по базе, без нейросети ($0)
+        kb = getattr(getattr(generator, "knowledge", None), "data", None)
+        text = code_reply(comment["message"], kb, seed=zlib.crc32(str(comment["id"]).encode())) \
+            if mode in ("profile", "offer") and not memory.strip() else None
+        if text:
+            await db.kv_set("code_replies", str(int(await db.kv_get("code_replies") or 0) + 1))
         try:
-            generated += 1
-            model = reply_model_for(author, getattr(generator, "reply_model", None), ab_model, ab_share)
-            text = (await generator.write_reply(post_text, comment["message"], author, mode, model)).strip()
+            if not text:
+                generated += 1
+                model = reply_model_for(author, getattr(generator, "reply_model", None), ab_model, ab_share)
+                text = (await generator.write_reply(post_text, comment["message"], author, mode, model)).strip()
         except GenerationError as e:
             log.warning("Не удалось написать ответ на комментарий %s: %s", comment["id"], e)
             await db.kv_set("autoreply_error", f"{now:%d.%m %H:%M} нейросеть: {e}")

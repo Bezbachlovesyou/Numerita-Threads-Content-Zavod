@@ -9,6 +9,7 @@ from pathlib import Path
 
 import httpx
 
+from .codereply import numbers_note
 from .knowledge import KnowledgeBase
 
 API_URL = "https://openrouter.ai/api/v1/chat/completions"
@@ -32,7 +33,7 @@ STRENGTHEN = (
     "Верни только текст поста.\n\nПост:\n{text}"
 )
 REPLY_FALLBACK = "anthropic/claude-haiku-5.5"
-REPLY_KB_CHARS = 4000  # ответу хватает сути чисел из комментария; вся выдержка — основная часть цены ответа
+REPLY_KB_CHARS = 1500  # 25.10.2026 (слово владельца): было 4000 — выдержка была основной частью цены ответа  # ответу хватает сути чисел из комментария; вся выдержка — основная часть цены ответа
 
 SHARPEN = (
     "Ниже готовый пост из плана. Сам по себе он слабый: справка про число, какой полно везде, — без крючка, "
@@ -128,7 +129,8 @@ class Generator:
                     "своё число души и судьбы можно у Нумериты в Telegram — ссылку бот добавит сам строкой ниже.",
         }
         prompt = (
-            f"Наш пост:\n{post}\n\nКомментарий от @{author}:\n{comment}\n\n"
+            numbers_note(comment)  # числа уже посчитаны кодом (слово владельца 25.10.2026)
+            + f"Наш пост:\n{post}\n\nКомментарий от @{author}:\n{comment}\n\n"
             + "Сам не пиши никаких ссылок, адресов и @упоминаний. " + endings[mode]
         )
         prompt = await self._with_knowledge(prompt, comment, REPLY_KB_CHARS)
