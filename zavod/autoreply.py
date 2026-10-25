@@ -14,7 +14,7 @@ from datetime import datetime, timedelta, timezone
 
 from .autopost import BOT_LINK, strip_credits
 from .cards import grid_hint
-from .codereply import reply as code_reply
+from .codereply import find_birth, reply as code_reply
 from .constraint import focus
 from .dialogue import archive_comments, conversation_context, fair_queue, walk_comments
 from .generator import GenerationError, Generator
@@ -75,6 +75,13 @@ def reply_model_for(author: str, main: str, ab: str | None, share: float) -> str
     if not ab or share <= 0:
         return main
     return ab if zlib.crc32(author.encode()) % 100 < share * 100 else main
+
+
+def smart_arm(author: str) -> str:
+    """A/B «умный ответ или ответ кодом» на комментарии с датой (слово владельца 25.10.2026: «Нумерита должна быть
+    умной, но нужно понять, работает ли»): половина людей (по нику, всегда одна и та же) — ответ кодом по базе ($0),
+    половина — ответ нейросети. Итог — в /costs: кто продолжил разговор и кто перешёл в бота по ссылке."""
+    return "code" if zlib.crc32(f"smart:{author}".encode()) % 2 == 0 else "ai"
 
 
 async def spent_on_replies(db: Storage, tz) -> float:
@@ -295,8 +302,9 @@ async def answer_comments(
             mode = "offer"
         # 25.10.2026 (слово владельца): дата или день рождения без вопроса — ответ кодом по базе, без нейросети ($0)
         kb = getattr(getattr(generator, "knowledge", None), "data", None)
+        arm = smart_arm(author) if find_birth(comment["message"]) and not memory.strip() else ""
         text = code_reply(comment["message"], kb, seed=zlib.crc32(str(comment["id"]).encode())) \
-            if mode in ("profile", "offer") and not memory.strip() else None
+            if arm == "code" and mode in ("profile", "offer") else None
         if text:
             await db.kv_set("code_replies", str(int(await db.kv_get("code_replies") or 0) + 1))
         try:
@@ -331,7 +339,8 @@ async def answer_comments(
             log.warning("Слишком короткий ответ на %s: %r — не отправляю", comment["id"], text)
             continue
         if mode in ("link", "offer"):
-            text = f"{text[: MAX_REPLY_LENGTH - 45]}\n{BOT_LINK}r{post_id or 0}_{'a' if mode == 'link' else 'p'}"
+            text = (f"{text[: MAX_REPLY_LENGTH - 45]}\n{BOT_LINK}r{post_id or 0}_{'a' if mode == 'link' else 'p'}"
+                    + (arm[0] if arm else ""))  # метка ветки A/B: …_pc — ответ кодом, …_pi — ответ нейросети
         if sent:
             await asyncio.sleep(random.uniform(*PAUSE))
 

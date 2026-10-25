@@ -122,6 +122,9 @@ async def report(db, generator, tz) -> str:
                   f"• пост: ≈{money(post_cost)} — голос, методичка, эмоции, изобилие ≈{post_in / 1000:.0f} тыс. токенов",
                   f"• итого по сделанному сегодня ≈{money(reply_cost * by_status.get('replied', 0) + post_cost * n_posts)}"
                   " (без переписываний, сводок и пропусков нейросетью)"]
+    smart = await smart_ab(db, now)
+    if smart:
+        lines += ["", "A/B «умный ответ или ответ кодом» на комментарии с датой, 7 дней:"] + smart
     ab = await reply_ab(db, generator, now)
     if ab:
         lines += ["", "A/B моделей ответов за 7 дней (продолжили разговор после нашего ответа):"] + ab
@@ -129,6 +132,36 @@ async def report(db, generator, tz) -> str:
     lines += ["", "Что было дальше в боте:"] + ["• " + x for x in funnel.lines(await funnel.fetch(1))]
     lines += ["", "Картинки рисуются кодом — $0. Видео (fal.ai) не включено и с этого счёта не платится."]
     return "\n".join(lines)
+
+
+async def smart_ab(db, now: datetime) -> list[str]:
+    """Ветки по нику: сколько людей с датой получили ответ, сколько продолжили разговор; переходы в бота — по меткам
+    …_pc / …_pi в «Что было дальше в боте». Цена: ответ кодом — $0."""
+    from .autoreply import smart_arm
+    from .codereply import find_birth
+    since = max((now - timedelta(days=7)).astimezone(timezone.utc).isoformat(), "2026-10-25")
+    rows = await db._rows("SELECT target_id, root_id, author, role, body, created_at FROM dialogue_messages "
+                          "WHERE created_at >= ? ORDER BY created_at", (since,))
+    first_user: dict = {}
+    first_reply: dict = {}
+    talked: dict = {}
+    for r in rows:
+        thread = (r["target_id"], r["root_id"])
+        if r["role"] == "assistant":
+            first_reply.setdefault(thread, r["created_at"])
+        elif thread not in first_user:
+            first_user[thread] = (r["author"], r["body"])
+        elif thread in first_reply and r["created_at"] > first_reply[thread] and r["author"] == first_user[thread][0]:
+            talked[thread] = True
+    stats = {"code": [0, 0], "ai": [0, 0]}
+    for thread, (author, body) in first_user.items():
+        if thread in first_reply and find_birth(body or ""):
+            row = stats[smart_arm(author)]
+            row[0] += 1
+            row[1] += thread in talked
+    names = {"code": "кодом ($0)", "ai": "нейросеть"}
+    return [f"• {names[a]}: ответили {n}, продолжили разговор {t} ({round(100 * t / n)}%)"
+            for a, (n, t) in stats.items() if n]
 
 
 async def reply_ab(db, generator, now: datetime) -> list[str]:
