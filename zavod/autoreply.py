@@ -24,7 +24,7 @@ log = logging.getLogger(__name__)
 
 LOOKBACK = timedelta(days=3)  # под какими постами смотрим комментарии
 # Правила присутствия (prompts/threads_rules.md): отвечаем как живой человек, а не как спам-бот.
-DIALOGUE_TURNS = 3  # наших ответов в одной ветке, дальше — только на вопросы
+DIALOGUE_TURNS = 2  # наших ответов в одной ветке, дальше — только на вопросы
 MAX_GENERATIONS_PER_RUN = 10  # включая переписывания; лимит на человека отсутствует
 FRESH_WINDOW = timedelta(minutes=30)
 DAILY_REPLY_CAP = 900  # официальный предел Threads — 1000 ответов в сутки; держим запас
@@ -76,6 +76,15 @@ def reply_model_for(author: str, main: str, ab: str | None, share: float) -> str
 async def spent_on_replies(db: Storage, tz) -> float:
     data = json.loads(await db.kv_get(f"cost:{datetime.now(tz).date().isoformat()}") or "{}")
     return sum(row[1] for kind, row in data.items() if kind.startswith(("reply", "summary")))
+
+
+async def spend_lines(db: Storage, tz) -> str:
+    """Куда ушли деньги ответов: «haiku 410 отв. $0.55, sonnet 30 отв. $0.45»."""
+    data = json.loads(await db.kv_get(f"cost:{datetime.now(tz).date().isoformat()}") or "{}")
+    rows = [(k.split("·")[-1].replace("claude-", ""), k.split("·")[0], v) for k, v in data.items()
+            if k.startswith(("reply", "summary"))]
+    return ", ".join(f"{'сводки ' if kind == 'summary' else ''}{m}: {v[0]} запр. ${v[1]:.2f}"
+                     for m, kind, v in sorted(rows, key=lambda r: -r[2][1]))
 
 
 def gave_number(message: str) -> bool:
@@ -191,7 +200,7 @@ async def answer_comments(
         # Закон «всегда в плюсе»: дневной бюджет ответов исчерпан — ждём завтра, владельцу одна строка.
         if await db.claim_slot(f"reply budget {datetime.now(tz).date().isoformat()}"):
             await db.kv_set("autoreply_error", f"{now:%d.%m %H:%M} бюджет: ответы на сегодня "
-                                               f"исчерпали ${daily_usd:.2f}, продолжу завтра")
+                                               f"исчерпали ${daily_usd:.2f} ({await spend_lines(db, tz)}), продолжу завтра")
         return 0
     budget = min(per_run, per_hour - await db.replies_since(now - timedelta(hours=1)),
                  DAILY_REPLY_CAP - await db.replies_since(now - timedelta(days=1)))
@@ -243,6 +252,8 @@ async def answer_comments(
     queue = fresh + rounds
 
     queue = fair_queue(queue)
+    # Деньги — на то, что ведёт людей к разбору: сначала первые комментарии с числом, датой или вопросом.
+    queue.sort(key=lambda q: 0 if gave_number(q[3]["message"]) or "?" in q[3]["message"] else 1)
     reply_focus = await focus(db, "reply_focus")  # обход по Голдратту: фокус ответов на 12 часов
     generated = 0
     sent = 0
@@ -255,7 +266,9 @@ async def answer_comments(
         current = await db.dialogue_message(target_id, comment["id"])
         if current and "?" not in comment["message"]:
             ours = sum(r["role"] == "assistant" for r in await db.dialogue_history(target_id, current["root_id"]))
-            if ours >= DIALOGUE_TURNS:
+            # Короткая реплика на наш ответ без вопроса и числа («точно», «да, это я») — согласие, не просьба.
+            chit_chat = ours and len(comment["message"].strip()) < 30 and not re.search(r"\d", comment["message"])
+            if ours >= DIALOGUE_TURNS or chit_chat:
                 await db.record_comment(comment["id"], post_id, author, comment["message"], "", "skipped")
                 continue
         memory = await conversation_context(db, generator, target_id, comment["id"])

@@ -98,7 +98,7 @@ def load_config() -> Config:
         autoreply_per_hour=int(os.getenv("AUTOREPLY_PER_HOUR", "90") or 90),
         reply_model=os.getenv("REPLY_MODEL", "").strip() or DEFAULT_REPLY_MODEL,
         reply_ab_model=os.getenv("REPLY_AB_MODEL", "").strip() or DEFAULT_REPLY_AB_MODEL,
-        reply_ab_share=float(os.getenv("REPLY_AB_SHARE", "0.1") or 0.1),
+        reply_ab_share=float(os.getenv("REPLY_AB_SHARE", "0") or 0),
         # Потолок расходов на ответы и сводки диалогов в сутки, $ (закон «всегда в плюсе»).
         reply_budget_usd=float(os.getenv("REPLY_BUDGET_USD", "1") or 1),
         # Видео с Нумеритой (fal.ai, Seedance 2.0). Без FAL_KEY видео не делаются, VIDEO=off — выключить.

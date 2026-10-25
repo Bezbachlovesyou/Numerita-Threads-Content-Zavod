@@ -127,7 +127,7 @@ class Generator:
             f"Наш пост:\n{post}\n\nКомментарий от @{author}:\n{comment}\n\n"
             + "Сам не пиши никаких ссылок, адресов и @упоминаний. " + endings[mode]
         )
-        return await self._complete(self.reply_system, await self._with_knowledge(prompt, comment, REPLY_KB_CHARS), max_tokens=700,
+        return await self._complete(self.reply_system, await self._with_knowledge(prompt, comment, REPLY_KB_CHARS), max_tokens=400,
                                     kind="reply", model=model or self.reply_model)
 
     def _system_content(self, system: str, model: str):
