@@ -6,8 +6,10 @@ from dotenv import load_dotenv
 
 DEFAULT_MODEL = "anthropic/claude-sonnet-5.5"  # посты; Opus вдвое дороже без заметной разницы в коротких постах
 # Ответы на комментарии — короткие и массовые: Haiku 5.5 в 20 раз дешевле Sonnet. Часть — на Sonnet (A/B качества).
-DEFAULT_REPLY_MODEL = "anthropic/claude-haiku-5.5"
-DEFAULT_REPLY_AB_MODEL = "anthropic/claude-sonnet-5.5"
+# 25.10.2026: ещё дешевле — DeepSeek V4 Flash (вход в 2,4 раза, выход в 3 раза дешевле Haiku); Haiku остаётся
+# на трети людей как контроль качества — обе модели копеечные, A/B больше не съедает бюджет.
+DEFAULT_REPLY_MODEL = "deepseek/deepseek-v4-flash-0731"
+DEFAULT_REPLY_AB_MODEL = "anthropic/claude-haiku-5.5"
 DEFAULT_KB_URL = "https://numerita.up.railway.app/kb.json"
 
 
@@ -98,7 +100,7 @@ def load_config() -> Config:
         autoreply_per_hour=int(os.getenv("AUTOREPLY_PER_HOUR", "90") or 90),
         reply_model=os.getenv("REPLY_MODEL", "").strip() or DEFAULT_REPLY_MODEL,
         reply_ab_model=os.getenv("REPLY_AB_MODEL", "").strip() or DEFAULT_REPLY_AB_MODEL,
-        reply_ab_share=float(os.getenv("REPLY_AB_SHARE", "0") or 0),
+        reply_ab_share=float(os.getenv("REPLY_AB_SHARE", "0.3") or 0.3),
         # Потолок расходов на ответы и сводки диалогов в сутки, $ (закон «всегда в плюсе»).
         reply_budget_usd=float(os.getenv("REPLY_BUDGET_USD", "1") or 1),
         # Видео с Нумеритой (fal.ai, Seedance 2.0). Без FAL_KEY видео не делаются, VIDEO=off — выключить.

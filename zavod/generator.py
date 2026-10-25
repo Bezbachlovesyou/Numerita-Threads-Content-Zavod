@@ -31,6 +31,7 @@ STRENGTHEN = (
     "Смысл, числа и трактовки сохраняй, только из базы знаний Нумериты. Без ссылок и «сохрани», до 450 знаков. "
     "Верни только текст поста.\n\nПост:\n{text}"
 )
+REPLY_FALLBACK = "anthropic/claude-haiku-5.5"
 REPLY_KB_CHARS = 4000  # ответу хватает сути чисел из комментария; вся выдержка — основная часть цены ответа
 
 SHARPEN = (
@@ -127,8 +128,16 @@ class Generator:
             f"Наш пост:\n{post}\n\nКомментарий от @{author}:\n{comment}\n\n"
             + "Сам не пиши никаких ссылок, адресов и @упоминаний. " + endings[mode]
         )
-        return await self._complete(self.reply_system, await self._with_knowledge(prompt, comment, REPLY_KB_CHARS), max_tokens=400,
-                                    kind="reply", model=model or self.reply_model)
+        prompt = await self._with_knowledge(prompt, comment, REPLY_KB_CHARS)
+        model = model or self.reply_model
+        try:
+            return await self._complete(self.reply_system, prompt, max_tokens=400, kind="reply", model=model)
+        except GenerationError:
+            if model == REPLY_FALLBACK:
+                raise
+            # Дешёвая модель не справилась (пусто, сбой провайдера) — один раз пишет запасная.
+            log.warning("Модель ответов %s не ответила — пишет %s", model, REPLY_FALLBACK)
+            return await self._complete(self.reply_system, prompt, max_tokens=400, kind="reply", model=REPLY_FALLBACK)
 
     def _system_content(self, system: str, model: str):
         """Длинные правила одинаковы у всех запросов — у моделей Anthropic кэшируем их: повторное чтение
@@ -203,7 +212,10 @@ class Generator:
                     json={
                         "model": model,
                         **({"max_tokens": max_tokens} if max_tokens is not None else {}),
-                        "usage": {"include": True},  # цена каждого запроса — для отчёта о расходах
+                        "usage": {"include": True},
+                        # Короткие ответы без «размышлений»: рассуждения — это оплачиваемые токены выхода.
+                        **({"reasoning": {"enabled": False}} if kind in ("reply", "summary", "hookcheck")
+                           and not model.startswith("anthropic/") else {}),  # цена каждого запроса — для отчёта о расходах
                         "messages": [
                             {"role": "system", "content": self._system_content(system, model)},
                             {"role": "user", "content": prompt},
