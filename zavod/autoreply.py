@@ -36,6 +36,7 @@ PAUSE = (10, 30)  # секунд между ответами внутри одн
 # Ссылка в ответе — только если человек сам попросил (не навязываемся): не больше 3 в час на всех
 # и не чаще раза в неделю одному человеку. Остальных зовём «в шапку профиля» или не зовём вовсе.
 LINKS_PER_HOUR = 4
+LINKS_PER_DAY = 20  # ответов со ссылкой за сутки на всех — далеко от поведения спамера (слово владельца 25.10.2026)
 ASKS_LINK = re.compile(
     r"ссылк|линк|\blink|где\b[^?]{0,40}(посчита|узна|найти|получ|бот|сайт)|как\b[^?]{0,40}(посчита|узна|найти)"
     r"|(ваш|ваше|вашего|вашем)\s+(бот|сайт|канал)|есть\s+(бот|сайт|канал)|куда\s+(писать|перейти)", re.I,
@@ -293,6 +294,7 @@ async def answer_comments(
         links_ok = (
             not (paused and now < datetime.fromisoformat(paused))
             and await db.link_replies(now - timedelta(hours=1)) < LINKS_PER_HOUR
+            and await db.link_replies(now - timedelta(days=1)) < LINKS_PER_DAY
             and not await db.link_replies(now - timedelta(days=7), author)
         )
         if links_ok and asks_link(comment["message"]):

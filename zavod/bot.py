@@ -582,11 +582,16 @@ LINK_RULES = {
 LINK_CARD_TEXT = {"text": "Разбор — по ссылке в посте", "profile": "Разбор — по ссылке в профиле"}
 
 
+POST_LINKS = False  # 25.10.2026: по ссылкам в постах и первом комментарии за неделю не пришёл никто — ведём в шапку
+
+
 async def choose_link_mode(db: Storage, now: datetime, rng: random.Random) -> str:
     """Сначала даём каждому способу набрать постов, потом чаще берём лучший (но остальные тоже пробуем).
 
     Если самоулучшение выяснило, что ссылка в посте убивает ответы, — 9 из 10 постов без ссылки.
     """
+    if not POST_LINKS:
+        return "profile"
     if await db.kv_get("links_in_posts") == "off" and rng.random() < 0.9:
         return "profile"
     rows = [r for r in await db.engagement(now - timedelta(days=14)) if r.get("link_mode")]
