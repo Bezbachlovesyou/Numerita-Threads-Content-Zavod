@@ -11,6 +11,7 @@ import re
 import time
 
 import httpx
+from .subtle_bodies import excerpt as subtle_excerpt
 
 log = logging.getLogger(__name__)
 
@@ -47,15 +48,18 @@ class KnowledgeBase:
 
     async def excerpt(self, topic: str) -> str:
         """Выдержка из базы для темы поста или пустая строка, если базы нет."""
+        subtle = subtle_excerpt(topic)
         if not self.url:
-            return ""
+            return json.dumps({"subtle_bodies": subtle}, ensure_ascii=False) if subtle else ""
         if self.data is None or time.monotonic() - self.loaded_at > REFRESH_SECONDS:
             await self._refresh()
         if self.data is None:
-            return ""
+            return json.dumps({"subtle_bodies": subtle}, ensure_ascii=False) if subtle else ""
 
         kb = self.data
-        part: dict = {key: kb[key] for key in ("usage", "calc", "voice") if key in kb}
+        # The reply context is truncated: keep topic-specific boundaries at the front.
+        part: dict = {"subtle_bodies": subtle} if subtle else {}
+        part.update({key: kb[key] for key in ("usage", "calc", "voice") if key in kb})
         numbers = kb.get("numbers", {})
         compound = kb.get("compound", {})
 
@@ -93,3 +97,4 @@ class KnowledgeBase:
                 for key, value in numbers.items()
             }
         return json.dumps(part, ensure_ascii=False)
+
