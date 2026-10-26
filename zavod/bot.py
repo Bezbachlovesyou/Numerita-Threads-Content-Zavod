@@ -836,6 +836,9 @@ async def post_next(
         text = await hook_gate(generator, text)
         if grid:
             card_json = grid_json(grid, rng.choice(GRID_TITLES), palette)
+        elif slot.rubric.key == "eight_growth":
+            from .cards import eight_growth_carousel
+            card_json = carousel_json(eight_growth_carousel(palette))
         elif slot.rubric.key == "carousel":
             numbers = (generator.knowledge.data or {}).get("numbers", {})
             card_json = carousel_json(soul_carousel(numbers, palette))
