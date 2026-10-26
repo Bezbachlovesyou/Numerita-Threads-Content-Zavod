@@ -29,7 +29,6 @@ LOOKBACK = timedelta(days=3)  # под какими постами смотри�
 # Разовые потолки на день: 25.10 до полудня доллар съела дорогая модель — после перехода на дешёвую
 # продолжаем отвечать тем, кто пишет (слово владельца 25.10.2026).
 BUDGET_DAYS = {"2026-10-25": 1.6}
-DIALOGUE_TURNS = 2  # наших ответов в одной ветке, дальше — только на вопросы
 MAX_GENERATIONS_PER_RUN = 10  # включая переписывания; лимит на человека отсутствует
 FRESH_WINDOW = timedelta(minutes=30)
 DAILY_REPLY_CAP = 900  # официальный предел Threads — 1000 ответов в сутки; держим запас
@@ -39,22 +38,20 @@ PAUSE = (10, 30)  # секунд между ответами внутри одн
 LINKS_PER_HOUR = 4
 LINKS_PER_DAY = 20  # ответов со ссылкой за сутки на всех — далеко от поведения спамера (слово владельца 25.10.2026)
 ASKS_LINK = re.compile(
-    r"ссылк|линк|\blink|где\b[^?]{0,40}(посчита|узна|найти|получ|бот|сайт)|как\b[^?]{0,40}(посчита|узна|найти)"
-    r"|(ваш|ваше|вашего|вашем)\s+(бот|сайт|канал)|есть\s+(бот|сайт|канал)|куда\s+(писать|перейти)", re.I,
+    r"ссылк|линк|\blink|где\b[^?]{0,40}(бот|сайт|канал|сервис|записаться|купить)"
+    r"|есть\s+(?:ли\s+)?(?:у\s+вас\s+)?(?:бот|сайт|канал)|куда\s+(писать|перейти)"
+    r"|как\s+(?:мне\s+)?(?:зайти|перейти|попасть)\s+(?:в|на)\s+(?:ваш\s+)?(?:бот|сайт|сервис)", re.I,
 )
 
 
-# Эксперимент: иногда ссылку даём и без просьбы — только тем, кто сам написал своё число (тёплый интерес).
-# Осторожно: не больше 1 такого ответа в час, ~15% подходящих ответов, одному человеку — раз в неделю.
-# Метки: _a — по просьбе, _p — сами предложили. Если Threads откажет в ответе со ссылкой — ссылки в ответах
-# выключаются на 7 дней (стоп-кран), владельцу приходит сообщение.
-OFFER_SHARE = 0.25  # 25.10.2026: оплат нет — чаще даём прямой путь к разбору (в лимитах и со стоп-краном)
-OFFERS_PER_HOUR = 2
+# С 26.10 ссылки — только по явной просьбе. Исторические метки _p остаются в статистике.
 LINK_PAUSE = timedelta(days=7)
 
 
 def asks_link(message: str) -> bool:
-    """Человек сам спрашивает, где посчитать или узнать больше."""
+    """Явная просьба о доступе; вопрос о расчёте сам по себе не просьба о продаже."""
+    if re.search(r"(?:без|не\s+надо|не\s+нуж\w*|не\s+присылай\w*)\s+(?:мне\s+)?(?:ссыл|линк)|не\s+зови", message, re.I):
+        return False
     return bool(ASKS_LINK.search(message))
 MAX_REPLY_LENGTH = 500
 
@@ -270,8 +267,9 @@ async def answer_comments(
     queue = fresh + rounds
 
     queue = fair_queue(queue)
-    # Деньги — на то, что ведёт людей к разбору: сначала первые комментарии с числом, датой или вопросом.
-    queue.sort(key=lambda q: 0 if gave_number(q[3]["message"]) or "?" in q[3]["message"] else 1)
+    # Содержательные продолжения важны наравне с первым вопросом или датой.
+    queue.sort(key=lambda q: 0 if gave_number(q[3]["message"]) or "?" in q[3]["message"]
+               or "Твой прошлый ответ" in q[2] else 1)
     reply_focus = await focus(db, "reply_focus")  # обход по Голдратту: фокус ответов на 12 часов
     generated = 0
     sent = 0
@@ -279,22 +277,12 @@ async def answer_comments(
         author = (comment.get("from") or {}).get("username") or (comment.get("from") or {}).get("name") or "?"
         if generated >= MAX_GENERATIONS_PER_RUN:
             break
-        # Длинные диалоги — главная статья расходов при малой отдаче: после DIALOGUE_TURNS наших ответов в ветке
-        # продолжаем, только если человек спрашивает (слово владельца 24.10.2026: «бла-бла-бла — роскошь»).
-        current = await db.dialogue_message(target_id, comment["id"])
-        if current and "?" not in comment["message"]:
-            ours = sum(r["role"] == "assistant" for r in await db.dialogue_history(target_id, current["root_id"]))
-            # Короткая реплика на наш ответ без вопроса и числа («точно», «да, это я») — согласие, не просьба.
-            chit_chat = ours and len(comment["message"].strip()) < 30 and not re.search(r"\d", comment["message"])
-            if ours >= DIALOGUE_TURNS or chit_chat:
-                await db.record_comment(comment["id"], post_id, author, comment["message"], "skip:dialog", "skipped")
-                continue
+        # Не обрываем разговор по длине реплики или отсутствию вопросительного знака.
+        # Новую деталь и желание завершить беседу оценивает модель по памяти ветки.
         memory = await conversation_context(db, generator, target_id, comment["id"])
         post_text += memory + (f"\n\nФокус на сегодня: {reply_focus}" if reply_focus else "")
-        # Ссылка — только по просьбе и в пределах лимитов; кто написал своё число — зовём в профиль.
-        mode = "profile" if gave_number(comment["message"]) else ("question" if "?" in comment["message"] else "plain")
-        if mode in ("profile", "question") and ("Твой прошлый ответ" in post_text or "assistant @" in memory or "Сводка ранних" in memory):  # в диалоге второй раз «в профиль» не зовём
-            mode = "plain"
+        # Польза в комментариях прежде перехода в сервис (указание владельца 26.10).
+        mode = "plain"
         paused = await db.kv_get("reply_links_paused_until")
         links_ok = (
             not (paused and now < datetime.fromisoformat(paused))
@@ -304,20 +292,17 @@ async def answer_comments(
         )
         if links_ok and asks_link(comment["message"]):
             mode = "link"
-        elif (links_ok and mode == "profile" and random.random() < OFFER_SHARE
-                and await db.link_replies(now - timedelta(hours=1), pattern="%_p") < OFFERS_PER_HOUR):
-            mode = "offer"
         # 25.10.2026 (слово владельца): дата или день рождения без вопроса — ответ кодом по базе, без нейросети ($0)
         kb = getattr(getattr(generator, "knowledge", None), "data", None)
         arm = smart_arm(author) if find_birth(comment["message"]) and not memory.strip() else ""
+        model = reply_model_for(author, getattr(generator, "reply_model", None), ab_model, ab_share)
         text = code_reply(comment["message"], kb, seed=zlib.crc32(str(comment["id"]).encode())) \
-            if arm == "code" and mode in ("profile", "offer") else None
+            if arm == "code" and mode == "plain" else None
         if text:
             await db.kv_set("code_replies", str(int(await db.kv_get("code_replies") or 0) + 1))
         try:
             if not text:
                 generated += 1
-                model = reply_model_for(author, getattr(generator, "reply_model", None), ab_model, ab_share)
                 text = (await generator.write_reply(post_text, comment["message"], author, mode, model)).strip()
         except GenerationError as e:
             log.warning("Не удалось написать ответ на комментарий %s: %s", comment["id"], e)
@@ -345,7 +330,7 @@ async def answer_comments(
         if len(text) < 25 and not re.search(r"[.!?…)»✨🌙💫🔥🤍😊🙂]\s*$", text):  # обрывок вроде «5 — это» — не отправляем
             log.warning("Слишком короткий ответ на %s: %r — не отправляю", comment["id"], text)
             continue
-        if mode in ("link", "offer"):
+        if mode == "link":
             text = (f"{text[: MAX_REPLY_LENGTH - 45]}\n{BOT_LINK}r{post_id or 0}_{'a' if mode == 'link' else 'p'}"
                     + (arm[0] if arm else ""))  # метка ветки A/B: …_pc — ответ кодом, …_pi — ответ нейросети
         if sent:
@@ -358,7 +343,7 @@ async def answer_comments(
             if is_gone(e):  # комментарий удалили или скрыли — просто пропускаем
                 await db.record_comment(comment["id"], post_id, author, comment["message"], "skip:gone", "skipped")
                 continue
-            if mode in ("link", "offer"):  # стоп-кран: Threads не принял ответ со ссылкой
+            if mode == "link":  # стоп-кран: Threads не принял ответ со ссылкой
                 await db.kv_set("reply_links_paused_until", (now + LINK_PAUSE).isoformat())
                 e = ThreadsError(f"{e} — ссылки в ответах выключил на 7 дней")
             await db.kv_set("autoreply_error", f"{now:%d.%m %H:%M} ответ: {e}")
@@ -375,5 +360,6 @@ async def answer_comments(
         if sent >= budget:
             return sent
     return sent
+
 
 

@@ -113,7 +113,7 @@ class Generator:
                           model: str | None = None) -> str:
         """Ответ на комментарий под постом. «SKIP» — отвечать не нужно.
 
-        mode: plain — без бота и профиля; profile — позвать «в шапку профиля»;
+        mode: plain — польза и разговор без приглашения; старые profile/question/offer также plain;
         link — человек сам попросил, где посчитать: бот добавит ссылку после ответа.
         """
         endings = {
@@ -128,6 +128,7 @@ class Generator:
             "link": "Человек сам спросил, где узнать больше: ответь по сути и последней фразой скажи, что посчитать "
                     "своё число души и судьбы можно у Нумериты в Telegram — ссылку бот добавит сам строкой ниже.",
         }
+        mode = "link" if mode == "link" else "plain"
         prompt = (
             numbers_note(comment)  # числа уже посчитаны кодом (слово владельца 25.10.2026)
             + f"Наш пост:\n{post}\n\nКомментарий от @{author}:\n{comment}\n\n"
@@ -259,4 +260,5 @@ class Generator:
         if not text:
             raise GenerationError("Модель вернула пустой ответ.")
         return text
+
 
