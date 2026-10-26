@@ -20,6 +20,7 @@ from .dialogue import archive_comments, conversation_context, fair_queue, walk_c
 from .generator import GenerationError, Generator
 from .storage import Storage
 from .threads_api import ThreadsClient, ThreadsError
+from .publishing_wait import defer_publishing, publication_ready
 
 log = logging.getLogger(__name__)
 
@@ -227,6 +228,9 @@ async def answer_comments(
         try:
             comments = await threads.comments(target_id)
         except ThreadsError as e:
+            if await defer_publishing(db, target_id, e, now):
+                log.info("Пост %s ещё публикуется в Zernio; проверим позднее", target_id)
+                continue
             log.warning("Не удалось получить комментарии к посту %s: %s", target_id, e)
             if is_gone(e):  # пост удалён или недоступен — больше не спрашиваем, тревогу не поднимаем
                 gone = json.loads(await db.kv_get("gone_posts") or "[]")
@@ -234,6 +238,7 @@ async def answer_comments(
             else:
                 await db.kv_set("autoreply_error", f"{now:%d.%m %H:%M} комментарии: {e}")
             continue
+        await publication_ready(db, target_id)
         await archive_comments(db, target_id, comments)
         await repair_fragments(db, threads, target_id, comments)
         for item, our_last in reply_candidates(comments):
@@ -370,4 +375,5 @@ async def answer_comments(
         if sent >= budget:
             return sent
     return sent
+
 
