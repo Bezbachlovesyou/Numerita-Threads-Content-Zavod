@@ -12,6 +12,7 @@ import time
 
 import httpx
 from .subtle_bodies import excerpt as subtle_excerpt
+from .solar_portraits import excerpt as solar_excerpt
 
 log = logging.getLogger(__name__)
 
@@ -49,16 +50,21 @@ class KnowledgeBase:
     async def excerpt(self, topic: str) -> str:
         """Выдержка из базы для темы поста или пустая строка, если базы нет."""
         subtle = subtle_excerpt(topic)
+        local = {}
+        if solar := solar_excerpt(topic):
+            local["solar_portraits"] = solar
+        if subtle:
+            local["subtle_bodies"] = subtle
         if not self.url:
-            return json.dumps({"subtle_bodies": subtle}, ensure_ascii=False) if subtle else ""
+            return json.dumps(local, ensure_ascii=False) if local else ""
         if self.data is None or time.monotonic() - self.loaded_at > REFRESH_SECONDS:
             await self._refresh()
         if self.data is None:
-            return json.dumps({"subtle_bodies": subtle}, ensure_ascii=False) if subtle else ""
+            return json.dumps(local, ensure_ascii=False) if local else ""
 
         kb = self.data
         # The reply context is truncated: keep topic-specific boundaries at the front.
-        part: dict = {"subtle_bodies": subtle} if subtle else {}
+        part: dict = dict(local)
         part.update({key: kb[key] for key in ("usage", "calc", "voice") if key in kb})
         numbers = kb.get("numbers", {})
         compound = kb.get("compound", {})
@@ -97,4 +103,5 @@ class KnowledgeBase:
                 for key, value in numbers.items()
             }
         return json.dumps(part, ensure_ascii=False)
+
 

@@ -709,7 +709,7 @@ async def post_from_bank(
 # выпускаем ту же идею заново — короче, с сильнее первой строкой и в другое время. Не чаще раза в 8 часов.
 DEAD_AFTER = timedelta(hours=6)
 RETRY_EVERY = timedelta(hours=8)
-NO_RETRY = {"script", "video", "grid", "jackpot", "carousel"}
+NO_RETRY = {"script", "video", "grid", "jackpot", "carousel", "one_portrait"}
 RETRY_TOPIC = (
     "Этот наш пост не собрал ни одного ответа. Напиши на ту же идею НОВЫЙ пост, совсем другими словами:\n"
     "- первая строка — сильный крючок про конкретных людей («Родился 9, 18 или 27?», «Есть тут…»), до 60 знаков;\n"
@@ -811,6 +811,11 @@ async def post_next(
                 return False
             items = "\n".join(f"{i}. {h.title} ({h.source})" for i, h in enumerate(news, 1))
             slot = replace(slot, topic=slot.topic + NEWS_RULES.format(items=items, day=reduce_number(now.day)))
+        portrait_deck = None
+        if slot.rubric.key == "one_portrait":
+            from . import solar_portraits
+            portrait_deck = solar_portraits.choose(rng)
+            slot = replace(slot, topic=slot.topic + solar_portraits.topic(portrait_deck))
         grid = None
         if slot.rubric.key == "grid":
             grid = make_grid(rng)
@@ -836,6 +841,8 @@ async def post_next(
         text = await hook_gate(generator, text)
         if grid:
             card_json = grid_json(grid, rng.choice(GRID_TITLES), palette)
+        elif portrait_deck is not None:
+            card_json = carousel_json(solar_portraits.cards(portrait_deck, palette))
         elif slot.rubric.key == "eight_growth":
             from .cards import eight_growth_carousel
             card_json = carousel_json(eight_growth_carousel(palette))
@@ -1206,3 +1213,4 @@ async def run_scheduler(
             except Exception:
                 log.exception("Autoreply iteration failed")
         await asyncio.sleep(30)
+
