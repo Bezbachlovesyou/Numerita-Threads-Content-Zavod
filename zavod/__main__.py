@@ -37,7 +37,7 @@ async def main() -> None:
         await storage.kv_set("reply_ab_since", datetime.now(timezone.utc).isoformat())
     generator.reply_ab_model, generator.reply_ab_share = cfg.reply_ab_model, cfg.reply_ab_share
     await generator.check_key()
-    threads = ThreadsClient(cfg.zernio_api_key, cfg.zernio_account_id) if cfg.threads_enabled else None
+    threads = ThreadsClient(cfg.zernio_api_key, cfg.zernio_account_id, storage) if cfg.threads_enabled else None
     if threads is None:
         logging.warning("Zernio не настроен (ZERNIO_API_KEY, ZERNIO_ACCOUNT_ID): посты будут только сохраняться.")
 

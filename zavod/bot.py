@@ -20,7 +20,7 @@ from .cards import (
 )
 from .autoreply import answer_comments, finish_reply
 from .optimizer import optimize
-from . import costs, constraint, funnel, performance, approved_post, zero_research
+from . import costs, constraint, funnel, performance, approved_post, zero_research, api_budget
 from .config import Config
 from .generator import GenerationError, Generator
 from .storage import PgStorage, Post, Storage
@@ -45,6 +45,7 @@ COMMANDS = [
     ("queue", "черновики и запланированные посты"),
     ("stats", "статистика в Threads"),
     ("performance", "лайки и комментарии каждого поста"),
+    ("safety", "квоты API и ограничения автоответов"),
     ("costs", "расходы на нейросеть за сегодня"),
     ("compare", "сравнить ответы двух нейросетей"),
     ("status", "модель, база знаний, подключения"),
@@ -59,6 +60,7 @@ HELP = (
     "✅ опубликовать сейчас в Threads и Telegram-канал, 🕒 запланировать, 🔄 переписать, 🔊 озвучить, 🗑 удалить.\n\n"
     "Команды:\n"
     "/performance — лайки и комментарии каждого поста\n"
+    "/safety — наблюдаемые квоты API и ограничения автоответов\n"
     "/new <тема> — новый пост\n"
     "/queue — черновики и запланированные посты\n"
     "/stats — статистика аккаунта в Threads\n"
@@ -279,6 +281,10 @@ async def send_voice(bot: Bot, chat_id: int, post: Post, cfg: Config) -> None:
 def create_router(cfg: Config, plan: ContentPlan) -> Router:
     router = Router()
     router.message.filter(F.from_user.id.in_(cfg.admin_ids))
+
+    @router.message(Command('safety'))
+    async def safety_handler(message: Message, db: Storage):
+        await message.answer(await api_budget.report(db,datetime.now(timezone.utc)),parse_mode=None)
 
     @router.message(Command("performance"))
     async def performance_handler(message: Message, db: Storage):

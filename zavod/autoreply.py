@@ -32,7 +32,7 @@ LOOKBACK = timedelta(days=3)  # под какими постами смотри�
 BUDGET_DAYS = {"2026-10-25": 1.6}
 MAX_GENERATIONS_PER_RUN = 10  # включая переписывания; лимит на человека отсутствует
 FRESH_WINDOW = timedelta(minutes=30)
-DAILY_REPLY_CAP = 900  # официальный предел Threads — 1000 ответов в сутки; держим запас
+DAILY_REPLY_CAP = 900  # Локальный потолок; это не измерение остатка реальной квоты Meta.
 PAUSE = (10, 30)  # секунд между ответами внутри одного прохода
 # Ссылка в ответе — только если человек сам попросил (не навязываемся): не больше 3 в час на всех
 # и не чаще раза в неделю одному человеку. Остальных зовём «в шапку профиля» или не зовём вовсе.
@@ -226,7 +226,12 @@ async def answer_comments(
     # Собираем всё, на что ещё не ответили, со всех постов: и новые комментарии, и ответы людей
     # на наши ответы (живой диалог). Свежие — первыми: первые 15–30 минут решают охват поста.
     queue: list[tuple[str, int | None, str, dict]] = []
-    for target_id, post_id, post_text in await reply_targets(db, threads, now):
+    targets = await reply_targets(db, threads, now)
+    try: scans = json.loads(await db.kv_get('comments:last_scans') or '{}')
+    except ValueError: scans = {}
+    # Least recently checked first. Bound each pass without abandoning older threads.
+    selected = sorted(targets,key=lambda t:scans.get(t[0],''))[:6]
+    for target_id, post_id, post_text in selected:
         try:
             comments = await threads.comments(target_id)
         except ThreadsError as e:
@@ -244,6 +249,8 @@ async def answer_comments(
             continue
         await publication_ready(db, target_id)
         await archive_comments(db, target_id, comments)
+        scans[target_id] = now.isoformat()
+        await db.kv_set('comments:last_scans',json.dumps({k:scans[k] for k,_,_ in targets if k in scans}))
         await repair_fragments(db, threads, target_id, comments)
         for item, our_last in reply_candidates(comments):
             context = post_text + (f"\n\nТвой прошлый ответ этому человеку в ветке:\n{our_last}" if our_last else "")

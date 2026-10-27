@@ -9,6 +9,7 @@ https://docs.zernio.com
 from datetime import datetime
 
 import httpx
+from .api_budget import RequestBudget
 
 API_URL = "https://zernio.com/api/v1"
 MAX_LENGTH = 500
@@ -23,17 +24,22 @@ class ThreadsError(Exception):
 
 
 class ThreadsClient:
-    def __init__(self, api_key: str, account_id: str):
+    def __init__(self, api_key: str, account_id: str, storage=None):
         self.api_key = api_key
         self.account_id = account_id
+        self.storage = storage
+        self.budget = RequestBudget(storage)
 
     async def _request(self, method: str, path: str, **kwargs) -> tuple[int, dict]:
+        await self.budget.before()
         try:
             async with httpx.AsyncClient(timeout=60) as http:
                 headers = {"Authorization": f"Bearer {self.api_key}", **kwargs.pop("headers", {})}
                 response = await http.request(method, API_URL + path, headers=headers, **kwargs)
         except httpx.HTTPError as e:
             raise ThreadsError(f"Не удалось связаться с Zernio: {e}") from e
+
+        await self.budget.observe(response,method,path)
 
         try:
             payload = response.json()
@@ -127,7 +133,7 @@ class ThreadsClient:
         return payload.get("data") or []
 
     async def comments(self, post_id: str, max_pages: int = 10) -> list[dict]:
-        """Все комментарии под постом (ответы людей в Threads) — постранично, до 500."""
+        """Все комментарии под постом — постранично, до 500, с общей паузой API."""
         out: list[dict] = []
         cursor = None
         for _ in range(max_pages):
