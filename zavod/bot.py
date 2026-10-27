@@ -20,7 +20,7 @@ from .cards import (
 )
 from .autoreply import answer_comments, finish_reply
 from .optimizer import optimize
-from . import costs, constraint, funnel, performance, approved_post
+from . import costs, constraint, funnel, performance, approved_post, zero_research
 from .config import Config
 from .generator import GenerationError, Generator
 from .storage import PgStorage, Post, Storage
@@ -1154,6 +1154,10 @@ async def run_scheduler(
     plan: ContentPlan,
 ) -> None:
     """Раз в 30 секунд: посты по кнопкам «через час», автопостинг; раз в 5 минут — ответы на комментарии."""
+    try:
+        await zero_research.send_admin_report(bot, cfg, db)
+    except Exception:
+        log.exception("Owner zero research report was not confirmed; no blind resend")
     rng = random.Random()
     next_replies = datetime.now()
     if await db.claim_slot("owner note margarita"):  # владелец попросил прислать в Telegram (25.10.2026)
