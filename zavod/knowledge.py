@@ -15,6 +15,7 @@ from .subtle_bodies import excerpt as subtle_excerpt
 from .solar_portraits import excerpt as solar_excerpt
 from .planet_resources import excerpt as planet_excerpt
 from .zero_research import excerpt as zero_excerpt
+from .number_mirror import excerpt as mirror_excerpt
 
 log = logging.getLogger(__name__)
 
@@ -53,6 +54,8 @@ class KnowledgeBase:
         """Выдержка из базы для темы поста или пустая строка, если базы нет."""
         subtle = subtle_excerpt(topic)
         local = {}
+        if mirror := mirror_excerpt(topic):
+            local["number_mirror"] = mirror
         if zero := zero_excerpt(topic):
             local["zero_and_discernment"] = zero
         if planets := planet_excerpt(topic):

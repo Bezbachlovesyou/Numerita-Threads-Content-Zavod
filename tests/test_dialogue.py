@@ -19,16 +19,17 @@ def message(key, text, owner=False, replies=None, author="reader"):
 
 
 class Model:
+    reply_model = 'test-model'
     def __init__(self):
         self.calls = 0
         self.summaries = 0
         self.fail_summary = False
 
-    async def write_reply(self, post, comment, author, mode):
+    async def write_reply(self, post, comment, author, mode, model=None):
         self.calls += 1
         return f"Ответ номер {self.calls}: полезная мысль для {author} по новой реплике {comment}"
 
-    async def improve(self, system, prompt, max_tokens=None):
+    async def improve(self, system, prompt, max_tokens=None, kind=None, model=None):
         self.summaries += 1
         if self.fail_summary:
             raise GenerationError("test")
@@ -98,7 +99,7 @@ class MemoryTests(unittest.IsolatedAsyncioTestCase):
                 cursor["replies"] = [current]
             # One pending message per run; no sleep/network/generation service.
             self.assertEqual(await answer_comments(db, threads, model, 30, 5), 1)
-            owner = message("t"+str(i*2+1), "Предыдущий ответ", True, author="numerita")
+            owner = message("t"+str(i*2+1), "Предыдущий ответ.", True, author="numerita")
             current["replies"] = [owner]
             cursor = owner
         self.assertEqual(len(threads.sent), 10)
@@ -129,7 +130,7 @@ class PostgresTests(MemoryTests):
         self.tmp = tempfile.TemporaryDirectory()
         self.db = PgStorage(os.environ["TEST_POSTGRES_DSN"])
         await self.db.init()
-        await self.db.pool.execute("TRUNCATE dialogue_messages, comment_replies, kv")
+        await self.db.pool.execute("TRUNCATE posts, post_metrics, autopost_slots, dialogue_messages, comment_replies, kv")
 
     async def asyncTearDown(self):
         await self.db.pool.close()
