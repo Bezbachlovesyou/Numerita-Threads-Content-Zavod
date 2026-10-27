@@ -1106,18 +1106,26 @@ async def report_autoreply_error(bot: Bot, cfg: Config, db: Storage) -> None:
     paused = await db.kv_get("reply_links_paused_until") or ""
     if paused and paused != (await db.kv_get("reply_links_pause_sent") or ""):
         await db.kv_set("reply_links_pause_sent", paused)
-        await notify_admins(bot, cfg, "⛔ Threads не принял ответ со ссылкой. На всякий случай выключил ссылки "
+        await notify_admins(bot, cfg, "⛔ Сервис публикации не принял ответ со ссылкой. На всякий случай выключил ссылки "
                                       f"в ответах до {datetime.fromisoformat(paused):%d.%m}. Ответы без ссылок идут как обычно.")
     error = await db.kv_get("autoreply_error") or ""
     stage, _, reason = error.partition(": ")
     stage = stage.split(" ")[-1] if reason else ""
-    if reason == (await db.kv_get("autoreply_error_sent") or ""):
+    fingerprint = 'zernio-http-429' if 'Zernio HTTP 429' in reason else reason
+    previous = await db.kv_get("autoreply_error_sent") or ""
+    if fingerprint == previous:
         return
-    await db.kv_set("autoreply_error_sent", reason)
+    success = await db.kv_get('autoreply:last_success') or ''
+    if not reason:
+        if not success or success == (await db.kv_get('autoreply:success_at_warning') or ''):
+            return
+    else:
+        await db.kv_set('autoreply:success_at_warning', success)
+    await db.kv_set("autoreply_error_sent", fingerprint)
     if reason:
         await notify_admins(bot, cfg, explain_autoreply_error(stage, reason))
     else:
-        await notify_admins(bot, cfg, "✅ Автоответы снова работают: Нумерита отвечает людям в Threads как обычно.")
+        await notify_admins(bot, cfg, "✅ Подтверждена успешная отправка нового ответа в Threads.")
 
 
 def explain_autoreply_error(stage: str, reason: str) -> str:
@@ -1134,15 +1142,16 @@ def explain_autoreply_error(stage: str, reason: str) -> str:
         what = "нейросеть, которая пишет ответы (OpenRouter), не ответила."
         todo = ("Если повторится — проверь баланс OpenRouter. Бот сам попробует снова через 5 минут."
                 if "402" in low or "баланс" in low or "credit" in low else "Бот сам попробует снова через 5 минут.")
-    elif "429" in low or "rate" in low or "too many" in low:
-        what, todo = "Threads попросил отвечать реже.", "Бот сам делает паузу и продолжит позже — ничего делать не нужно."
+    elif 'zernio http 429' in low:
+        what = 'API Zernio вернул HTTP 429 — ограничение запросов. Источник внутри цепочки Zernio/Threads не установлен.'
+        todo = 'Пауза автоответов сохранена; бот учтёт Retry-After и повторит позже.'
     else:
         part = {"комментарии": "получить комментарии", "ответ": "отправить ответ",
                 "комментариями": "получить список постов"}.get(stage, "ответить")
         what = f"не получилось {part}. Техническая причина: {reason[:200]}"
         todo = "Бот сам повторит через 5 минут. Если сообщение будет повторяться — перешли его мне."
     return ("⚠️ Автоответы в Threads: заминка.\n\n"
-            f"Что случилось: {what}\n{todo}\n\nПосты продолжают выходить как обычно.")
+            f"Что случилось: {what}\n{todo}\n\nСтатус публикации постов проверяется отдельно.")
 
 
 async def run_scheduler(

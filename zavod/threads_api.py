@@ -15,7 +15,11 @@ MAX_LENGTH = 500
 
 
 class ThreadsError(Exception):
-    pass
+    def __init__(self, message, *, http_status=None, retry_after=None):
+        self.http_status = http_status
+        self.retry_after = retry_after
+        self.provider = 'Zernio'
+        super().__init__(f'Zernio HTTP {http_status}: {message}' if http_status else message)
 
 
 class ThreadsClient:
@@ -34,7 +38,8 @@ class ThreadsClient:
         try:
             payload = response.json()
         except ValueError:
-            raise ThreadsError(f"Zernio вернул ошибку {response.status_code}.")
+            raise ThreadsError('Ответ API не является JSON.', http_status=response.status_code,
+                               retry_after=response.headers.get('Retry-After'))
         if response.is_error:
             if payload.get("code") == "analytics_addon_required":
                 raise ThreadsError("В тарифе Zernio нет статистики (нужен Analytics add-on).")
@@ -43,7 +48,8 @@ class ThreadsClient:
             error = payload.get("error") or payload.get("message") or response.text
             if isinstance(error, dict):
                 error = error.get("message", error)
-            raise ThreadsError(f"Zernio: {error}")
+            raise ThreadsError(str(error), http_status=response.status_code,
+                               retry_after=response.headers.get('Retry-After'))
         return response.status_code, payload
 
     async def upload_image(self, data: bytes, filename: str, content_type: str = "image/jpeg") -> str:

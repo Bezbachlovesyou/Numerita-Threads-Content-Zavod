@@ -18,6 +18,7 @@ from .codereply import find_birth, reply as code_reply
 from .constraint import focus
 from .dialogue import archive_comments, conversation_context, fair_queue, walk_comments
 from .generator import GenerationError, Generator
+from . import reply_cooldown
 from .storage import Storage
 from .threads_api import ThreadsClient, ThreadsError
 from .publishing_wait import defer_publishing, publication_ready
@@ -133,6 +134,8 @@ async def reply_targets(db: Storage, threads: ThreadsClient, now: datetime) -> l
                 continue  # тот же пост, который уже есть в базе под id Zernio
             targets[item["id"]] = (item["id"], match.id if match else None, content)
     except ThreadsError as e:
+        if await reply_cooldown.defer(db, e, now):
+            return []
         await db.kv_set("autoreply_error", f"{now:%d.%m %H:%M} список постов с комментариями: {e}")
     # Keep following recently active discussions after the original post ages out.
     for row in await db.active_dialogue_targets(now - timedelta(days=7)):
@@ -206,6 +209,8 @@ async def answer_comments(
 ) -> int:
     """Отвечает на новые комментарии. Возвращает, сколько ответов отправлено за этот прогон."""
     now = datetime.now(timezone.utc)
+    if await reply_cooldown.blocked(db, now):
+        return 0
     daily_usd = BUDGET_DAYS.get(datetime.now(tz).date().isoformat(), daily_usd) if daily_usd else daily_usd
     if daily_usd and await spent_on_replies(db, tz) >= daily_usd:
         # Закон «всегда в плюсе»: дневной бюджет ответов исчерпан — ждём завтра, владельцу одна строка.
@@ -225,6 +230,8 @@ async def answer_comments(
         try:
             comments = await threads.comments(target_id)
         except ThreadsError as e:
+            if await reply_cooldown.defer(db, e, now):
+                return 0
             if await defer_publishing(db, target_id, e, now):
                 log.info("Пост %s ещё публикуется в Zernio; проверим позднее", target_id)
                 continue
@@ -340,6 +347,8 @@ async def answer_comments(
             await threads.reply(target_id, comment["id"], text)
         except ThreadsError as e:
             log.warning("Не удалось ответить на комментарий %s: %s", comment["id"], e)
+            if await reply_cooldown.defer(db, e, now):
+                return sent
             if is_gone(e):  # комментарий удалили или скрыли — просто пропускаем
                 await db.record_comment(comment["id"], post_id, author, comment["message"], "skip:gone", "skipped")
                 continue
@@ -354,6 +363,7 @@ async def answer_comments(
             "numerita", "numerita.ai", "assistant", text, datetime.now(timezone.utc).isoformat(),
         )
         await db.record_comment(comment["id"], post_id, author, comment["message"], text, "replied")
+        await reply_cooldown.success(db, datetime.now(timezone.utc))
         await db.kv_set("autoreply_error", "")
         log.info("Ответ @%s под постом %s", author, target_id)
         sent += 1
