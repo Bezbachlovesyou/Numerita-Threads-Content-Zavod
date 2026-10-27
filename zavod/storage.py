@@ -108,6 +108,7 @@ class Post:
     image_url: str | None
     error: str | None
     link_mode: str | None = None  # эксперимент со ссылкой: text | comment | profile
+    published_at: datetime | None = None
 
 
 def _now() -> str:
@@ -129,6 +130,7 @@ def _row_to_post(row: aiosqlite.Row) -> Post:
         image_url=row.get("image_url"),
         error=row["error"],
         link_mode=row.get("link_mode"),
+        published_at=datetime.fromisoformat(row["published_at"]) if row.get("published_at") else None,
     )
 
 
@@ -553,4 +555,5 @@ class PgStorage(Storage):
             " ON CONFLICT (post_id) DO UPDATE SET likes = $2, impressions = $3, updated_at = $4",
             post_id, likes, impressions, _now(),
         )
+
 

@@ -1,7 +1,7 @@
 """Самоулучшение контента: раз в сутки бот сам разбирает, что работает, и меняет свой план.
 
-1. Собирает лайки и просмотры постов из Zernio, ответы — из своей базы автоответов.
-2. Очки поста = ответы + 0,2 × лайки + просмотры / 500. Считает средние очки рубрик за 7 дней.
+1. Собирает счётчики платформы через Zernio: лайки, комментарии и доступные просмотры.
+2. Сравнивает только замеры в возрасте 24–26 часов. Очки = комментарии + 0,2 × лайки.
 3. Веса рубрик: сильные выходят чаще, слабые реже (но не пропадают совсем).
 4. Веса часов: в окна, где реакция лучше, бот постит чаще, в слабые — реже.
 5. Самую слабую рубрику переписывает нейросетью по примерам лучших постов; через 3 дня
@@ -16,6 +16,7 @@ import re
 import statistics
 from datetime import datetime, timedelta, timezone
 
+from . import performance
 from .autopost import CTAS, ContentPlan, Rubric, hour_bucket
 from .generator import GenerationError, Generator
 from .storage import Storage
@@ -95,8 +96,8 @@ def plural(n: int, one: str, few: str, many: str) -> str:
 
 
 def post_score(row: dict) -> float:
-    """Очки поста: ответы важнее всего, лайки и просмотры — дополнительно."""
-    return row["comments"] + 0.2 * row["likes"] + row.get("views", 0) / 500
+    """Эвристические очки на сопоставимом 24ч замере; не гарантия охватов или продаж."""
+    return row["comments"] + 0.2 * row["likes"]
 
 
 def score_rubrics(rows: list[dict]) -> dict[str, tuple[int, float]]:
@@ -117,21 +118,7 @@ def clamp(value: float, low: float, high: float) -> float:
 
 
 async def refresh_metrics(db: Storage, threads: ThreadsClient, now: datetime) -> int:
-    """Лайки и просмотры постов за неделю из статистики Zernio. 0 — статистика недоступна."""
-    updated = 0
-    for post in await db.recent_published(now - WINDOW):
-        try:
-            stats = await threads.post_stats(post.threads_id)
-        except ThreadsError as e:
-            log.info("Статистика Zernio недоступна: %s", e)
-            return updated
-        analytics = (stats or {}).get("analytics") or {}
-        likes = analytics.get("likes")
-        views = analytics.get("views", analytics.get("impressions"))  # у Threads — просмотры
-        if isinstance(likes, (int, float)):
-            await db.save_metrics(post.id, int(likes), int(views or 0))
-            updated += 1
-    return updated
+    return await performance.collect(db, threads, now)
 
 
 async def apply_state(db: Storage, plan: ContentPlan, now: datetime) -> None:
@@ -150,7 +137,7 @@ async def optimize(
     report: list[str] = []  # что изменил — попадает в раздел «Что я поменял»
     if threads is not None:
         await refresh_metrics(db, threads, now)
-    rows = await db.engagement(now - WINDOW)
+    rows = await performance.comparable(db, now - WINDOW)
     scores = score_rubrics([r for r in rows if r["rubric"] != "script"])
     by_key = {r.key: r for r in plan.all_rubrics()}
     ranked = sorted(((k, v) for k, v in scores.items() if k in by_key), key=lambda item: -item[1][1])
@@ -247,7 +234,7 @@ async def optimize(
     #      Если со ссылкой заметно хуже (меньше 70% от постов без ссылки) — посты пишем без ссылок
     #      (только «ссылка в профиле»), оставив 10% на контроль; если выровнялось — возвращаем.
     ctas = {r.key: r.cta for r in plan.all_rubrics()}
-    all_rows = [r for r in await db.engagement(now - LINK_WINDOW) if r["rubric"] not in ("video", "script")]
+    all_rows = [r for r in await performance.comparable(db, now - LINK_WINDOW) if r["rubric"] not in ("video", "script")]
     with_link = [r for r in all_rows if r.get("link_mode") in ("text", "comment")
                  or (not r.get("link_mode") and ctas.get(r["rubric"]) == "link")]
     no_link = [r for r in all_rows if r not in with_link]
@@ -272,7 +259,7 @@ async def optimize(
                           f"{avg_plain:.1f}) — ссылки оставляю.")
 
     # 4в. Эксперимент «где ставить ссылку»: в тексте, первым комментарием или «в профиле».
-    link_rows = [r for r in await db.engagement(now - LINK_WINDOW) if r.get("link_mode")]
+    link_rows = [r for r in await performance.comparable(db, now - LINK_WINDOW) if r.get("link_mode")]
     modes: dict[str, list[float]] = {}
     for row in link_rows:
         modes.setdefault(row["link_mode"], []).append(post_score(row))
@@ -383,13 +370,13 @@ def emotion_stats(rows: list[dict]) -> list[str]:
 def summary(rows: list[dict], ranked: list, name) -> list[str]:
     """Первая часть отчёта: сколько вышло и что заходит лучше всего — обычными словами."""
     if not rows:
-        return ["За неделю ещё нет опубликованных постов с реакциями — выводы будут позже."]
+        return ["Пока нет сопоставимых замеров через 24–26 часов. Это не означает, что лайков и комментариев нет."]
     comments, likes = sum(r["comments"] for r in rows), sum(r["likes"] for r in rows)
-    views = sum(r.get("views", 0) for r in rows)
+    views = sum(r.get("views") or 0 for r in rows)
     lines = [
-        f"📊 За 7 дней: {plural(len(rows), 'пост', 'поста', 'постов')}, "
+        f"📊 По замерам в возрасте 24–26 часов у постов последней недели: {plural(len(rows), 'пост', 'поста', 'постов')}, "
         f"{plural(comments, 'комментарий', 'комментария', 'комментариев')}, "
-        f"{plural(likes, 'лайк', 'лайка', 'лайков')}, {plural(views, 'просмотр', 'просмотра', 'просмотров')}."
+        f"{plural(likes, 'лайк', 'лайка', 'лайков')}, просмотры доступны у {sum(r.get('views') is not None for r in rows)} из {len(rows)} постов."
     ]
     if ranked:
         lines += ["", "🏆 Что заходит лучше всего (в среднем на один пост):"]
@@ -400,5 +387,6 @@ def summary(rows: list[dict], ranked: list, name) -> list[str]:
             lines.append(f"{i}. {title[:1].upper() + title[1:]} — "
                          f"{c:.0f} комм., {l:.0f} лайк. ({plural(count, 'пост', 'поста', 'постов')})")
     if not ranked or min(count for _, (count, _) in ranked) < MIN_POSTS:
-        lines.append("\nДанных пока мало — уверенные выводы будут, когда каждый вид постов выйдет хотя бы 2–3 раза.")
+        lines.append("\nДанных пока мало — уверенные выводы будут, после хотя бы трёх сопоставимых постов каждого формата; это ещё не статистическое доказательство.")
     return lines
+

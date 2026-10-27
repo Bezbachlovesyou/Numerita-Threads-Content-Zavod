@@ -20,7 +20,7 @@ from .cards import (
 )
 from .autoreply import answer_comments, finish_reply
 from .optimizer import optimize
-from . import costs, constraint, funnel
+from . import costs, constraint, funnel, performance, approved_post
 from .config import Config
 from .generator import GenerationError, Generator
 from .storage import PgStorage, Post, Storage
@@ -44,6 +44,7 @@ COMMANDS = [
     ("new", "новый пост: /new <тема>"),
     ("queue", "черновики и запланированные посты"),
     ("stats", "статистика в Threads"),
+    ("performance", "лайки и комментарии каждого поста"),
     ("costs", "расходы на нейросеть за сегодня"),
     ("compare", "сравнить ответы двух нейросетей"),
     ("status", "модель, база знаний, подключения"),
@@ -57,6 +58,7 @@ HELP = (
     "Просто напишите тему, и я пришлю готовый пост с кнопками:\n"
     "✅ опубликовать сейчас в Threads и Telegram-канал, 🕒 запланировать, 🔄 переписать, 🔊 озвучить, 🗑 удалить.\n\n"
     "Команды:\n"
+    "/performance — лайки и комментарии каждого поста\n"
     "/new <тема> — новый пост\n"
     "/queue — черновики и запланированные посты\n"
     "/stats — статистика аккаунта в Threads\n"
@@ -277,6 +279,11 @@ async def send_voice(bot: Bot, chat_id: int, post: Post, cfg: Config) -> None:
 def create_router(cfg: Config, plan: ContentPlan) -> Router:
     router = Router()
     router.message.filter(F.from_user.id.in_(cfg.admin_ids))
+
+    @router.message(Command("performance"))
+    async def performance_handler(message: Message, db: Storage):
+        await message.answer(await performance.report(db, datetime.now(timezone.utc)), parse_mode=None)
+
     router.callback_query.filter(F.from_user.id.in_(cfg.admin_ids))
 
     async def new_post(message: Message, topic: str, db: Storage, generator: Generator) -> None:
@@ -726,7 +733,7 @@ async def find_dead_post(db: Storage, now: datetime, skip: set[str] = frozenset(
         return None
     if await db.kv_get("autoreply_error"):  # комментарии не читаются — не знаем, кто живой, кто нет
         return None
-    rows = await db.engagement(now - timedelta(hours=48))
+    rows = await performance.comparable(db, now - timedelta(hours=48))
     if not any(r["comments"] for r in rows):  # ни одного комментария нигде — данных нет, не трогаем
         return None
     retried = set(json.loads(await db.kv_get("retried_posts") or "[]"))
@@ -1167,21 +1174,30 @@ async def run_scheduler(
             log.exception("Снятие неудачных постов не удалось")
     while True:
         try:
-            for post in await db.due():
-                post = await publish(post, db, threads, bot, cfg.telegram_channel, cfg.cards)
-                if post.status == "failed":
-                    await notify_admins(bot, cfg, "⚠️ Пост не опубликован\n\n" + post_card(post, cfg), post)
-            if plan.enabled and threads is not None:
+            priority_pending = await approved_post.tick(
+                db, threads, datetime.now(timezone.utc), lambda text: notify_admins(bot, cfg, text))
+            if not priority_pending:
+                for post in await db.due():
+                    post = await publish(post, db, threads, bot, cfg.telegram_channel, cfg.cards)
+                    if post.status == "failed":
+                        await notify_admins(bot, cfg, "⚠️ Пост не опубликован\n\n" + post_card(post, cfg), post)
+            if plan.enabled and threads is not None and not priority_pending:
                 await autopost_tick(bot, cfg, db, threads, generator, plan, rng)
-            if cfg.video and cfg.fal_key and threads is not None:
+            if cfg.video and cfg.fal_key and threads is not None and not priority_pending:
                 await video_tick(bot, cfg, db, threads, generator, rng)
         except Exception:
             log.exception("Scheduler iteration failed")
         now = datetime.now(cfg.timezone)
+        if threads is not None:
+            try:
+                await performance.collect(db, threads, now)
+            except Exception:
+                log.exception("Post performance collection failed")
         if plan.enabled and now.time() >= OPTIMIZE_AT and await db.claim_slot(f"optimize {now.date().isoformat()}"):
             try:
                 report = await optimize(db, threads, generator, plan, now)
                 await notify_admins(bot, cfg, "🧠 Отчёт за сутки: что я узнал и что поменял\n\n" + "\n".join(report))
+                await notify_admins(bot, cfg, await performance.report(db, now))
                 await notify_admins(bot, cfg, await costs.report(db, generator, cfg.timezone))
             except Exception:
                 log.exception("Optimizer failed")
@@ -1213,4 +1229,5 @@ async def run_scheduler(
             except Exception:
                 log.exception("Autoreply iteration failed")
         await asyncio.sleep(30)
+
 
