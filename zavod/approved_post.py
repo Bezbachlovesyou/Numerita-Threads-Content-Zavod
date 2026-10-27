@@ -1,6 +1,7 @@
 """Owner-approved one-off. Never replaces art with a generated card or retries an ambiguous POST."""
 import hashlib
 import json
+import os
 from datetime import timedelta
 from pathlib import Path
 
@@ -14,6 +15,13 @@ ASSET = Path(__file__).resolve().parent.parent / 'assets' / 'approved-six-love.p
 
 async def tick(db, threads, now, notify):
     """True blocks random autopost until the approved one-off has a confirmed outcome."""
+    # This repository also has unrelated Railway deployments; never run the owner's job there.
+    project = os.getenv('RAILWAY_PROJECT_ID')
+    service = os.getenv('RAILWAY_SERVICE_ID')
+    if project and project != 'aae9ee4d-e392-46a9-892a-f656adc80955':
+        return False
+    if service and service != '16642ca8-b73e-4685-aeaa-37f4cdc422b6':
+        return False
     raw = await db.kv_get(KEY)
     state = json.loads(raw) if raw else {}
     if state.get('done'):
