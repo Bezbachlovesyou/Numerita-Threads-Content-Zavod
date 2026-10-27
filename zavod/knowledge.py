@@ -13,6 +13,7 @@ import time
 import httpx
 from .subtle_bodies import excerpt as subtle_excerpt
 from .solar_portraits import excerpt as solar_excerpt
+from .planet_resources import excerpt as planet_excerpt
 
 log = logging.getLogger(__name__)
 
@@ -51,6 +52,8 @@ class KnowledgeBase:
         """Выдержка из базы для темы поста или пустая строка, если базы нет."""
         subtle = subtle_excerpt(topic)
         local = {}
+        if planets := planet_excerpt(topic):
+            local["planet_resources"] = planets
         if solar := solar_excerpt(topic):
             local["solar_portraits"] = solar
         if subtle:
@@ -103,5 +106,6 @@ class KnowledgeBase:
                 for key, value in numbers.items()
             }
         return json.dumps(part, ensure_ascii=False)
+
 
 
