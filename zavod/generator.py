@@ -91,6 +91,9 @@ class Generator:
             text = abundance.read_text(encoding="utf-8")
             self.system += "\n\n" + text
             self.reply_system += "\n\n" + text
+        from . import text_mode
+        if text_mode.enabled():
+            self.system += '\n\n' + text_mode.STYLE
         self.knowledge = knowledge
         self.reply_model = model  # модель ответов на комментарии (задаётся при запуске)
         self.cost_sink = None  # async (kind, usd, prompt_tokens, completion_tokens, cached_tokens) — учёт расходов
@@ -180,6 +183,9 @@ class Generator:
                       mask_key(self.api_key), response.status_code, response.text[:200])
 
     async def write_post(self, topic: str, previous: str | None = None) -> str:
+        from . import text_mode
+        if text_mode.enabled():
+            topic += '\n\n' + text_mode.STYLE
         prompt = await self._with_knowledge(f"Тема поста: {topic}", topic)
         if previous:
             prompt += (
@@ -197,11 +203,15 @@ class Generator:
 
     async def strengthen(self, text: str, why: str) -> str:
         prompt = await self._with_knowledge(STRENGTHEN.format(text=text, why=why or "нет крючка"), text)
+        from . import text_mode
+        if text_mode.enabled(): prompt += '\n\n' + text_mode.STYLE
         return await self._complete(self.system, prompt, kind="strengthen")
 
     async def sharpen(self, text: str) -> str:
         """Огранка готового поста из плана: голый кусок справки превращаем в пост, в который хочется вовлечься."""
         prompt = await self._with_knowledge(SHARPEN.format(text=text), text)
+        from . import text_mode
+        if text_mode.enabled(): prompt += '\n\n' + text_mode.STYLE
         return await self._complete(self.system, prompt, kind="sharpen")
 
     async def _complete(self, system: str, prompt: str, max_tokens: int | None = None, _retry: bool = False,

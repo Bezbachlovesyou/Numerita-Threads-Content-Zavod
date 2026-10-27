@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from zoneinfo import ZoneInfo
 
 from dotenv import load_dotenv
+from . import text_mode
 
 DEFAULT_MODEL = "anthropic/claude-sonnet-5.5"  # посты; Opus вдвое дороже без заметной разницы в коротких постах
 # Ответы на комментарии — короткие и массовые: Haiku 5.5 в 20 раз дешевле Sonnet. Часть — на Sonnet (A/B качества).
@@ -93,7 +94,7 @@ def load_config() -> Config:
         telegram_channel=channel_id(os.getenv("TELEGRAM_CHANNEL", "")),
         # Автопостинг: бот сам выбирает время и рубрику. AUTOPOST=off — выключить.
         # Картинки к постам (карточка Нумериты). CARDS=off — публиковать только текст.
-        cards=os.getenv("CARDS", "on").strip().lower() not in ("off", "0", "no", "нет"),
+        cards=not text_mode.enabled() and os.getenv("CARDS", "on").strip().lower() not in ("off", "0", "no", "нет"),
         autopost=os.getenv("AUTOPOST", "on").strip().lower() not in ("off", "0", "no", "нет"),
         # Автоответы на комментарии в Threads: включены по умолчанию, AUTOREPLY=0 — выключить.
         autoreply=os.getenv("AUTOREPLY", "1") != "0",
@@ -105,7 +106,7 @@ def load_config() -> Config:
         reply_budget_usd=float(os.getenv("REPLY_BUDGET_USD", "1") or 1),
         # Видео с Нумеритой (fal.ai, Seedance 2.0). Без FAL_KEY видео не делаются, VIDEO=off — выключить.
         fal_key=os.getenv("FAL_KEY", "").strip(),
-        video=os.getenv("VIDEO", "on").strip().lower() not in ("off", "0", "no", "нет"),
+        video=not text_mode.enabled() and os.getenv("VIDEO", "on").strip().lower() not in ("off", "0", "no", "нет"),
         video_per_day=int(os.getenv("VIDEO_PER_DAY", "1") or 1),
         video_resolution=os.getenv("VIDEO_RESOLUTION", "720p").strip() or "720p",
     )

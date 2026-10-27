@@ -10,6 +10,7 @@ from datetime import datetime
 
 import httpx
 from .api_budget import RequestBudget
+from . import text_mode
 
 API_URL = "https://zernio.com/api/v1"
 MAX_LENGTH = 500
@@ -88,6 +89,10 @@ class ThreadsClient:
         if extra:
             platform["platformSpecificData"] = extra
         body: dict = {"content": text, "platforms": [platform], "publishNow": True}
+        if text_mode.enabled():
+            image_urls, video_url = None, None
+            if text_mode.needs_visual(text):
+                raise ThreadsError('Нужен самостоятельный текст для текстового эксперимента, без ссылок на картинку/кнопки.')
         if video_url:
             body["mediaItems"] = [{"type": "video", "url": video_url}]
         elif image_urls:  # одна картинка или карусель до 10

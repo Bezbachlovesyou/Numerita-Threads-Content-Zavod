@@ -19,6 +19,7 @@ from .cards import (
     render_grid, soul_carousel,
 )
 from .autoreply import answer_comments, finish_reply
+from . import text_mode
 from .optimizer import optimize
 from . import costs, constraint, funnel, performance, approved_post, zero_research, api_budget
 from .config import Config
@@ -219,8 +220,8 @@ async def publish(
             post = await db.get(post.id)
     if threads is not None and not post.threads_id:
         try:
-            video_url = (json.loads(post.card) or {}).get("video") if post.card else None
-            image_urls = await ensure_images(post, db, threads) if cards and not video_url else []
+            video_url = (json.loads(post.card) or {}).get("video") if post.card and not text_mode.enabled() else None
+            image_urls = await ensure_images(post, db, threads) if cards and not video_url and not text_mode.enabled() else []
             text, first_comment = (
                 (post.text, post.first_comment) if post.link_mode == "text"  # эксперимент: ссылка в тексте
                 else links_to_comment(post.text, post.first_comment)
@@ -672,7 +673,8 @@ async def write_autopost(
     """Текст поста, первый комментарий (для постов со ссылкой) и фраза для картинки."""
     is_link = slot.rubric.cta == "link"
     rule = (LINK_RULES.get(link_mode) if is_link else None) or CTA_RULES[slot.rubric.cta]
-    topic = f"{slot.topic}\n\n{rule}\n\n{CARD_RULES[style]}" + ("" if is_link else BUTTON_RULE)
+    topic = (f"{slot.topic}\n\n{rule}\n\n{text_mode.STYLE}" if text_mode.enabled() else
+             f"{slot.topic}\n\n{rule}\n\n{CARD_RULES[style]}" + ("" if is_link else BUTTON_RULE))
     limit = MAX_LENGTH - (60 if is_link and link_mode == "text" else 0)  # место под ссылку в тексте
     text, hook = split_card_hook(await generator.write_post(topic))
     if len(text) > limit:
@@ -781,9 +783,9 @@ async def post_next(
     Возвращает False, только если пост не удалось написать (тогда повторим скоро).
     """
     recent = await db.recent_rubrics(6)
-    queued = await db.next_queued()
-    if queued and (not recent or recent[0] != "script"):
-        if queued.rubric == "script":
+    queued = await text_mode.next_seed(db) if text_mode.enabled() else await db.next_queued()
+    if queued and (not recent or recent[0] not in ('script','text_seed')):
+        if queued.rubric != 'text_seed' and (queued.rubric == "script" or text_mode.enabled()):
             queued = await sharpen_script(db, generator, queued)
         post = await publish(queued, db, threads, bot, "", cfg.cards)
     else:
@@ -797,7 +799,7 @@ async def post_next(
         dead = await find_dead_post(db, now, {r.key for r in plan.all_rubrics() if r.cta == "link"})
         if dead:
             original = {r.key: r for r in plan.all_rubrics()}.get(dead["rubric"])
-            if original is None or original.cta == "link":  # ссылки — по своим правилам, не повторяем
+            if original is None or original.cta == "link" or (text_mode.enabled() and not text_mode.allowed(original)):
                 dead = None
             else:
                 rubric = plan.effective(original)
@@ -852,7 +854,9 @@ async def post_next(
             await notify_admins(bot, cfg, f"❌ Автопост не написан: {e}\nТема: {slot.topic}")
             return False
         text = await hook_gate(generator, text)
-        if grid:
+        if text_mode.enabled():
+            card_json = None
+        elif grid:
             card_json = grid_json(grid, rng.choice(GRID_TITLES), palette)
         elif portrait_deck is not None:
             card_json = carousel_json(solar_portraits.cards(portrait_deck, palette))
@@ -1193,16 +1197,18 @@ async def run_scheduler(
             log.exception("Снятие неудачных постов не удалось")
     while True:
         try:
-            priority_pending = await approved_post.tick(
+            priority_pending = False if text_mode.enabled() else await approved_post.tick(
                 db, threads, datetime.now(timezone.utc), lambda text: notify_admins(bot, cfg, text))
             if not priority_pending:
                 for post in await db.due():
+                    if text_mode.enabled():
+                        post = await sharpen_script(db,generator,post)
                     post = await publish(post, db, threads, bot, cfg.telegram_channel, cfg.cards)
                     if post.status == "failed":
                         await notify_admins(bot, cfg, "⚠️ Пост не опубликован\n\n" + post_card(post, cfg), post)
             if plan.enabled and threads is not None and not priority_pending:
                 await autopost_tick(bot, cfg, db, threads, generator, plan, rng)
-            if cfg.video and cfg.fal_key and threads is not None and not priority_pending:
+            if cfg.video and not text_mode.enabled() and cfg.fal_key and threads is not None and not priority_pending:
                 await video_tick(bot, cfg, db, threads, generator, rng)
         except Exception:
             log.exception("Scheduler iteration failed")

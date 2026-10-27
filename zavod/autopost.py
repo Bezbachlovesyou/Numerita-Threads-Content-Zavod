@@ -18,6 +18,7 @@ from pathlib import Path
 
 from .cards import PALETTES, PLANETS, birth_days
 from .knowledge import reduce_number
+from . import text_mode
 
 log = logging.getLogger(__name__)
 
@@ -172,6 +173,10 @@ class ContentPlan:
         by_key = {r.key: r for r in self.all_rubrics()}
         recent_ctas = [by_key[k].cta for k in recent[:5] if k in by_key]
         pool = [r for r in self.all_rubrics() if not recent or r.key != recent[0]]
+        if text_mode.enabled():
+            pool = [r for r in pool if text_mode.allowed(r)] or [r for r in self.all_rubrics() if text_mode.allowed(r)]
+            fresh_text = [r for r in pool if r.key.startswith('text_') or r.key == 'number_mirror']
+            pool = fresh_text or pool
         if recent_ctas[:1] == ["link"] or recent_ctas.count("link") >= 2:
             pool = [r for r in pool if r.cta != "link"] or pool
         weights = [max(0.2, self.weights.get(r.key, 1.0)) for r in pool]
