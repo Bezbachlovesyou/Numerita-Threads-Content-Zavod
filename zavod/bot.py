@@ -220,15 +220,20 @@ async def publish(
             post = await db.get(post.id)
     if threads is not None and not post.threads_id:
         try:
+            grid_exception = text_mode.grid_post(post)
             video_url = (json.loads(post.card) or {}).get("video") if post.card and not text_mode.enabled() else None
-            image_urls = await ensure_images(post, db, threads) if cards and not video_url and not text_mode.enabled() else []
+            image_urls = await ensure_images(post, db, threads) if not video_url and (
+                (cards and not text_mode.enabled()) or grid_exception) else []
+            if grid_exception and len(image_urls)!=1:
+                raise ThreadsError('Матрица не загружена; головоломка без изображения не публикуется.')
             text, first_comment = (
                 (post.text, post.first_comment) if post.link_mode == "text"  # эксперимент: ссылка в тексте
                 else links_to_comment(post.text, post.first_comment)
             )
             text = strip_credits(text)  # без «по мотивам @…» и чужих @упоминаний
             threads_id = await threads.publish_text(
-                text, topic_tag_for(post.rubric), first_comment, image_urls, video_url
+                text, topic_tag_for(post.rubric), first_comment, image_urls, video_url,
+                **({'media_kind':'number_grid'} if grid_exception else {})
             )
             await db.set_threads_id(post.id, threads_id or "published")
         except ThreadsError as e:
@@ -673,7 +678,9 @@ async def write_autopost(
     """Текст поста, первый комментарий (для постов со ссылкой) и фраза для картинки."""
     is_link = slot.rubric.cta == "link"
     rule = (LINK_RULES.get(link_mode) if is_link else None) or CTA_RULES[slot.rubric.cta]
-    topic = (f"{slot.topic}\n\n{rule}\n\n{text_mode.STYLE}" if text_mode.enabled() else
+    topic = (f"{text_mode.GRID_MARKER}\n{slot.topic}\n\n{rule}\n{text_mode.GRID_STYLE}"
+             if slot.rubric.key == 'grid' and text_mode.enabled() and text_mode.grid_enabled() else
+             f"{slot.topic}\n\n{rule}\n\n{text_mode.STYLE}" if text_mode.enabled() else
              f"{slot.topic}\n\n{rule}\n\n{CARD_RULES[style]}" + ("" if is_link else BUTTON_RULE))
     limit = MAX_LENGTH - (60 if is_link and link_mode == "text" else 0)  # место под ссылку в тексте
     text, hook = split_card_hook(await generator.write_post(topic))
@@ -853,11 +860,12 @@ async def post_next(
         except GenerationError as e:
             await notify_admins(bot, cfg, f"❌ Автопост не написан: {e}\nТема: {slot.topic}")
             return False
-        text = await hook_gate(generator, text)
-        if text_mode.enabled():
-            card_json = None
-        elif grid:
+        if not (grid and text_mode.enabled()):
+            text = await hook_gate(generator, text)
+        if grid:
             card_json = grid_json(grid, rng.choice(GRID_TITLES), palette)
+        elif text_mode.enabled():
+            card_json = None
         elif portrait_deck is not None:
             card_json = carousel_json(solar_portraits.cards(portrait_deck, palette))
         elif slot.rubric.key == "eight_growth":

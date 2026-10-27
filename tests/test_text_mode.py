@@ -57,7 +57,7 @@ class TextModeTests(unittest.IsolatedAsyncioTestCase):
 
     def test_plan_uses_text_formats_and_excludes_visual_tasks(self):
         plan=ContentPlan(load_rubrics(Path('prompts/content_plan.md')))
-        with patch.dict(os.environ,{'THREADS_TEXT_ONLY':'1'}):
+        with patch.dict(os.environ,{'THREADS_TEXT_ONLY':'1','THREADS_GRID_EXCEPTION':'0'}):
             for i in range(100):
                 rubric=plan.choose([],random.Random(i))
                 self.assertTrue(rubric.key.startswith('text_') or rubric.key=='number_mirror')

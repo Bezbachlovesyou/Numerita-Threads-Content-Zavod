@@ -175,7 +175,8 @@ class ContentPlan:
         pool = [r for r in self.all_rubrics() if not recent or r.key != recent[0]]
         if text_mode.enabled():
             pool = [r for r in pool if text_mode.allowed(r)] or [r for r in self.all_rubrics() if text_mode.allowed(r)]
-            fresh_text = [r for r in pool if r.key.startswith('text_') or r.key == 'number_mirror']
+            fresh_text = [r for r in pool if r.key.startswith('text_') or r.key == 'number_mirror'
+                          or (r.key == 'grid' and text_mode.grid_enabled() and 'grid' not in recent[:3])]
             pool = fresh_text or pool
         if recent_ctas[:1] == ["link"] or recent_ctas.count("link") >= 2:
             pool = [r for r in pool if r.cta != "link"] or pool

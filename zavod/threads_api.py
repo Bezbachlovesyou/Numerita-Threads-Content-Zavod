@@ -76,6 +76,7 @@ class ThreadsClient:
     async def publish_text(
         self, text: str, topic_tag: str | None = None, first_comment: str | None = None,
         image_urls: list[str] | None = None, video_url: str | None = None,
+        *, media_kind: str | None = None,
     ) -> str:
         """Публикует пост. topic_tag — тема Threads (показ подписчикам темы), first_comment — первый комментарий."""
         if len(text) > MAX_LENGTH:
@@ -90,8 +91,11 @@ class ThreadsClient:
             platform["platformSpecificData"] = extra
         body: dict = {"content": text, "platforms": [platform], "publishNow": True}
         if text_mode.enabled():
-            image_urls, video_url = None, None
-            if text_mode.needs_visual(text):
+            grid_ok = (text_mode.grid_enabled() and media_kind == 'number_grid'
+                       and image_urls and len(image_urls)==1 and not video_url)
+            if not grid_ok: image_urls = None
+            video_url = None
+            if text_mode.needs_visual(text) and not grid_ok:
                 raise ThreadsError('Нужен самостоятельный текст для текстового эксперимента, без ссылок на картинку/кнопки.')
         if video_url:
             body["mediaItems"] = [{"type": "video", "url": video_url}]

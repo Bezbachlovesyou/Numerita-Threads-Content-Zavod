@@ -184,7 +184,10 @@ class Generator:
 
     async def write_post(self, topic: str, previous: str | None = None) -> str:
         from . import text_mode
-        if text_mode.enabled():
+        grid = text_mode.enabled() and text_mode.grid_enabled() and text_mode.GRID_MARKER in topic
+        if grid:
+            topic += '\n\n' + text_mode.GRID_STYLE
+        elif text_mode.enabled():
             topic += '\n\n' + text_mode.STYLE
         prompt = await self._with_knowledge(f"Тема поста: {topic}", topic)
         if previous:
@@ -192,7 +195,8 @@ class Generator:
                 "\n\nВот предыдущий вариант, он не подошёл. "
                 f"Напиши заметно другой пост на ту же тему:\n\n{previous}"
             )
-        return await self._complete(self.system, prompt, kind="post")
+        system = self.system.replace(text_mode.STYLE,'') if grid else self.system
+        return await self._complete(system, prompt, kind="post")
 
     async def hook_score(self, text: str) -> tuple[int, str]:
         """Дешёвая проверка крючка (модель ответов): оценка 1–10 и главная слабость."""
