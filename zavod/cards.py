@@ -6,6 +6,7 @@
 """
 
 import io
+import math
 import json
 import random
 import re
@@ -258,8 +259,10 @@ SEQUENCES = ["111", "222", "333", "444", "555", "777", "888", "999", "1111", "12
 GRID_COLS, GRID_ROWS = 12, 14
 
 
-def make_grid(rng: random.Random, count: int = 7) -> dict:
+def make_grid(rng: random.Random, count: int = 7, style: str = "classic") -> dict:
     """Сетка цифр со спрятанными сочетаниями: {"rows": [...], "marks": [[r, c], ...], "hidden": [...]}."""
+    if style in SHAPES:
+        return make_shape(rng, style, count)
     grid = [[None] * GRID_COLS for _ in range(GRID_ROWS)]
     marks, hidden = set(), []
     for seq in rng.sample(SEQUENCES, len(SEQUENCES)):
@@ -280,11 +283,146 @@ def make_grid(rng: random.Random, count: int = 7) -> dict:
         for x in range(GRID_COLS):
             if grid[y][x] is None:
                 grid[y][x] = str(rng.randrange(10))
-    return {"rows": ["".join(row) for row in grid], "marks": sorted(marks), "hidden": hidden}
+    return {"style": "classic", "rows": ["".join(row) for row in grid], "marks": sorted(marks), "hidden": hidden}
+
+
+# Формы матрицы (слово владельца 28.10.2026: «чередуй матрицу в разных красивых стилях, крути, вращай числа,
+# пускай необычными формами»). Цифры идут одной лентой по линии формы, спрятанные сочетания — подряд по линии.
+SHAPES = {
+    "spiral": ("Какое число вынырнет из спирали первым?", "Спираль чисел: читай по завитку от центра"),
+    "rings": ("Какое число на кольцах поймало твой взгляд?", "Кольца чисел: читай по кругу"),
+    "heart": ("Какое число в сердце ты увидишь первым?", "Сердце из чисел: читай по контурам"),
+    "wave": ("Какое число вынесла к тебе волна?", "Волны чисел: читай слева направо"),
+    "galaxy": ("Какое число светит тебе из галактики?", "Галактика чисел: читай по рукавам от центра"),
+}
+GRID_STYLES = ["classic", *SHAPES]
+
+
+def make_shape(rng: random.Random, style: str, count: int = 7) -> dict:
+    n = len(_shape_points(style))
+    digits: list[str | None] = [None] * n
+    marks, hidden = set(), []
+    for seq in rng.sample(SEQUENCES, len(SEQUENCES)):
+        if len(hidden) >= count:
+            break
+        for _ in range(60):
+            start = rng.randrange(n - len(seq))
+            cells = range(start, start + len(seq))
+            if all(digits[i] is None for i in cells) and start - 1 not in marks and start + len(seq) not in marks:
+                for i, ch in zip(cells, seq):
+                    digits[i] = ch
+                    marks.add(i)
+                hidden.append(seq)
+                break
+    text = "".join(d if d is not None else str(rng.randrange(10)) for d in digits)
+    return {"style": style, "digits": text, "marks": sorted(marks), "hidden": hidden}
+
+
+def _arc_sample(curve, count: int, steps: int = 4000) -> list[tuple[float, float, float]]:
+    """Равномерно по длине кривой: (x, y, угол касательной в градусах для поворота надписи)."""
+    pts = [curve(i / steps) for i in range(steps + 1)]
+    lens = [0.0]
+    for (x0, y0), (x1, y1) in zip(pts, pts[1:]):
+        lens.append(lens[-1] + math.hypot(x1 - x0, y1 - y0))
+    out, j = [], 0
+    for k in range(count):
+        target = lens[-1] * (k + 0.5) / count
+        while lens[j + 1] < target:
+            j += 1
+        (x0, y0), (x1, y1) = pts[j], pts[j + 1]
+        out.append((x0, y0, -math.degrees(math.atan2(y1 - y0, x1 - x0))))
+    return out
+
+
+def _shape_points(style: str) -> list[tuple[float, float, float, float]]:
+    """Точки формы на картинке: (x, y, поворот, масштаб шрифта)."""
+    cx, cy, R = W / 2, H / 2 + 20, 430
+    pts: list[tuple[float, float, float, float]] = []
+    if style == "spiral":
+        turns = 5.2
+        curve = lambda t: (cx + (40 + 380 * t) * math.cos(t * turns * 2 * math.pi),  # noqa: E731
+                           cy + (40 + 380 * t) * math.sin(t * turns * 2 * math.pi))
+        pts = [(x, y, a, 0.6 + 0.55 * math.hypot(x - cx, y - cy) / R) for x, y, a in _arc_sample(curve, 190)]
+    elif style == "rings":
+        for r, k in ((420, 54), (330, 42), (240, 30), (150, 19), (65, 8)):
+            pts += [(x, y, a, 0.55 + 0.5 * r / R) for x, y, a in _arc_sample(
+                lambda t, r=r: (cx + r * math.sin(2 * math.pi * t), cy - r * math.cos(2 * math.pi * t)), k)]
+    elif style == "heart":
+        def heart(t, k):
+            u = 2 * math.pi * t
+            return (cx + k * 26 * 16 * math.sin(u) ** 3,
+                    cy - 10 - k * 26 * (13 * math.cos(u) - 5 * math.cos(2 * u) - 2 * math.cos(3 * u) - math.cos(4 * u) + 2.5))
+        for k, n in ((1.0, 60), (0.7, 40), (0.4, 20)):  # у выемки сверху не пишем — там контуры сходятся
+            pts += [(x, y, a, 0.6 + 0.5 * k) for x, y, a in _arc_sample(lambda t, k=k: heart(0.04 + 0.92 * t, k), n)]
+    elif style == "wave":
+        for row in range(10):
+            y0 = 330 + row * 76
+            pts += [(x, y, a, 1.0) for x, y, a in _arc_sample(
+                lambda t, y0=y0: (120 + 840 * t, y0 + 34 * math.sin(2 * math.pi * 1.25 * t)), 17)]
+    elif style == "galaxy":
+        for arm in range(3):
+            base = arm * 2 * math.pi / 3
+            curve = lambda t, base=base: (cx + (30 + 400 * t) * math.cos(base + 3.4 * math.pi * t),  # noqa: E731
+                                          cy + (30 + 400 * t) * math.sin(base + 3.4 * math.pi * t))
+            pts += [(x, y, a, 0.55 + 0.6 * math.hypot(x - cx, y - cy) / R) for x, y, a in _arc_sample(curve, 60)]
+    return pts
+
+
+def _render_shape(grid: dict, title: str, palette: int, seed: str) -> bytes:
+    rng = random.Random(seed)
+    top, bottom, accent = PALETTES[palette % len(PALETTES)]
+    img = _gradient(top, bottom).convert("RGBA")
+    stars = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    sd = ImageDraw.Draw(stars)
+    for _ in range(180):
+        x, y, r = rng.randrange(W), rng.randrange(H), rng.choice((1, 1, 2))
+        sd.ellipse((x - r, y - r, x + r, y + r), fill=(255, 255, 255, rng.randrange(40, 190)))
+    img = Image.alpha_composite(img, stars)
+    # Мягкое сияние в центре формы.
+    halo = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    ImageDraw.Draw(halo).ellipse((W / 2 - 300, H / 2 - 280, W / 2 + 300, H / 2 + 320), fill=accent + (60,))
+    img = Image.alpha_composite(img, halo.filter(ImageFilter.GaussianBlur(120)))
+
+    marks = set(grid["marks"])
+    hint = tuple(min(255, int(a * 0.55 + 255 * 0.45)) for a in accent)
+    layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    cache: dict = {}
+    for i, ((x, y, angle, scale), ch) in enumerate(zip(_shape_points(grid["style"]), grid["digits"])):
+        size = int(40 * scale)
+        color = hint + (255,) if i in marks else (236, 232, 245, int(150 + 90 * min(scale, 1.0)))
+        key = (ch, size, color)
+        if key not in cache:
+            font = _font("Montserrat.ttf", size, "SemiBold")
+            tile = Image.new("RGBA", (size * 2, size * 2), (0, 0, 0, 0))
+            ImageDraw.Draw(tile).text((size, size), ch, font=font, fill=color, anchor="mm")
+            cache[key] = tile
+        tile = cache[key].rotate(angle, resample=Image.BICUBIC)
+        layer.alpha_composite(tile, (int(x - tile.width / 2), int(y - tile.height / 2)))
+    img = Image.alpha_composite(img, layer)
+    draw = ImageDraw.Draw(img)
+
+    font = _font("PlayfairDisplay.ttf", 56, "SemiBold")
+    lines = _wrap(draw, _strip_emoji(title), font, W - 140)[:2]
+    y = 60 if len(lines) == 2 else 95
+    for line in lines:
+        draw.text((W // 2, y), line, font=font, fill=(255, 255, 255, 255), anchor="ma")
+        y += 68
+    cta = "Напиши в ответах — расскажу, что они значат"
+    font = _font("Montserrat.ttf", 32, "SemiBold")
+    tw = draw.textlength(cta, font=font)
+    bx0, by0, bx1, by1 = W / 2 - tw / 2 - 36, H - 175, W / 2 + tw / 2 + 36, H - 109
+    draw.rounded_rectangle((bx0, by0, bx1, by1), radius=33, fill=accent + (255,))
+    draw.text((W / 2, (by0 + by1) / 2), cta, font=font, fill=top + (255,), anchor="mm")
+    _footer(draw, W / 2)
+    out = io.BytesIO()
+    img.convert("RGB").save(out, "JPEG", quality=90, optimize=True)
+    return out.getvalue()
 
 
 def render_grid(grid: dict, title: str, palette: int, seed: str) -> bytes:
     """Картинка-головоломка: заголовок, светящаяся рамка с сеткой цифр, призыв написать в ответах."""
+    if grid.get("style", "classic") in SHAPES:
+        return _render_shape(grid, title, palette, seed)
     rng = random.Random(seed)
     top, bottom, accent = PALETTES[palette % len(PALETTES)]
     img = _gradient(top, bottom).convert("RGBA")

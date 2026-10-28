@@ -17,7 +17,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from .autopost import BOT_LINK, strip_credits, MIN_GAP, ContentPlan, ScriptedPost, Slot, topic_tag_for
 from .cards import (
     GRID_TITLES, PLANETS, Card, birth_days, card_from_text, carousel_from_json, carousel_json, grid_json, make_grid, render_card,
-    render_grid, soul_carousel,
+    render_grid, soul_carousel, GRID_STYLES, SHAPES,
 )
 from .autoreply import answer_comments, finish_reply, redo_code_replies
 from . import autoreply
@@ -861,6 +861,10 @@ async def post_next(
                                   or not (news_pause and now < datetime.fromisoformat(news_pause))):
                 break
             rubric = plan.choose(recent, rng)
+        grid_rubric = next((r for r in plan.all_rubrics() if r.key == "grid"), None)
+        if grid_rubric and (not text_mode.enabled() or text_mode.allowed(grid_rubric)) \
+                and await db.claim_slot("grid new shapes first 2026-10-28"):  # слово владельца: новая матрица
+            rubric = plan.effective(grid_rubric)
         # Рубрики со ссылкой не повторяем: у ссылок свои лимиты (prompts/threads_rules.md).
         dead = await find_dead_post(db, now, {r.key for r in plan.all_rubrics() if r.cta == "link"})
         if dead:
@@ -901,10 +905,17 @@ async def post_next(
             slot = replace(slot, topic=slot.topic + solar_portraits.topic(portrait_deck))
         grid = None
         if slot.rubric.key == "grid":
-            grid = make_grid(rng)
+            # Формы чередуются по кругу, чтобы матрица не приедалась (слово владельца 28.10.2026).
+            last = await db.kv_get("grid:last_style") or "classic"
+            shape = GRID_STYLES[(GRID_STYLES.index(last) + 1) % len(GRID_STYLES)] if last in GRID_STYLES else "spiral"
+            await db.kv_set("grid:last_style", shape)
+            grid = make_grid(rng, style=shape)
+            grid_title = SHAPES[shape][0] if shape in SHAPES else rng.choice(GRID_TITLES)
             # Модели — какие числа спрятаны, чтобы пост мог намекнуть, но не выдать их все.
             slot = replace(slot, topic=slot.topic + "\nНа картинке спрятаны: " + ", ".join(grid["hidden"])
-                           + ". Не перечисляй их в тексте.")
+                           + ". Не перечисляй их в тексте."
+                           + (f"\nФорма картинки: {SHAPES[shape][1]}. Вопрос на картинке: «{grid_title}» — "
+                              "в тексте задай свой, новый вопрос в духе формы, не повторяя картинку." if shape in SHAPES else ""))
         log.info("Автопост (%s): %s", slot.rubric.key, slot.topic)
         link_mode = await choose_link_mode(db, now, rng) if slot.rubric.cta == "link" else None
         try:
@@ -926,7 +937,7 @@ async def post_next(
         if not (grid and text_mode.enabled()):
             text = await hook_gate(generator, text)
         if grid:
-            card_json = grid_json(grid, rng.choice(GRID_TITLES), palette)
+            card_json = grid_json(grid, grid_title, palette)
         elif text_mode.enabled():
             card_json = None
         elif portrait_deck is not None:

@@ -13,7 +13,10 @@ def grid_post(post):
     if not (enabled() and grid_enabled()) or getattr(post,'rubric',None) != 'grid':
         return False
     try:
-        rows = json.loads(post.card)['grid']['rows']
+        grid = json.loads(post.card)['grid']
+        if grid.get('style') not in (None, 'classic'):  # спираль, кольца, сердце, волна, галактика — одна картинка
+            return bool(re.fullmatch(r'[0-9]{60,300}', grid.get('digits') or ''))
+        rows = grid['rows']
         return len(rows)==14 and all(isinstance(row,str) and re.fullmatch(r'[0-9]{12}',row) for row in rows)
     except (ValueError,TypeError,KeyError,AttributeError):
         return False

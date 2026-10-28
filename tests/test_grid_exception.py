@@ -64,3 +64,22 @@ class GridExceptionTests(unittest.IsolatedAsyncioTestCase):
             system,prompt=generator._complete.call_args.args[:2]
             self.assertNotIn(text_mode.STYLE,system)
             self.assertIn(text_mode.GRID_STYLE,prompt)
+
+
+class ShapeGrid(unittest.TestCase):
+    def test_every_shape_renders_and_passes_single_image_check(self):
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        from zavod import text_mode
+        from zavod.cards import GRID_STYLES, render_grid
+        for style in GRID_STYLES:
+            grid = make_grid(random.Random(5), style=style)
+            self.assertEqual(len(grid["hidden"]), 7, style)
+            if style != "classic":
+                for seq in grid["hidden"]:
+                    self.assertIn(seq, grid["digits"], style)
+            self.assertGreater(len(render_grid(grid, "Вопрос?", 1, "t")), 50_000)
+            post = SimpleNamespace(rubric="grid", card=grid_json(grid, "Вопрос?", 1))
+            with patch.object(text_mode, "enabled", return_value=True), \
+                 patch.object(text_mode, "grid_enabled", return_value=True):
+                self.assertTrue(text_mode.grid_post(post), style)
