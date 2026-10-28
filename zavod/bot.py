@@ -182,6 +182,21 @@ async def ensure_images(post: Post, db: Storage, threads: ThreadsClient) -> list
     return urls
 
 
+async def heart_now(db: Storage, threads: ThreadsClient, bot: Bot, cfg: Config) -> None:
+    """Однократно: живая матрица-сердце с хуком и интригой, вне очереди."""
+    grid = make_grid(random.Random(3), style="heart")
+    text = (f"В этом сердце {len(grid['digits'])} цифр. И одно сочетание ждёт именно тебя.\n"
+            "Не ищи — смотри. Первые три секунды честнее любых раздумий.\n"
+            "Увидел? Теперь главное: в нумерологии первое замеченное число читают как послание дня. "
+            "И у каждого оно своё.\n"
+            "Напиши в ответах, что показало тебе сердце, — расскажу, о чём оно 🤍")
+    card = json.dumps({**json.loads(grid_json(grid, SHAPES["heart"][0], 2)), "anim": True}, ensure_ascii=False)
+    post_id = await db.add_draft("heart-grid-now-2026-10-28", text, "grid", None, card)
+    post = await publish(await db.get(post_id), db, threads, bot, "", True)
+    await notify_admins(bot, cfg, "💗 Живое сердце из цифр вышло в Threads." if post.threads_id
+                        else f"⚠️ Сердце не вышло: {post.error}")
+
+
 async def ensure_grid_video(post: Post, db: Storage, threads: ThreadsClient) -> str | None:
     """Живая матрица: видео формы с переливами и музыкой, если пост отмечен anim. Сбой — выйдет картинкой."""
     try:
@@ -1359,6 +1374,11 @@ async def run_scheduler(
                     await notify_admins(bot, cfg, "⚠️ " + problem)
             except Exception:
                 log.exception("Telegram channel tick failed")
+            if await db.claim_slot("heart grid now 2026-10-28"):  # слово владельца: «сердечко — прямо сейчас постом»
+                try:
+                    await heart_now(db, threads, bot, cfg)
+                except Exception:
+                    log.exception("Пост с живым сердцем не вышел")
             if await db.claim_slot("day review 2026-10-28"):  # разовый обход дня по просьбе владельца
                 try:
                     await notify_admins(bot, cfg, await day_review(db, now))
