@@ -45,6 +45,46 @@ def find_birth(message: str) -> tuple[int, int | None, int | None] | None:
     return None
 
 
+PAIR = re.compile(r"^\D{0,40}?(?<!\d)(\d{1,2})(?!\d)(\D{1,12}?)(?<!\d)(\d{1,2})(?!\d)\D{0,40}$")
+PAIR_OPEN = ["Вот как ладят ваши числа.", "Интересная пара!", "Посмотрим на вашу пару.", "О, это сочетание с характером."]
+PAIR_ASK = ["Похоже на вас?", "Узнаёте свою пару?", "Так и есть?", "Отзывается?"]
+
+
+def find_pair(message: str) -> tuple[int, int] | None:
+    """Два дня рождения в короткой реплике: «6 и 17», «я 24, он 8». Вопросы и длинные тексты — нейросети."""
+    t = (message or "").strip()
+    if "?" in t or len(t) > 80 or re.search(r"\d\s*(?:лет|год|раз|мин|час|%|кг|см|руб|₽|\$)", t, re.I):
+        return None
+    m = PAIR.match(t)
+    if not m:
+        return None
+    if re.fullmatch(r"\s*[./-]\s*", m.group(2)):  # «15.03» — это день и месяц, а не пара
+        return None
+    a, b = int(m.group(1)), int(m.group(3))
+    return (a, b) if 1 <= a <= 31 and 1 <= b <= 31 else None
+
+
+def pair_reply(message: str, kb: dict | None, seed: int = 0) -> str | None:
+    """Совместимость пары по дням рождения — из базы Нумериты (pairs), без нейросети."""
+    pair = find_pair(message)
+    pairs = (kb or {}).get("pairs") or {}
+    if not pair or not pairs:
+        return None
+    x, y = sorted((reduce_number(pair[0]), reduce_number(pair[1])))
+    p = pairs.get(f"{x}-{y}")
+    if not p:
+        return None
+    rnd = random.Random(seed)
+    parts = [rnd.choice(PAIR_OPEN), f"{pair[0]} → {reduce_number(pair[0])} и {pair[1]} → {reduce_number(pair[1])}.",
+             _first_sentence(p.get("how", "")), f"Сила: {_first_sentence(p.get('plus', '')).rstrip('.').lower()}.",
+             f"Ключ: {_first_sentence(p.get('key', '')).rstrip('.').lower()}.", rnd.choice(PAIR_ASK)]
+    text = " ".join(x for x in parts if x and x not in ("Сила: .", "Ключ: ."))
+    while len(text) > 380 and len(parts) > 4:
+        parts.pop(2)
+        text = " ".join(parts)
+    return text
+
+
 def _first_sentence(text: str) -> str:
     return re.split(r"(?<=[.!?])\s", (text or "").strip(), maxsplit=1)[0]
 

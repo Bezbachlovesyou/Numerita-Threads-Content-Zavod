@@ -1232,6 +1232,9 @@ async def run_scheduler(
                 await notify_admins(bot, cfg, "🧠 Отчёт за сутки: что я узнал и что поменял\n\n" + "\n".join(report))
                 await notify_admins(bot, cfg, await performance.report(db, now))
                 await notify_admins(bot, cfg, await costs.report(db, generator, cfg.timezone))
+                tuned = await costs.tune_code_share(db, now)
+                if tuned:
+                    await notify_admins(bot, cfg, tuned)
             except Exception:
                 log.exception("Optimizer failed")
         for hour in constraint.RUN_HOURS:  # обходы в 11, 15, 19; владельцу — сводка в 19 и ‼️ сразу

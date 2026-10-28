@@ -134,11 +134,11 @@ async def report(db, generator, tz) -> str:
     return "\n".join(lines)
 
 
-async def smart_ab(db, now: datetime) -> list[str]:
+async def smart_ab(db, now: datetime, raw: bool = False):
     """Ветки по нику: сколько людей с датой получили ответ, сколько продолжили разговор; переходы в бота — по меткам
     …_pc / …_pi в «Что было дальше в боте». Цена: ответ кодом — $0."""
     from .autoreply import smart_arm
-    from .codereply import find_birth
+    from .codereply import find_birth, find_pair
     since = max((now - timedelta(days=7)).astimezone(timezone.utc).isoformat(), "2026-10-25")
     rows = await db._rows("SELECT target_id, root_id, author, role, body, created_at FROM dialogue_messages "
                           "WHERE created_at >= ? ORDER BY created_at", (since,))
@@ -155,10 +155,12 @@ async def smart_ab(db, now: datetime) -> list[str]:
             talked[thread] = True
     stats = {"code": [0, 0], "ai": [0, 0]}
     for thread, (author, body) in first_user.items():
-        if thread in first_reply and find_birth(body or ""):
+        if thread in first_reply and (find_birth(body or "") or find_pair(body or "")):
             row = stats[smart_arm(author)]
             row[0] += 1
             row[1] += thread in talked
+    if raw:
+        return stats
     names = {"code": "кодом ($0)", "ai": "нейросеть"}
     return [f"• {names[a]}: ответили {n}, продолжили разговор {t} ({round(100 * t / n)}%)"
             for a, (n, t) in stats.items() if n]
@@ -191,3 +193,21 @@ async def reply_ab(db, generator, now: datetime) -> list[str]:
             row[0] += 1
             row[1] += author in talked.get(thread, set())
     return [f"• {m}: {t} из {n} ({round(100 * t / n)}%)" for m, (n, t) in sorted(stats.items()) if n]
+
+
+async def tune_code_share(db, now: datetime) -> str | None:
+    """Раз в сутки: если ответ кодом держит разговор не хуже нейросети — больше людей получают ответ кодом ($0).
+    Шаг 0,2; пределы 0,3–0,9 (10% — нейросеть для контроля). Решение — по доле продолживших разговор."""
+    from . import autoreply
+    stats = await smart_ab(db, now, raw=True)
+    (nc, tc), (na, ta) = stats["code"], stats["ai"]
+    share = float(await db.kv_get("code_share") or autoreply.CODE_SHARE)
+    if nc < 30 or na < 30:
+        return None
+    rc, ra = tc / nc, ta / na
+    new = min(0.9, share + 0.2) if rc >= 0.8 * ra else max(0.3, share - 0.2) if rc < 0.6 * ra else share
+    if abs(new - share) < 1e-9:
+        return None
+    await db.kv_set("code_share", f"{new:.2f}")
+    return (f"🤖 Ответы кодом: продолжили разговор {round(100 * rc)}% против {round(100 * ra)}% у нейросети — "
+            f"теперь кодом отвечаю {round(100 * new)}% людей с датой или парой (было {round(100 * share)}%).")

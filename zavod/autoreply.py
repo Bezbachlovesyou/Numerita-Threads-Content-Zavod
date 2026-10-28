@@ -14,7 +14,7 @@ from datetime import datetime, timedelta, timezone
 
 from .autopost import BOT_LINK, strip_credits
 from .cards import grid_hint
-from .codereply import find_birth, reply as code_reply
+from .codereply import find_birth, find_pair, pair_reply, reply as code_reply
 from .constraint import focus
 from .dialogue import archive_comments, conversation_context, fair_queue, walk_comments
 from .generator import GenerationError, Generator
@@ -84,7 +84,12 @@ def smart_arm(author: str) -> str:
     """A/B «умный ответ или ответ кодом» на комментарии с датой (слово владельца 25.10.2026: «Нумерита должна быть
     умной, но нужно понять, работает ли»): половина людей (по нику, всегда одна и та же) — ответ кодом по базе ($0),
     половина — ответ нейросети. Итог — в /costs: кто продолжил разговор и кто перешёл в бота по ссылке."""
-    return "code" if zlib.crc32(f"smart:{author}".encode()) % 2 == 0 else "ai"
+    return "code" if zlib.crc32(f"smart:{author}".encode()) % 100 < CODE_SHARE * 100 else "ai"
+
+
+# Доля людей, которым ответ на дату или пару пишет код (28.10.2026: «снизить ещё — кодом, а не DeepSeek»).
+# Начинаем с половины; раз в сутки tune_code_share двигает долю по данным: код не хуже — больше кода (до 90%).
+CODE_SHARE = 0.5
 
 
 async def spent_on_replies(db: Storage, tz) -> float:
@@ -211,7 +216,9 @@ async def answer_comments(
     tz=None,
 ) -> int:
     """Отвечает на новые комментарии. Возвращает, сколько ответов отправлено за этот прогон."""
+    global CODE_SHARE
     now = datetime.now(timezone.utc)
+    CODE_SHARE = float(await db.kv_get("code_share") or CODE_SHARE)
     if await reply_cooldown.blocked(db, now):
         return 0
     daily_usd = BUDGET_DAYS.get(datetime.now(tz).date().isoformat(), daily_usd) if daily_usd else daily_usd
@@ -311,10 +318,12 @@ async def answer_comments(
             mode = "link"
         # 25.10.2026 (слово владельца): дата или день рождения без вопроса — ответ кодом по базе, без нейросети ($0)
         kb = getattr(getattr(generator, "knowledge", None), "data", None)
-        arm = smart_arm(author) if find_birth(comment["message"]) and not memory.strip() else ""
+        arm = smart_arm(author) if (find_birth(comment["message"]) or find_pair(comment["message"])) \
+            and not memory.strip() else ""
         model = reply_model_for(author, getattr(generator, "reply_model", None), ab_model, ab_share)
-        text = code_reply(comment["message"], kb, seed=zlib.crc32(str(comment["id"]).encode())) \
-            if arm == "code" and mode == "plain" else None
+        seed = zlib.crc32(str(comment["id"]).encode())
+        text = (code_reply(comment["message"], kb, seed=seed) or pair_reply(comment["message"], kb, seed=seed)) \
+            if arm == "code" and mode in ("plain", "profile") else None
         if text:
             await db.kv_set("code_replies", str(int(await db.kv_get("code_replies") or 0) + 1))
         try:
