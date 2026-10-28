@@ -222,19 +222,50 @@ async def confirm_heart(db: Storage, threads: ThreadsClient, bot: Bot, cfg: Conf
         await db.kv_set("heart:post", "done:" + raw)
         await notify_admins(bot, cfg, f"💗 Живое сердце в Threads: {url or 'вышло, ссылку Zernio не дал'}")
     elif status in ("failed", "partial", "cancelled"):
+        # Слово владельца: сначала ДНК, «а за ним сердце» — ждём, пока выйдет матрица-ДНК.
+        dna = await db._rows("SELECT id FROM posts WHERE rubric = 'grid' AND status = 'published' "
+                             "AND card LIKE ?", ('%"style": "dna"%',))
+        if not dna:
+            return
         await db.kv_set("heart:post", "done:" + raw)
         card = json.loads(post.card)
         if not card.get("anim"):
             await notify_admins(bot, cfg, f"⚠️ Сердце картинкой Threads тоже не принял: {error or status}.")
             return
         card["anim"] = False
-        await db.kv_set("gridvideo:broken", error or status)
         retry = await db.add_draft("heart-grid-image-2026-10-28", post.text, "grid", None,
                                    json.dumps(card, ensure_ascii=False))
         again = await publish(await db.get(retry), db, threads, bot, "", True)
         await db.kv_set("heart:post", str(retry) if again.threads_id else "done:" + raw)
         await notify_admins(bot, cfg, f"⚠️ Threads не принял видео-сердце ({error or status}). "
                                       "Выкладываю то же сердце картинкой — пришлю ссылку, когда Threads подтвердит.")
+
+
+async def confirm_grid_videos(db: Storage, threads: ThreadsClient, bot: Bot, cfg: Config) -> None:
+    """Живые матрицы за сутки: Threads не принял видео — тот же пост один раз выходит картинкой, владельцу причина.
+    Два отказа подряд — видео-матрицы выключаются (gridvideo:broken), дальше только картинки."""
+    since = datetime.now(timezone.utc) - timedelta(days=1)
+    for post in await db.recent_published(since):
+        if post.rubric != "grid" or not post.card or post.topic.startswith("heart-grid"):
+            continue
+        card = json.loads(post.card)
+        key = f"gridcheck:{post.id}"
+        if not card.get("anim") or await db.kv_get(key) or post.threads_id in (None, "published"):
+            continue
+        status, url, error = await threads.post_status(post.threads_id)
+        if status == "published":
+            await db.kv_set(key, "ok")
+        elif status in ("failed", "partial", "cancelled"):
+            await db.kv_set(key, "failed")
+            fails = int(await db.kv_get("gridvideo:fails") or 0) + 1
+            await db.kv_set("gridvideo:fails", str(fails))
+            if fails >= 2:
+                await db.kv_set("gridvideo:broken", error or status)
+            card["anim"] = False
+            retry = await db.add_draft(post.topic + ":image", post.text, "grid", None, json.dumps(card, ensure_ascii=False))
+            await publish(await db.get(retry), db, threads, bot, "", True)
+            await notify_admins(bot, cfg, f"⚠️ Threads не принял живую матрицу ({error or status}) — "
+                                          "выложила её картинкой.")
 
 
 async def ensure_grid_video(post: Post, db: Storage, threads: ThreadsClient) -> str | None:
@@ -1455,8 +1486,10 @@ async def run_scheduler(
                             await notify_admins(bot, cfg, line)
                 except Exception:
                     log.exception("Повторное снятие постов не удалось")
-            try:
-                await confirm_heart(db, threads, bot, cfg)
+            try:  # квитанции Threads — раз в 5 минут, чтобы не тратить запросы API
+                if await db.claim_slot(f"grid receipts {now:%Y-%m-%d %H}:{now.minute // 5}"):
+                    await confirm_grid_videos(db, threads, bot, cfg)
+                    await confirm_heart(db, threads, bot, cfg)
             except Exception:
                 log.exception("Проверка поста с сердцем не удалась")
             if await db.claim_slot("heart grid now 2026-10-28"):  # слово владельца: «сердечко — прямо сейчас постом»

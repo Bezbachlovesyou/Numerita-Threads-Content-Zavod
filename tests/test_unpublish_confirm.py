@@ -58,6 +58,12 @@ class UnpublishAndConfirm(unittest.IsolatedAsyncioTestCase):
             return await self.db.get(post.id)
         with patch.object(B, "notify_admins", AsyncMock(side_effect=lambda b, c, t: sent.append(t))), \
              patch.object(B, "publish", publish):
+            await B.confirm_heart(self.db, remote, None, None)  # ДНК ещё не вышла — сердце ждёт
+            self.assertEqual(sent, [])
+            dna = json.dumps({**json.loads(grid_json(make_grid(random.Random(4), style="dna"), "?", 3)), "anim": True})
+            did = await self.db.add_draft("dna", "ДНК", "grid", None, dna)
+            await self.db.set_threads_id(did, "z2")
+            await self.db.mark_published(did)
             await B.confirm_heart(self.db, remote, None, None)
             await B.confirm_heart(self.db, remote, None, None)
         self.assertIn("не принял видео", sent[0])
