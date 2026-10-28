@@ -25,6 +25,14 @@ HOOK_CHECK = (
     "1–5 — энциклопедия, лекция, перечень, сухой призыв без награды, всё уже сказано и спрашивать незачем. "
     "Ответ строго в две строки:\nОЦЕНКА: <число>\nПОЧЕМУ: <главная слабость одной фразой>"
 )
+# Текстовый юмористический поток (text_mode, 27.10.2026): вопрос в конце не обязателен — ценим панч и узнавание.
+HOOK_CHECK_TEXT = (
+    "Ты строгий редактор Threads. Оцени короткий юмористический текст по шкале 1–10: остановит ли он палец в ленте "
+    "и захочется ли переслать или ответить. 10 — первая строка цепляет сразу, есть узнаваемая бытовая сцена и острый "
+    "неожиданный панч, текст короткий (до ~280 знаков). Вопрос или призыв в конце не обязателен. 1–5 — назидание, "
+    "лекция, перечень, нет шутки или панч предсказуем. "
+    "Ответ строго в две строки:\nОЦЕНКА: <число>\nПОЧЕМУ: <главная слабость одной фразой>"
+)
 STRENGTHEN = (
     "Пост ниже не цепляет: {why}\nПерепиши его так, чтобы человек в ленте замер и захотел ответить. Первая строка — "
     "интрига, узнавание с поворотом, дерзкая мысль или живая сцена; эмоция и юмор; без лекций и перечней на всех; "
@@ -200,14 +208,20 @@ class Generator:
 
     async def hook_score(self, text: str) -> tuple[int, str]:
         """Дешёвая проверка крючка (модель ответов): оценка 1–10 и главная слабость."""
-        raw = await self._complete(HOOK_CHECK, text, max_tokens=120, kind="hookcheck", model=self.reply_model)
+        from . import text_mode
+        check = HOOK_CHECK_TEXT if text_mode.enabled() else HOOK_CHECK
+        raw = await self._complete(check, text, max_tokens=120, kind="hookcheck", model=self.reply_model)
         score = re.search(r"ОЦЕНКА:\s*(\d+)", raw)
         why = re.search(r"ПОЧЕМУ:\s*(.+)", raw)
         return (int(score.group(1)) if score else 10), (why.group(1).strip() if why else "")
 
     async def strengthen(self, text: str, why: str) -> str:
-        prompt = await self._with_knowledge(STRENGTHEN.format(text=text, why=why or "нет крючка"), text)
         from . import text_mode
+        task = STRENGTHEN.format(text=text, why=why or "нет крючка")
+        if text_mode.enabled():  # крючок-обмен в конце не навязываем юмористическому тексту
+            task = task.replace("последняя строка — крючок-обмен «напиши X — и я лично сделаю для тебя Y» (игривый "
+                                "подарок, которого в посте нет). ", "сильный неожиданный панч в конце. ")
+        prompt = await self._with_knowledge(task, text)
         if text_mode.enabled(): prompt += '\n\n' + text_mode.STYLE
         return await self._complete(self.system, prompt, kind="strengthen")
 
