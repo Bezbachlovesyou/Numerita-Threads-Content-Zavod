@@ -152,3 +152,28 @@ async def tick(db, bot, channel: str, tz, rng: random.Random | None = None) -> s
     await db.kv_set("tgch:last", now.astimezone(timezone.utc).isoformat())
     log.info("В канал перенесён пост #%s", post.id)
     return None
+
+
+ANNOUNCE = """✨ Друзья, у нас новость!
+
+Отныне и впредь посты здесь — с юмором, хуками и интригой. Такие, на которые хочется ответить, поспорить \
+и отметить друга. Числа будут шутить, звёзды — интриговать, а главное иногда будет недосказано: разгадка — \
+в комментариях 😉
+
+Мы стараемся и трудимся для вас. Ставьте реакции, пишите, спорьте — так мы узнаём, что вам по душе. \
+Надеемся, вам понравится 🤍
+
+🔮 А пока — твой разбор по дате за 10 секунд: {link}"""
+
+
+async def announce_once(db, bot, channel: str) -> None:
+    """Однократно (слово владельца 28.10.2026): видео с Нумеритой и объявление о новом формате канала."""
+    key = "tgch:announce:new_format"
+    if not channel or await db.kv_get(key):
+        return
+    from pathlib import Path
+    from aiogram.types import FSInputFile
+    video = Path(__file__).parent.parent / "assets/channel/new_format.mp4"
+    msg = await bot.send_video(channel, FSInputFile(video), caption=ANNOUNCE.format(link="t.me/Numeritabot?start=ad_th_tgnew"),
+                               width=1080, height=1080, supports_streaming=True, request_timeout=180)
+    await db.kv_set(key, str(msg.message_id))  # сбой — повторим в следующий проход, дубля не будет
