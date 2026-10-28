@@ -93,8 +93,12 @@ class ThreadsClient:
         if text_mode.enabled():
             grid_ok = (text_mode.grid_enabled() and media_kind == 'number_grid'
                        and image_urls and len(image_urls)==1 and not video_url)
+            # Живая матрица (слово владельца 28.10.2026): одно видео формы с цифрами вместо картинки.
+            grid_video_ok = (text_mode.grid_enabled() and media_kind == 'number_grid_video'
+                             and bool(video_url) and not image_urls)
             if not grid_ok: image_urls = None
-            video_url = None
+            if not grid_video_ok: video_url = None
+            grid_ok = grid_ok or grid_video_ok
             if text_mode.needs_visual(text) and not grid_ok:
                 raise ThreadsError('Нужен самостоятельный текст для текстового эксперимента, без ссылок на картинку/кнопки.')
         if video_url:

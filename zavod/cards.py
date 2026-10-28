@@ -294,7 +294,15 @@ SHAPES = {
     "heart": ("Какое число в сердце ты увидишь первым?", "Сердце из чисел: читай по контурам"),
     "wave": ("Какое число вынесла к тебе волна?", "Волны чисел: читай слева направо"),
     "galaxy": ("Какое число светит тебе из галактики?", "Галактика чисел: читай по рукавам от центра"),
+    # Оптические иллюзии только из цифр: спираль Фрейзера (1908) — ровные круги кажутся спиралью;
+    # «вращающиеся змеи» Акиёси Китаоки (2003) — неподвижные кольца будто вращаются.
+    "fraser": ("Это круги или спираль? И какое число ты увидел первым?",
+               "Иллюзия Фрейзера из цифр: ровные кольца, наклонённые цифры делают их похожими на спираль"),
+    "drift": ("Кольца будто плывут? Какое число видишь первым?",
+              "Иллюзия Китаоки «вращающиеся змеи» из цифр: неподвижные кольца кажутся вращающимися"),
 }
+# Цветовая лестница «змей» Китаоки: тёмный → синий → белый → жёлтый.
+DRIFT_COLORS = [(18, 18, 30), (50, 100, 230), (250, 250, 250), (250, 205, 40)]
 GRID_STYLES = ["classic", *SHAPES]
 
 
@@ -359,6 +367,17 @@ def _shape_points(style: str) -> list[tuple[float, float, float, float]]:
             y0 = 330 + row * 76
             pts += [(x, y, a, 1.0) for x, y, a in _arc_sample(
                 lambda t, y0=y0: (120 + 840 * t, y0 + 34 * math.sin(2 * math.pi * 1.25 * t)), 17)]
+    elif style == "fraser":
+        for j, r in enumerate(range(440, 40, -36)):
+            k = int(2 * math.pi * r / 30)
+            pts += [(x, y, a + 28, 0.62) for x, y, a in _arc_sample(
+                lambda t, r=r: (cx + r * math.sin(2 * math.pi * t), cy - r * math.cos(2 * math.pi * t)), k)]
+    elif style == "drift":
+        for j, r in enumerate(range(440, 50, -42)):
+            k = (int(2 * math.pi * r / 34) // 4) * 4  # кратно четырём — лестница цвета замыкается без шва
+            pts += [(x, y, a, 0.78) for x, y, a in _arc_sample(
+                lambda t, r=r, j=j: (cx + r * math.sin(2 * math.pi * (t if j % 2 else 1 - t)),
+                                     cy - r * math.cos(2 * math.pi * (t if j % 2 else 1 - t))), k)]
     elif style == "galaxy":
         for arm in range(3):
             base = arm * 2 * math.pi / 3
@@ -368,39 +387,34 @@ def _shape_points(style: str) -> list[tuple[float, float, float, float]]:
     return pts
 
 
-def _render_shape(grid: dict, title: str, palette: int, seed: str) -> bytes:
+def _shape_color(style: str, i: int, scale: float) -> tuple:
+    if style == "drift":  # лестница цвета по ходу кольца — она и создаёт ощущение вращения
+        return DRIFT_COLORS[i % 4] + (255,)
+    if style == "fraser":  # чередование светлых и тёмных наклонённых цифр — «скрученный шнур»
+        return (245, 240, 255, 255) if i % 2 else (120, 140, 210, 255)
+    return (236, 232, 245, int(150 + 90 * min(scale, 1.0)))
+
+
+def shape_parts(grid: dict, title: str, palette: int, seed: str) -> dict:
+    """Слои картинки-формы отдельно — для картинки и для живого видео (gridvideo.py):
+    фон без звёзд, звёзды, цифры (x, y, поворот, размер, цифра, цвет, спрятана ли), надписи поверх."""
     rng = random.Random(seed)
     top, bottom, accent = PALETTES[palette % len(PALETTES)]
-    img = _gradient(top, bottom).convert("RGBA")
-    stars = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    sd = ImageDraw.Draw(stars)
-    for _ in range(180):
-        x, y, r = rng.randrange(W), rng.randrange(H), rng.choice((1, 1, 2))
-        sd.ellipse((x - r, y - r, x + r, y + r), fill=(255, 255, 255, rng.randrange(40, 190)))
-    img = Image.alpha_composite(img, stars)
-    # Мягкое сияние в центре формы.
+    cta_top = top
+    if grid["style"] == "drift":  # иллюзии нужен средний тон фона, на чёрном «змеи» не ползут
+        top, bottom = (92, 96, 120), (60, 62, 84)
+    bg = _gradient(top, bottom).convert("RGBA")
     halo = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     ImageDraw.Draw(halo).ellipse((W / 2 - 300, H / 2 - 280, W / 2 + 300, H / 2 + 320), fill=accent + (60,))
-    img = Image.alpha_composite(img, halo.filter(ImageFilter.GaussianBlur(120)))
-
+    bg = Image.alpha_composite(bg, halo.filter(ImageFilter.GaussianBlur(120)))
+    stars = [(rng.randrange(W), rng.randrange(H), rng.choice((1, 1, 2)), rng.randrange(40, 190)) for _ in range(180)]
     marks = set(grid["marks"])
     hint = tuple(min(255, int(a * 0.55 + 255 * 0.45)) for a in accent)
-    layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    cache: dict = {}
-    for i, ((x, y, angle, scale), ch) in enumerate(zip(_shape_points(grid["style"]), grid["digits"])):
-        size = int(40 * scale)
-        color = hint + (255,) if i in marks else (236, 232, 245, int(150 + 90 * min(scale, 1.0)))
-        key = (ch, size, color)
-        if key not in cache:
-            font = _font("Montserrat.ttf", size, "SemiBold")
-            tile = Image.new("RGBA", (size * 2, size * 2), (0, 0, 0, 0))
-            ImageDraw.Draw(tile).text((size, size), ch, font=font, fill=color, anchor="mm")
-            cache[key] = tile
-        tile = cache[key].rotate(angle, resample=Image.BICUBIC)
-        layer.alpha_composite(tile, (int(x - tile.width / 2), int(y - tile.height / 2)))
-    img = Image.alpha_composite(img, layer)
-    draw = ImageDraw.Draw(img)
-
+    digits = [(x, y, angle, int(40 * scale), ch, hint + (255,) if i in marks else _shape_color(grid["style"], i, scale),
+               i in marks)
+              for i, ((x, y, angle, scale), ch) in enumerate(zip(_shape_points(grid["style"]), grid["digits"]))]
+    over = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(over)
     font = _font("PlayfairDisplay.ttf", 56, "SemiBold")
     lines = _wrap(draw, _strip_emoji(title), font, W - 140)[:2]
     y = 60 if len(lines) == 2 else 95
@@ -412,8 +426,32 @@ def _render_shape(grid: dict, title: str, palette: int, seed: str) -> bytes:
     tw = draw.textlength(cta, font=font)
     bx0, by0, bx1, by1 = W / 2 - tw / 2 - 36, H - 175, W / 2 + tw / 2 + 36, H - 109
     draw.rounded_rectangle((bx0, by0, bx1, by1), radius=33, fill=accent + (255,))
-    draw.text((W / 2, (by0 + by1) / 2), cta, font=font, fill=top + (255,), anchor="mm")
+    draw.text((W / 2, (by0 + by1) / 2), cta, font=font, fill=cta_top + (255,), anchor="mm")
     _footer(draw, W / 2)
+    return {"bg": bg, "stars": stars, "digits": digits, "over": over}
+
+
+def digit_tile(ch: str, size: int, color: tuple, angle: float, cache: dict) -> Image.Image:
+    key = (ch, size, color)
+    if key not in cache:
+        tile = Image.new("RGBA", (size * 2, size * 2), (0, 0, 0, 0))
+        ImageDraw.Draw(tile).text((size, size), ch, font=_font("Montserrat.ttf", size, "SemiBold"), fill=color, anchor="mm")
+        cache[key] = tile
+    return cache[key].rotate(angle, resample=Image.BICUBIC)
+
+
+def _render_shape(grid: dict, title: str, palette: int, seed: str) -> bytes:
+    parts = shape_parts(grid, title, palette, seed)
+    img = parts["bg"].copy()
+    sd = ImageDraw.Draw(img)
+    for x, y, r, a in parts["stars"]:
+        sd.ellipse((x - r, y - r, x + r, y + r), fill=(255, 255, 255, a))
+    layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    cache: dict = {}
+    for x, y, angle, size, ch, color, _ in parts["digits"]:
+        tile = digit_tile(ch, size, color, angle, cache)
+        layer.alpha_composite(tile, (int(x - tile.width / 2), int(y - tile.height / 2)))
+    img = Image.alpha_composite(Image.alpha_composite(img, layer), parts["over"])
     out = io.BytesIO()
     img.convert("RGB").save(out, "JPEG", quality=90, optimize=True)
     return out.getvalue()

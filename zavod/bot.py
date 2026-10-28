@@ -182,6 +182,29 @@ async def ensure_images(post: Post, db: Storage, threads: ThreadsClient) -> list
     return urls
 
 
+async def ensure_grid_video(post: Post, db: Storage, threads: ThreadsClient) -> str | None:
+    """Живая матрица: видео формы с переливами и музыкой, если пост отмечен anim. Сбой — выйдет картинкой."""
+    try:
+        puzzle = json.loads(post.card) if post.card else {}
+    except ValueError:
+        return None
+    if not puzzle.get("anim") or puzzle.get("grid", {}).get("style") not in SHAPES:
+        return None
+    saved = await db.kv_get(f"gridvideo:{post.id}")
+    if saved:
+        return saved
+    try:
+        from .gridvideo import render_video
+        data = await asyncio.to_thread(render_video, puzzle["grid"], puzzle["title"], puzzle["palette"],
+                                       f"{post.id}-grid")
+        url = await threads.upload_image(data, f"numerita_{post.id}_grid.mp4", "video/mp4")
+    except Exception:
+        log.exception("Живая матрица к посту #%s не собралась — выйдет картинкой", post.id)
+        return None
+    await db.kv_set(f"gridvideo:{post.id}", url)
+    return url
+
+
 LINK_LINE = re.compile(r"\S*t\.me/\S+")
 
 
@@ -224,9 +247,12 @@ async def publish(
         try:
             grid_exception = text_mode.grid_post(post)
             video_url = (json.loads(post.card) or {}).get("video") if post.card and not text_mode.enabled() else None
+            grid_video = await ensure_grid_video(post, db, threads) if grid_exception else None
+            media_kind = 'number_grid_video' if grid_video else 'number_grid'
+            video_url = grid_video or video_url
             image_urls = await ensure_images(post, db, threads) if not video_url and (
                 (cards and not text_mode.enabled()) or grid_exception) else []
-            if grid_exception and len(image_urls)!=1:
+            if grid_exception and not grid_video and len(image_urls)!=1:
                 raise ThreadsError('Матрица не загружена; головоломка без изображения не публикуется.')
             text, first_comment = (
                 (post.text, post.first_comment) if post.link_mode == "text"  # эксперимент: ссылка в тексте
@@ -235,7 +261,7 @@ async def publish(
             text = strip_credits(text)  # без «по мотивам @…» и чужих @упоминаний
             threads_id = await threads.publish_text(
                 text, topic_tag_for(post.rubric), first_comment, image_urls, video_url,
-                **({'media_kind':'number_grid'} if grid_exception else {})
+                **({'media_kind':media_kind} if grid_exception else {})
             )
             await db.set_threads_id(post.id, threads_id or "published")
         except ThreadsError as e:
@@ -938,6 +964,10 @@ async def post_next(
             text = await hook_gate(generator, text)
         if grid:
             card_json = grid_json(grid, grid_title, palette)
+            if shape in SHAPES:  # через раз — живое видео с музыкой, через раз — картинка: сравниваем отклик
+                anim = (await db.kv_get("grid:last_anim")) != "1"
+                await db.kv_set("grid:last_anim", "1" if anim else "0")
+                card_json = json.dumps({**json.loads(card_json), "anim": anim}, ensure_ascii=False)
         elif text_mode.enabled():
             card_json = None
         elif portrait_deck is not None:

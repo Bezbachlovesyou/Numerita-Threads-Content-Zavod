@@ -113,4 +113,32 @@ async def report(db, now):
     status = await db.kv_get('performance:status')
     if status:
         lines.append(status)
+    ab = await grid_ab(db, posts)
+    if ab:
+        lines.insert(2, ab)
     return '\n\n'.join(lines)[:3900]
+
+
+async def grid_ab(db, posts):
+    """Живая матрица против картинки (проба 28.10.2026): средние лайки и комментарии по последнему замеру."""
+    groups = {True: [], False: []}
+    for post in posts:
+        if post.rubric != 'grid' or not post.card:
+            continue
+        try:
+            anim = json.loads(post.card).get('anim')
+        except ValueError:
+            continue
+        raw = await db.kv_get(f'performance:{post.id}:latest')
+        sample = json.loads(raw) if raw else {}
+        if anim is None or sample.get('likes') is None:
+            continue
+        groups[bool(anim)].append((sample.get('likes') or 0, sample.get('comments') or 0))
+    if not groups[True] and not groups[False]:
+        return ''
+    def avg(rows, k):
+        return f"{sum(r[k] for r in rows) / len(rows):.1f}" if rows else '—'
+    return ("🎬 Матрица: видео с музыкой — постов {}, лайков {}, комментариев {} в среднем; "
+            "картинка — постов {}, лайков {}, комментариев {}.").format(
+        len(groups[True]), avg(groups[True], 0), avg(groups[True], 1),
+        len(groups[False]), avg(groups[False], 0), avg(groups[False], 1))

@@ -83,3 +83,36 @@ class ShapeGrid(unittest.TestCase):
             with patch.object(text_mode, "enabled", return_value=True), \
                  patch.object(text_mode, "grid_enabled", return_value=True):
                 self.assertTrue(text_mode.grid_post(post), style)
+
+
+class GridVideoBoundary(unittest.IsolatedAsyncioTestCase):
+    async def test_live_grid_video_passes_text_only_boundary_and_images_do_not(self):
+        from unittest.mock import AsyncMock, patch
+        from zavod.threads_api import ThreadsClient
+        client = ThreadsClient("k", "acc")
+        client._request = AsyncMock(return_value=(200, {"post": {"_id": "z1", "status": "published"}}))
+        with patch.dict("os.environ", {"THREADS_TEXT_ONLY": "1", "THREADS_GRID_EXCEPTION": "1"}):
+            await client.publish_text("Какое число?", None, None, None, "https://v/grid.mp4",
+                                      media_kind="number_grid_video")
+            body = client._request.await_args.kwargs["json"]
+            self.assertEqual(body["mediaItems"], [{"type": "video", "url": "https://v/grid.mp4"}])
+            await client.publish_text("Какое число?", None, None, None, "https://v/other.mp4")
+            self.assertNotIn("mediaItems", client._request.await_args.kwargs["json"])
+
+
+class GridVideoRender(unittest.TestCase):
+    def test_short_live_video_has_sound_and_picture(self):
+        import shutil
+        import subprocess
+        import tempfile
+        from zavod.cards import SHAPES
+        from zavod.gridvideo import ffmpeg, render_video
+        if not shutil.which("ffprobe"):
+            self.skipTest("нет ffprobe")
+        data = render_video(make_grid(random.Random(1), style="heart"), SHAPES["heart"][0], 1, "t", seconds=2)
+        with tempfile.NamedTemporaryFile(suffix=".mp4") as f:
+            f.write(data)
+            f.flush()
+            kinds = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "stream=codec_type", "-of",
+                                    "csv=p=0", f.name], capture_output=True, text=True).stdout.split()
+        self.assertEqual(sorted(kinds), ["audio", "video"])
