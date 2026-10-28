@@ -18,7 +18,7 @@ class TextModeTests(unittest.IsolatedAsyncioTestCase):
             old=await db.add_draft('legacy','Посмотри на картинке','grid',card='{}');await db.queue_post(old)
             await text_mode.seed(db);await text_mode.seed(db)
             rows=await db._rows("SELECT id FROM posts WHERE rubric='text_seed'")
-            self.assertEqual(len(rows),6)
+            self.assertEqual(len(rows),len(text_mode.SAMPLES))
             self.assertEqual((await db.get(old)).status,'queued')
             self.assertEqual((await text_mode.next_seed(db)).text,text_mode.SAMPLES[0])
 
@@ -62,3 +62,17 @@ class TextModeTests(unittest.IsolatedAsyncioTestCase):
                 rubric=plan.choose([],random.Random(i))
                 self.assertTrue(rubric.key.startswith('text_') or rubric.key=='number_mirror')
                 self.assertTrue(text_mode.allowed(rubric))
+
+    async def test_satire_refresh_preserves_published_and_archives_old_queue(self):
+        with tempfile.TemporaryDirectory() as root, patch.dict(os.environ,{'THREADS_TEXT_ONLY':'1'}):
+            db=Storage(root+'/test.sqlite');await db.init()
+            old=await db.add_draft('text-only-experiment-v1:4','Старая сценка','text_seed')
+            await db.queue_post(old)
+            live=await db.add_draft('text-only-experiment-v1:5','Уже опубликовано','text_seed')
+            await db.mark_published(live)
+            await text_mode.seed(db);await text_mode.seed(db)
+            self.assertEqual((await db.get(old)).status,'draft')
+            self.assertEqual((await db.get(live)).status,'published')
+            self.assertEqual((await text_mode.next_seed(db)).text,text_mode.SAMPLES[0])
+            queued=await db._rows("SELECT id FROM posts WHERE status='queued' AND rubric='text_seed'")
+            self.assertEqual(len(queued),len(text_mode.SAMPLES))
