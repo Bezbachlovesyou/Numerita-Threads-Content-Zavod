@@ -15,7 +15,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFilter
 
-from .cards import H, W, _shape_color, _shape_points, digit_tile, shape_parts
+from .cards import H, W, _shape_color, _shape_points, digit_tile, draw_dna_backbones, shape_parts
 
 FPS = 24
 SECONDS = 12
@@ -75,8 +75,10 @@ def frames(grid: dict, title: str, palette: int, seed: str, seconds: float = SEC
         img = Image.alpha_composite(img, sky)
         layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
         if style == "dna":  # спираль вращается: точки пересчитываются, дальние цифры — первыми
+            pts = _shape_points("dna", 0.8 * t)
+            img = draw_dna_backbones(img, pts)
             live = [(x, y, a, int(40 * sc), ch, hint if marked else _shape_color(style, i, sc), marked)
-                    for i, ((x, y, a, sc), (ch, marked)) in enumerate(zip(_shape_points("dna", 0.8 * t), order))]
+                    for i, ((x, y, a, sc), (ch, marked)) in enumerate(zip(pts, order))]
             digits = sorted(live, key=lambda d: d[3])
         for i, (x, y, angle, size, ch, color, marked) in enumerate(digits):
             appear = min(1.0, max(0.0, (t - 1.6 * i / n) / 0.35))  # цифры прорисовываются по линии формы

@@ -348,20 +348,8 @@ def _shape_points(style: str, phase: float = 0.0) -> list[tuple[float, float, fl
     """Точки формы на картинке: (x, y, поворот, масштаб шрифта). phase — поворот ДНК в живом видео."""
     cx, cy, R = W / 2, H / 2 + 20, 430
     pts: list[tuple[float, float, float, float]] = []
-    if style == "dna":  # нить A сверху вниз, нить B снизу вверх, потом перемычки; глубина — в масштабе
-        strand_a, strand_b, rungs = [], [], []
-        for k in range(DNA_LEVELS):
-            th = k * 0.29 + phase
-            y = 285 + k * 19.5
-            xa, za = cx + 235 * math.sin(th), math.cos(th)
-            xb, zb = cx - 235 * math.sin(th), -math.cos(th)
-            strand_a.append((xa, y, -14 * za, 0.72 + 0.32 * za))
-            strand_b.append((xb, y, -14 * zb, 0.72 + 0.32 * zb))
-            if k % 2 == 0:
-                for f in (0.2, 0.4, 0.6, 0.8):
-                    z = za + (zb - za) * f
-                    rungs.append((xa + (xb - xa) * f, y, 0, 0.48 + 0.12 * z))
-        return strand_a + strand_b[::-1] + rungs
+    if style == "dna":  # нить A, нить B (обратно), ступеньки; спираль наклонена по диагонали, глубина — в масштабе
+        return _dna_points(phase)
     if style == "spiral":
         turns = 5.2
         curve = lambda t: (cx + (40 + 380 * t) * math.cos(t * turns * 2 * math.pi),  # noqa: E731
@@ -403,13 +391,62 @@ def _shape_points(style: str, phase: float = 0.0) -> list[tuple[float, float, fl
     return pts
 
 
-DNA_LEVELS = 44
+DNA_LEVELS, DNA_RUNG, DNA_RUNG_EVERY = 50, 5, 2
+DNA_TILT = math.radians(-28)  # наклон оси спирали, как на классических изображениях ДНК
+
+
+def _dna_xy(u: float, v: float) -> tuple[float, float]:
+    """Из координат «вдоль оси / поперёк оси» — в точку картинки с наклоном."""
+    cx, cy = W / 2, H / 2 + 5
+    return (cx + u * math.sin(DNA_TILT) + v * math.cos(DNA_TILT),
+            cy + u * math.cos(DNA_TILT) - v * math.sin(DNA_TILT))
+
+
+def _dna_points(phase: float) -> list[tuple[float, float, float, float]]:
+    strand_a, strand_b, rungs = [], [], []
+    tilt_deg = math.degrees(DNA_TILT)
+    for k in range(DNA_LEVELS):
+        u = -455 + k * 18.6
+        th = k * 0.2 + phase
+        va, za = 135 * math.sin(th), math.cos(th)
+        vb, zb = -va, -za
+        xa, ya = _dna_xy(u, va)
+        xb, yb = _dna_xy(u, vb)
+        strand_a.append((xa, ya, -tilt_deg, 0.66 + 0.3 * za))
+        strand_b.append((xb, yb, -tilt_deg, 0.66 + 0.3 * zb))
+        if k % DNA_RUNG_EVERY == 1:  # ступенька поворачивается вместе со спиралью — при взгляде с ребра короче
+            for f in range(1, DNA_RUNG + 1):
+                t = f / (DNA_RUNG + 1)
+                x, y = _dna_xy(u, va + (vb - va) * t)
+                rungs.append((x, y, -tilt_deg, 0.55 + 0.14 * (za + (zb - za) * t)))
+    return strand_a + strand_b[::-1] + rungs
+
+
+def dna_backbones(points: list) -> tuple[list, list]:
+    """Две нити спирали — светящиеся линии под цифрами (из тех же точек)."""
+    return points[:DNA_LEVELS], points[DNA_LEVELS:2 * DNA_LEVELS][::-1]
+
+
+def draw_dna_backbones(img: Image.Image, points: list) -> Image.Image:
+    glow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    gd = ImageDraw.Draw(glow)
+    for strand, rgb in zip(dna_backbones(points), ((255, 205, 120), (110, 190, 255))):
+        for (x0, y0, _, s0), (x1, y1, _, s1) in zip(strand, strand[1:]):
+            a = int(max(20, min(150, 260 * ((s0 + s1) / 2 - 0.45))))
+            gd.line((x0, y0, x1, y1), fill=rgb + (a,), width=3)
+    soft = glow.filter(ImageFilter.GaussianBlur(10))
+    return Image.alpha_composite(Image.alpha_composite(img, soft), glow)
 
 
 def _shape_color(style: str, i: int, scale: float) -> tuple:
-    if style == "dna":  # нити — золотая и голубая, перемычки тише; дальняя сторона спирали темнее
-        rgb = (255, 214, 140) if i < DNA_LEVELS else (140, 205, 255) if i < 2 * DNA_LEVELS else (215, 215, 235)
-        return rgb + (int(max(70, min(255, 330 * (scale - 0.3)))),)
+    if style == "dna":  # нити — золотая и голубая; ступенька — пара «золото/лазурь», как пара оснований
+        if i < DNA_LEVELS:
+            rgb = (255, 230, 170)
+        elif i < 2 * DNA_LEVELS:
+            rgb = (175, 220, 255)
+        else:
+            rgb = (255, 196, 120) if (i - 2 * DNA_LEVELS) % DNA_RUNG < DNA_RUNG // 2 else (120, 185, 255)
+        return rgb + (int(max(70, min(255, 360 * (scale - 0.3)))),)
     if style == "drift":  # лестница цвета по ходу кольца — она и создаёт ощущение вращения
         return DRIFT_COLORS[i % 4] + (255,)
     if style == "fraser":  # чередование светлых и тёмных наклонённых цифр — «скрученный шнур»
@@ -470,6 +507,8 @@ def _render_shape(grid: dict, title: str, palette: int, seed: str) -> bytes:
     sd = ImageDraw.Draw(img)
     for x, y, r, a in parts["stars"]:
         sd.ellipse((x - r, y - r, x + r, y + r), fill=(255, 255, 255, a))
+    if grid["style"] == "dna":
+        img = draw_dna_backbones(img, _dna_points(0.0))
     layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     cache: dict = {}
     for x, y, angle, size, ch, color, _ in parts["digits"]:
