@@ -700,10 +700,34 @@ async def day_review(db, now: datetime) -> str:
     return "\n\n".join(parts)[:4000]
 
 
+def report_chunks(text: str, limit: int = 3500) -> list[str]:
+    """Preserve all text and stay below Telegram's limit, including emoji."""
+    chunks = []
+    start = 0
+    while start < len(text):
+        end, units, newline = start, 0, None
+        while end < len(text):
+            width = 2 if ord(text[end]) > 0xFFFF else 1
+            if units + width > limit:
+                break
+            units += width
+            end += 1
+            if text[end-1] == '\n':
+                newline = end
+        if end < len(text) and newline is not None and newline > start+(end-start)//2:
+            end = newline
+        chunks.append(text[start:end])
+        start = end
+    return chunks
+
+
 async def notify_admins(bot: Bot, cfg: Config, text: str, post: Post | None = None) -> None:
+    chunks = report_chunks(text)
     for admin_id in cfg.admin_ids:
         try:
-            await bot.send_message(admin_id, text, reply_markup=post_keyboard(post) if post else None)
+            for index, chunk in enumerate(chunks):
+                await bot.send_message(admin_id, chunk,
+                                       reply_markup=post_keyboard(post) if post and index == len(chunks)-1 else None)
         except TelegramAPIError:
             log.exception("Не удалось написать админу %s", admin_id)
 
