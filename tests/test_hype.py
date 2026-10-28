@@ -30,3 +30,12 @@ class ApologyFirst(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(first.text.startswith("Новость дня"))
             rows = await db._rows("SELECT COUNT(*) AS n FROM posts WHERE topic LIKE 'priority:%'")
             self.assertEqual(rows[0]["n"], 1)
+
+
+class DnaKnowledge(unittest.TestCase):
+    def test_dna_topics_get_rule_and_facts_others_do_not(self):
+        from zavod.dna_genome import excerpt
+        e = excerpt("Правда ли, что музыка 528 Гц чинит ДНК?")
+        self.assertIn("не меняют", e["rule"])
+        self.assertTrue(any("528" in f for f in e["facts"]))
+        self.assertIsNone(excerpt("Шестёрки и любовь"))

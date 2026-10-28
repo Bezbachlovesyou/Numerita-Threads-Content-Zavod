@@ -16,6 +16,7 @@ from .solar_portraits import excerpt as solar_excerpt
 from .planet_resources import excerpt as planet_excerpt
 from .zero_research import excerpt as zero_excerpt
 from .number_mirror import excerpt as mirror_excerpt
+from .dna_genome import excerpt as dna_excerpt
 
 log = logging.getLogger(__name__)
 
@@ -62,6 +63,8 @@ class KnowledgeBase:
             local["planet_resources"] = planets
         if solar := solar_excerpt(topic):
             local["solar_portraits"] = solar
+        if dna := dna_excerpt(topic):  # ДНК и геном — правило честности и проверенные факты
+            local = {"dna_genome": dna, **local}
         if subtle:
             local["subtle_bodies"] = subtle
         if not self.url:
