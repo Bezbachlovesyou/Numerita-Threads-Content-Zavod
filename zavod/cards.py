@@ -357,7 +357,7 @@ def grid_hint(raw: str | None) -> str:
     data = json.loads(raw) if raw else None
     if not data or "grid" not in data:
         return ""
-    return "\n\n(К посту — картинка-сетка цифр, в ней спрятаны: " + ", ".join(data["grid"]["hidden"]) + ")"
+    return "\n\n(К посту — картинка-матрица чисел, в ней спрятаны: " + ", ".join(data["grid"]["hidden"]) + ")"
 
 
 def eight_growth_carousel(palette: int) -> list[Card]:

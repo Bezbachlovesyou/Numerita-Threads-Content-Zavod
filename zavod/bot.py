@@ -1227,6 +1227,7 @@ async def run_scheduler(
             except Exception:
                 log.exception("Post performance collection failed")
             try:
+                await tgchannel.fix_grid_post(db, bot, cfg.telegram_channel, 64)  # матрица без картинки, 28.10
                 problem = await tgchannel.tick(db, bot, cfg.telegram_channel, cfg.timezone)
                 if problem and await db.claim_slot(f"tgch error {now.date().isoformat()}"):
                     await notify_admins(bot, cfg, "⚠️ " + problem)

@@ -24,7 +24,9 @@ class ChannelTests(unittest.IsolatedAsyncioTestCase):
             await self.db.pool.execute('TRUNCATE posts, kv RESTART IDENTITY')
         self.base = datetime.now(TZ).replace(hour=12, minute=0)
         self.now = self.base.astimezone(timezone.utc)
-        self.bot = SimpleNamespace(send_message=AsyncMock(return_value=SimpleNamespace(message_id=77)))
+        self.bot = SimpleNamespace(send_message=AsyncMock(return_value=SimpleNamespace(message_id=77)),
+                                   send_photo=AsyncMock(return_value=SimpleNamespace(message_id=88)),
+                                   delete_message=AsyncMock(), edit_message_text=AsyncMock())
 
     async def asyncTearDown(self):
         if isinstance(self.db, PgStorage):
@@ -70,6 +72,23 @@ class ChannelTests(unittest.IsolatedAsyncioTestCase):
             await tgchannel.tick(self.db, self.bot, '@ch', TZ)
         self.bot.send_message.assert_not_awaited()
         self.assertIsNone(await tgchannel.tick(self.db, self.bot, '', TZ))
+
+    async def test_grid_goes_with_picture_and_word_matrix(self):
+        from zavod.cards import make_grid, grid_json
+        ident = await self.post(5, 5, 2, text='Много единиц? Тогда эта сетка ждала тебя. Назови три числа.')
+        await self.db._execute('UPDATE posts SET card = ?, tg_message_id = ? WHERE id = ?',
+                               (grid_json(make_grid(random.Random(1)), 'Что видишь первым?', 0), '64', ident))
+        await tgchannel.fix_grid_post(self.db, self.bot, '@ch', ident)
+        self.bot.delete_message.assert_awaited_once_with('@ch', 64)
+        caption = self.bot.send_photo.await_args.kwargs['caption']
+        self.assertIn('эта матрица ждала', caption)
+        self.assertNotIn('сетк', caption)
+        self.assertEqual((await self.db.get(ident)).tg_message_id, '88')
+        await tgchannel.fix_grid_post(self.db, self.bot, '@ch', ident)
+        self.assertEqual(self.bot.send_photo.await_count, 1)
+
+    def test_word_swap_keeps_case(self):
+        self.assertEqual(tgchannel.no_grid_word('Сетка и в сетке'), 'Матрица и в матрице')
 
 
 if __name__ == '__main__':
