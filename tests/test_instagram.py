@@ -62,7 +62,7 @@ class InstagramTests(unittest.IsolatedAsyncioTestCase):
     async def test_best_post_goes_to_instagram_with_card(self):
         await self.post(5, 1, 0)
         best = await self.post(6, 5, 2)
-        z = FakeZernio([{"_id": "th", "platform": "threads"}, {"_id": "IG", "platform": "instagram"}])
+        z = FakeZernio([{"_id": "th", "platform": "threads"}, {"_id": "IG", "platform": "instagram", "username": "numerita.ai"}])
         with self.at(12):
             await instagram.tick(self.db, z, TZ, self.note)
         body = z.posts[0]

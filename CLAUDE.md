@@ -339,3 +339,10 @@ tune_code_share долю не поднимает. Всем, кто получи�
 золотом, звёзды мерцают, спираль/кольца/галактика вращаются, сердце бьётся, волна колышется; музыка cosmos.m4a; $0.
 Формы-картинки и видео чередуются (kv grid:last_anim) — сравнение в отчёте performance (grid_ab). Видео допускается
 в текстовом режиме только как media_kind number_grid_video; сбой сборки — пост выходит картинкой.
+
+## Safety follow-ups (prepared; no production release)
+See docs/safety-followups.md: atomic paid-video claim, uniquely verified
+Instagram destination and existing daily budget applied to redo generations.
+Unknown vendor account metadata fails closed. Six tests on SQLite/local
+PostgreSQL; no live API messages or paid generation. tools/safe_push.sh permits
+review branches only. Runtime IDs/access remain unconfirmed; do not claim release.

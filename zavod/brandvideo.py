@@ -119,6 +119,9 @@ async def run_once(db, api_key: str, send_video) -> None:
     state = await db.kv_get(KEY) or ""
     if state == "done" or state.count("fail") >= 2:
         return
+    # Durable atomic claim across workers/restarts. An uncertain paid attempt is never retried automatically.
+    if not await db.claim_slot(KEY + ":generation"):
+        return
     try:
         async with httpx.AsyncClient(timeout=120) as http:
             results = []

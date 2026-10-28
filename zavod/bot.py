@@ -1427,7 +1427,8 @@ async def run_scheduler(
             except Exception:
                 log.exception("Autoreply iteration failed")
             try:
-                await redo_code_replies(db, threads, generator, cfg.autoreply_per_hour)
+                await redo_code_replies(db, threads, generator, cfg.autoreply_per_hour,
+                                        cfg.reply_budget_usd, cfg.timezone)
             except Exception:
                 log.exception("Redo of code replies failed")
         await asyncio.sleep(30)

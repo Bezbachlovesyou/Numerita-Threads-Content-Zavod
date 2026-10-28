@@ -33,7 +33,7 @@ async def account_id(db, client) -> str | None:
     env = os.getenv("ZERNIO_INSTAGRAM_ACCOUNT_ID", "").strip()
     if env:
         return env
-    saved = await db.kv_get("ig:account")
+    saved = await db.kv_get("ig:account:verified")
     if saved:
         return saved
     last = await db.kv_get("ig:lookup")  # не спрашиваем Zernio чаще раза в час
@@ -46,14 +46,19 @@ async def account_id(db, client) -> str | None:
     except ThreadsError as e:
         log.warning("Zernio: список аккаунтов недоступен: %s", e)
         return None
-    accounts = payload.get("accounts") or payload.get("data") or (payload if isinstance(payload, list) else [])
+    accounts = payload if isinstance(payload, list) else payload.get("accounts") or payload.get("data") or []
+    matches = []
     for acc in accounts:
-        if (acc.get("platform") or "").lower() == "instagram":
+        handle = str(acc.get("username") or acc.get("handle") or "").lstrip("@").lower()
+        if (acc.get("platform") or "").lower() == "instagram" and handle == "numerita.ai":
             ident = acc.get("_id") or acc.get("id") or acc.get("accountId")
             if ident:
-                await db.kv_set("ig:account", ident)
-                return ident
-    return None
+                matches.append(ident)
+    if len(matches) != 1:
+        log.warning("Instagram destination is not uniquely verified; set the confirmed account ID")
+        return None
+    await db.kv_set("ig:account:verified", matches[0])
+    return matches[0]
 
 
 def caption(post) -> str:

@@ -415,10 +415,12 @@ def is_code_reply(reply: str) -> bool:
     return text.startswith(tuple(OPENINGS + PAIR_OPEN)) and text.endswith(tuple(QUESTIONS + PAIR_ASK))
 
 
-async def redo_code_replies(db: Storage, threads: ThreadsClient, generator: Generator, per_hour: int) -> int:
+async def redo_code_replies(db: Storage, threads: ThreadsClient, generator: Generator, per_hour: int,
+                            daily_usd: float = 0, tz=None) -> int:
     """Тем, кто получил шаблонный ответ кодом, — живой ответ нейросети в той же ветке с коротким извинением.
     По REDO_PER_RUN за проход, в общих лимитах и паузах автоответов; каждому один раз (kv redo:<id>)."""
     now = datetime.now(timezone.utc)
+    daily_usd = BUDGET_DAYS.get(datetime.now(tz).date().isoformat(), daily_usd) if daily_usd else daily_usd
     if await reply_cooldown.blocked(db, now):
         return 0
     budget = min(REDO_PER_RUN, per_hour - await db.replies_since(now - timedelta(hours=1)))
@@ -435,6 +437,8 @@ async def redo_code_replies(db: Storage, threads: ThreadsClient, generator: Gene
         post = await db.get(row["post_id"]) if row.get("post_id") else None
         context = ((post.text if post else "") + "\n\nТвой прошлый ответ этому человеку был шаблоном, собранным "
                    f"без понимания вопроса:\n{row['reply']}\nТеперь ответь по существу его комментария.")
+        if daily_usd and await spent_on_replies(db, tz) >= daily_usd:
+            return sent
         try:
             text = finish_reply(await generator.write_reply(context, row["comment"], row["author"], "plain"))
         except GenerationError as e:
