@@ -26,7 +26,8 @@ class ChannelTests(unittest.IsolatedAsyncioTestCase):
         self.now = self.base.astimezone(timezone.utc)
         self.bot = SimpleNamespace(send_message=AsyncMock(return_value=SimpleNamespace(message_id=77)),
                                    send_photo=AsyncMock(return_value=SimpleNamespace(message_id=88)),
-                                   delete_message=AsyncMock(), edit_message_text=AsyncMock())
+                                   delete_message=AsyncMock(), edit_message_text=AsyncMock(),
+                                   set_message_reaction=AsyncMock())
 
     async def asyncTearDown(self):
         if isinstance(self.db, PgStorage):
@@ -118,12 +119,35 @@ class SentJokesTests(unittest.IsolatedAsyncioTestCase):
             return SimpleNamespace(message_id=500 + mid, **vars(chat[mid]))
         bot = SimpleNamespace(send_message=AsyncMock(return_value=SimpleNamespace(message_id=100)),
                               forward_message=fwd, delete_message=AsyncMock(), edit_message_text=AsyncMock(),
-                              send_video=AsyncMock(return_value=SimpleNamespace(message_id=7)))
+                              send_video=AsyncMock(return_value=SimpleNamespace(message_id=7)),
+                              set_message_reaction=AsyncMock())
         self.assertEqual(await tgchannel.publish_sent_jokes(db, bot, '@ch', [1]), 'done')
         self.assertEqual(bot.send_video.await_args.args[1], 'NEW')
         self.assertIn('ангелов', bot.send_video.await_args.kwargs['caption'])
         self.assertIsNone(await tgchannel.publish_sent_jokes(db, bot, '@ch', [1]))
         self.assertEqual(bot.send_video.await_count, 1)
+        temp.cleanup()
+
+
+
+
+class ReactionTests(unittest.IsolatedAsyncioTestCase):
+    async def test_react_skips_forbidden_emoji_and_backfill_runs_once(self):
+        from aiogram.exceptions import TelegramBadRequest
+        temp = tempfile.TemporaryDirectory()
+        db = Storage(temp.name + '/t.sqlite'); await db.init()
+        calls = []
+        async def setr(ch, mid, reaction):
+            calls.append((mid, reaction[0].emoji))
+            if reaction[0].emoji == '🔥':
+                raise TelegramBadRequest(method=None, message='REACTION_INVALID')
+            if mid == 3:
+                raise TelegramBadRequest(method=None, message='message to react not found')
+        bot = SimpleNamespace(set_message_reaction=setr)
+        with patch('zavod.tgchannel.asyncio.sleep', AsyncMock()):
+            self.assertEqual(await tgchannel.react_backfill(db, bot, '@ch', 5), 4)
+            self.assertEqual(await tgchannel.react_backfill(db, bot, '@ch', 5), 0)
+        self.assertTrue(all(e in tgchannel.REACTIONS for _, e in calls))
         temp.cleanup()
 
 

@@ -64,12 +64,37 @@ def grid_image(post) -> bytes | None:
     return render_grid(data["grid"], data["title"], data["palette"], f"{post.id}-grid")
 
 
+REACTIONS = ["❤", "👍", "🔥", "🥰", "👏", "🙏", "💯", "🤩", "⚡", "😍"]  # только положительные
+
+
+async def react(bot, channel: str, message_id: int, rng: random.Random | None = None) -> bool:
+    """Каждый свой пост в канале — с положительной реакцией (слово владельца 28.10.2026), разной от поста к посту.
+    Канал может не разрешать какую-то реакцию — пробуем следующую."""
+    from aiogram.exceptions import TelegramAPIError
+    from aiogram.types import ReactionTypeEmoji
+    choices = (rng or random.Random()).sample(REACTIONS, len(REACTIONS))
+    for emoji in choices[:4]:
+        try:
+            await bot.set_message_reaction(channel, message_id, [ReactionTypeEmoji(emoji=emoji)])
+            return True
+        except TelegramAPIError as e:
+            if "REACTION_INVALID" not in str(e) and "reaction" not in str(e).lower():
+                return False  # пост удалён или нет прав — дальше пробовать бессмысленно
+        except Exception:  # реакция не должна ломать публикацию (иначе пост выйдет повторно)
+            log.exception("Реакция на пост %s не поставлена", message_id)
+            return False
+    return False
+
+
 async def send(bot, channel: str, post, text: str):
     from aiogram.types import BufferedInputFile, LinkPreviewOptions
     image = await asyncio.to_thread(grid_image, post)
     if image:
-        return await bot.send_photo(channel, BufferedInputFile(image, f"numerita_{post.id}.jpg"), caption=text[:1024])
-    return await bot.send_message(channel, text, link_preview_options=LinkPreviewOptions(is_disabled=True))
+        msg = await bot.send_photo(channel, BufferedInputFile(image, f"numerita_{post.id}.jpg"), caption=text[:1024])
+    else:
+        msg = await bot.send_message(channel, text, link_preview_options=LinkPreviewOptions(is_disabled=True))
+    await react(bot, channel, msg.message_id)
+    return msg
 
 
 async def fix_grid_post(db, bot, channel: str, post_id: int) -> None:
@@ -176,6 +201,7 @@ async def announce_once(db, bot, channel: str) -> None:
     video = Path(__file__).parent.parent / "assets/channel/new_format.mp4"
     msg = await bot.send_video(channel, FSInputFile(video), caption=ANNOUNCE.format(link="t.me/Numeritabot?start=ad_th_tgnew"),
                                width=1080, height=1080, supports_streaming=True, request_timeout=180)
+    await react(bot, channel, msg.message_id)
     await db.kv_set(key, str(msg.message_id))  # сбой — повторим в следующий проход, дубля не будет
 
 
@@ -229,9 +255,46 @@ async def publish_sent_jokes(db, bot, channel: str, admin_ids) -> str | None:
                                         chat_id=admin, message_id=marker.message_id)
             continue
         msg = await bot.send_video(channel, found, caption=JOKES_CAPTION, supports_streaming=True)
+        await react(bot, channel, msg.message_id)
         await db.kv_set(key, str(msg.message_id))
         await bot.edit_message_text("✅ Ролик «Нумерита шутит» опубликован в канале.", chat_id=admin,
                                     message_id=marker.message_id)
         return "done"
     await db.kv_set(key, "not_found")
     return None
+
+
+async def react_backfill(db, bot, channel: str, upto: int) -> int:
+    """Однократно: положительная реакция на все посты канала с 1 по upto (бот не видит, где реакции уже есть, —
+    ставит свою; удалённые номера пропускает). Медленно, чтобы не упереться в лимиты Telegram."""
+    if not channel or await db.kv_get("tgch:react_backfill"):
+        return 0
+    start = int(await db.kv_get("tgch:react_from") or 1)
+    done = 0
+    rng = random.Random(611)
+    for mid in range(start, upto + 1):
+        if await react(bot, channel, mid, rng):
+            done += 1
+        if mid % 20 == 0:
+            await db.kv_set("tgch:react_from", str(mid))  # после перезапуска продолжим, а не начнём сначала
+        await asyncio.sleep(1.2)
+    await db.kv_set("tgch:react_backfill", str(done))
+    return done
+
+
+async def latest_id(db) -> int:
+    """Самый свежий известный номер поста канала (наши публикации) — до него и проходим реакциями, с запасом."""
+    ids = [int(r["tg_message_id"]) for r in await db._rows(
+        "SELECT tg_message_id FROM posts WHERE tg_message_id IS NOT NULL") if str(r["tg_message_id"]).isdigit()]
+    for key in ("tgch:announce:new_format", "tgch:jokes_published"):
+        value = await db.kv_get(key) or ""
+        if value.isdigit():
+            ids.append(int(value))
+    return max(ids) + 30 if ids else 0
+
+
+async def run_backfill(db, bot, channel: str) -> None:
+    await asyncio.sleep(600)  # после запуска сначала выйдут разовые посты, их номера войдут в проход
+    upto = await latest_id(db)
+    if upto:
+        await react_backfill(db, bot, channel, upto)

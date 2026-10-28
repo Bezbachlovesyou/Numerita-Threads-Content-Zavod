@@ -467,7 +467,9 @@ def create_router(cfg: Config, plan: ContentPlan) -> Router:
             return
         caption = tgchannel.video_caption(message.caption or "")
         try:
-            await bot.send_video(cfg.telegram_channel, message.video.file_id, caption=caption, supports_streaming=True)
+            sent = await bot.send_video(cfg.telegram_channel, message.video.file_id, caption=caption,
+                                        supports_streaming=True)
+            await tgchannel.react(bot, cfg.telegram_channel, sent.message_id)
         except TelegramAPIError as e:
             await message.answer(f"❌ Канал не принял видео: {e.message}")
             return
@@ -1228,6 +1230,7 @@ async def run_scheduler(
                                         supports_streaming=True, request_timeout=180)
             await db.kv_set("brandvideo:file_id", sent.video.file_id)  # чтобы потом выложить без пересылки
     brand_task = asyncio.create_task(brandvideo.run_once(db, generator.api_key, send_brand_video))
+    react_task = asyncio.create_task(tgchannel.run_backfill(db, bot, cfg.telegram_channel))  # реакции на все посты канала
     if await db.claim_slot("owner names kindness 2026-10-28"):  # владелец попросил 1000 названий в Telegram
         await send_long(bot, cfg, (Path(__file__).parent.parent / "docs/drafts/kindness-names-2026-10-28.md").read_text())
     if await db.claim_slot("toc summary"):  # владелец попросил выжимку теории ограничений
