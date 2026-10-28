@@ -27,6 +27,6 @@ class ApologyFirst(unittest.IsolatedAsyncioTestCase):
             await text_mode.seed_apology(db)
             await text_mode.seed_apology(db)
             first = await text_mode.next_seed(db)
-            self.assertTrue(first.text.startswith("Признаюсь"))
-            rows = await db._rows("SELECT COUNT(*) AS n FROM posts WHERE topic LIKE 'apology-%'")
+            self.assertTrue(first.text.startswith("Новость дня"))
+            rows = await db._rows("SELECT COUNT(*) AS n FROM posts WHERE topic LIKE 'priority:%'")
             self.assertEqual(rows[0]["n"], 1)

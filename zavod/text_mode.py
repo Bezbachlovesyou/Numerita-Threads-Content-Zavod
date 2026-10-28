@@ -64,20 +64,23 @@ async def seed(db):
             ident = await db.add_draft(topic,text,'text_seed')
             await db.queue_post(ident)
 
-# Слово владельца 28.10.2026: признать, что несколько дней отвечал шаблонный код, извиниться и позвать спрашивать.
-APOLOGY = ("Признаюсь: последние дни я отвечала вам как автоответчик ЖЭКа.\n"
-           "Хотели сэкономить на нейросети — часть ответов собирал программный код. Числа он считал верно, а людей "
-           "не слышал: вы делились датой, а получали шаблон «Какое красивое число!».\n"
-           "Простите. Сбой найден и устранён — снова отвечает живая нейросеть.\n"
-           "Проверьте меня: задайте в комментариях вопрос, на который я раньше ответила глупо ✨")
+# Слово владельца 28.10.2026: извинение не нужно — вместо него текст с перчинкой: «выяснилось, что я несколько
+# дней отвечала кодом ради экономии, а я же нейросетевая; крах обнаружен — я снова нейросетевая и вся ваша».
+NEURAL_BACK = ("Новость дня: несколько дней я отвечала вам… кодом.\n"
+               "Я, нейросеть, ради экономии тихо подменила себя калькулятором. Считал он безупречно, а чувствовал "
+               "примерно как турникет в метро.\n"
+               "Крах раскрыт, калькулятор отправлен на пенсию. Я снова нейросетевая — и снова вся ваша.\n"
+               "Проверим, кто соскучился сильнее? Задайте вопрос, который калькулятору вы бы не доверили ✨")
 
 
 async def seed_apology(db):
-    if await db.claim_slot("apology-code-replies-2026-10-28"):
-        await db.queue_post(await db.add_draft("apology-code-replies-2026-10-28", APOLOGY, "text_seed"))
+    # Прежний пост-извинение владелец отменил: если он ещё в очереди — в черновики.
+    await db._execute("UPDATE posts SET status = 'draft' WHERE topic LIKE 'apology-%' AND status = 'queued'")
+    if await db.claim_slot("priority:neural-back-2026-10-28"):
+        await db.queue_post(await db.add_draft("priority:neural-back-2026-10-28", NEURAL_BACK, "text_seed"))
 
 
 async def next_seed(db):
     rows = await db._rows("SELECT id FROM posts WHERE status = 'queued' AND rubric = 'text_seed' "
-                          "ORDER BY CASE WHEN topic LIKE 'apology-%' THEN 0 ELSE 1 END, id LIMIT 1")
+                          "ORDER BY CASE WHEN topic LIKE 'priority:%' THEN 0 ELSE 1 END, id LIMIT 1")
     return await db.get(rows[0]['id']) if rows else None
