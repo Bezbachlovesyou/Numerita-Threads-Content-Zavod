@@ -56,14 +56,16 @@ class RequestBudget:
                     'status':response.status_code,'kind':kind,'limit':limit,'remaining':remaining,
                     'reset':reset,'reserve':reserve,'layer':layer}
         await self.storage.kv_set('api:quota:'+('analytics' if analytics else 'general'),json.dumps(snapshot))
-        if response.status_code == 429:
-            await self.storage.kv_set('api:last_429',json.dumps(snapshot))
+        if response.status_code in (403, 429):
+            await self.storage.kv_set('api:last_'+str(response.status_code),json.dumps(snapshot))
         key = 'api:day:'+datetime.fromtimestamp(now,timezone.utc).strftime('%Y-%m-%d')
         try: counts = json.loads(await self.storage.kv_get(key) or '{}')
         except ValueError: counts = {}
         counts['requests'] = counts.get('requests',0)+1
         counts[kind] = counts.get(kind,0)+1
-        if response.status_code == 429: counts['http_429'] = counts.get('http_429',0)+1
+        if response.status_code in (403, 429):
+            key_status = 'http_'+str(response.status_code)
+            counts[key_status] = counts.get(key_status,0)+1
         await self.storage.kv_set(key,json.dumps(counts))
 
 async def report(db, now):
@@ -76,7 +78,10 @@ async def report(db, now):
             lines.append(f"{label}: осталось {d.get('remaining')} из {d.get('limit')}; снимок {d['at']}.")
         else: lines.append(label+': наблюдений ещё нет.')
     counts=json.loads(await db.kv_get('api:day:'+now.strftime('%Y-%m-%d')) or '{}')
-    lines.append(f"С UTC-полуночи: запросов {counts.get('requests',0)}, чтение комментариев {counts.get('read_comments',0)}, HTTP 429 {counts.get('http_429',0)}. Учёт с выпуска мониторинга.")
+    lines.append(f"С UTC-полуночи: запросов {counts.get('requests',0)}, чтение комментариев {counts.get('read_comments',0)}, HTTP 429 {counts.get('http_429',0)}, HTTP 403 {counts.get('http_403',0)}. Учёт с выпуска мониторинга.")
+    denied=await db.kv_get('api:last_403')
+    if denied:
+        d=json.loads(denied);lines.append(f"Последний отказ 403: {d['at']}, операция {d['kind']}. Причина и риск бана по HTTP-статусу не определяются.")
     last=await db.kv_get('api:last_429')
     if last:
         d=json.loads(last);lines.append(f"Последний 429: {d['at']}, операция {d['kind']}, источник {d['layer']}.")

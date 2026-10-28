@@ -1,5 +1,6 @@
-"""Durable reply cooldown only for a confirmed HTTP 429 from Zernio."""
+"""Durable cooldown for confirmed throttling and repeated provider access denials."""
 import json
+import re
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 
@@ -13,12 +14,19 @@ async def blocked(db, now):
         return False
 
 async def defer(db, error, now):
-    if getattr(error, 'http_status', None) != 429:
+    status = getattr(error, 'http_status', None)
+    denied = status == 403 and re.search(r'\b80016\b', str(error)) is not None
+    if status != 429 and not denied:
         return False
-    try: state = json.loads(await db.kv_get(KEY) or '{}')
-    except (ValueError, TypeError): state = {}
-    attempts = min(int(state.get('attempts', 0)) + 1, 6)
-    delay = min(300 * 2 ** (attempts-1), 3600)
+    history_key = 'autoreply:failures:' + ('403-80016' if denied else '429')
+    try:
+        history = json.loads(await db.kv_get(history_key) or '{}')
+        recent = (now - datetime.fromisoformat(history['at'])).total_seconds() < 21600
+    except (ValueError, TypeError, KeyError):
+        history, recent = {}, False
+    attempts = min(int(history.get('attempts', 0)) + 1, 6) if recent else 1
+    await db.kv_set(history_key, json.dumps({'at': now.isoformat(), 'attempts': attempts}))
+    delay = min((1800 if denied else 300) * 2 ** (attempts-1), 21600 if denied else 3600)
     value = getattr(error, 'retry_after', None)
     try: retry = float(value)
     except (TypeError, ValueError):
@@ -29,9 +37,10 @@ async def defer(db, error, now):
     if retry > 0: delay = max(delay, min(retry, 86400))
     until = now + timedelta(seconds=delay)
     await db.kv_set(KEY, json.dumps({'until':until.isoformat(),'attempts':attempts}))
-    await db.kv_set('autoreply_error', f'{now:%d.%m %H:%M} ответ: Zernio HTTP 429; '
+    reason = ('Zernio HTTP 403: Platform error: 80016' if denied else 'Zernio HTTP 429')
+    await db.kv_set('autoreply_error', f'{now:%d.%m %H:%M} ответ: {reason}; '
                     f'запросы автоответов отложены до {until:%H:%M UTC}. '
-                    'Источник ограничения внутри цепочки Zernio/Threads не установлен.')
+                    'Причина внутри цепочки Zernio/Threads не установлена.')
     return True
 
 async def success(db, now):

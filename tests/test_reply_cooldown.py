@@ -20,6 +20,23 @@ class CooldownTests(unittest.IsolatedAsyncioTestCase):
     async def asyncTearDown(self):
         self.temp.cleanup()
 
+    async def test_403_80016_stops_pass_and_survives_restart(self):
+        threads = AsyncMock()
+        threads.comments.side_effect = ThreadsError('Platform error: 80016', http_status=403)
+        with patch('zavod.autoreply.reply_targets', AsyncMock(return_value=[('a',None,''),('b',None,'')])):
+            self.assertEqual(await answer_comments(self.db, threads, AsyncMock(),30,5),0)
+        self.assertEqual(threads.comments.await_count,1)
+        self.assertTrue(await reply_cooldown.blocked(self.db,self.now+timedelta(minutes=29)))
+        await reply_cooldown.success(self.db,self.now+timedelta(minutes=31))
+        await reply_cooldown.defer(self.db,ThreadsError('Platform error: 80016',http_status=403),self.now+timedelta(minutes=32))
+        self.assertTrue(await reply_cooldown.blocked(self.db,self.now+timedelta(minutes=91)))
+        self.assertFalse(await reply_cooldown.blocked(self.db,self.now+timedelta(minutes=93)))
+        message = explain_autoreply_error('комментарии','Zernio HTTP 403: Platform error: 80016')
+        self.assertIn('не подтверждение бана',message)
+
+    async def test_unrelated_403_is_not_throttling(self):
+        self.assertFalse(await reply_cooldown.defer(self.db,ThreadsError('permissions',http_status=403),self.now))
+
     async def test_http_status_and_retry_after_survive_api_error(self):
         client = httpx.AsyncClient(transport=httpx.MockTransport(
             lambda req:httpx.Response(429,json={'error':'Too many requests'},headers={'Retry-After':'900'})))
