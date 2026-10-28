@@ -19,7 +19,7 @@ from .cards import (
     GRID_TITLES, PLANETS, Card, birth_days, card_from_text, carousel_from_json, carousel_json, grid_json, make_grid, render_card,
     render_grid, soul_carousel, GRID_STYLES, SHAPES,
 )
-from .autoreply import answer_comments, finish_reply, redo_code_replies
+from .autoreply import answer_comments, finish_reply
 from . import autoreply
 from . import text_mode
 from .optimizer import optimize
@@ -1597,10 +1597,8 @@ async def run_scheduler(
                 await report_autoreply_error(bot, cfg, db)
             except Exception:
                 log.exception("Autoreply iteration failed")
-            try:
-                await redo_code_replies(db, threads, generator, cfg.autoreply_per_hour)
-            except Exception:
-                log.exception("Redo of code replies failed")
+            # Переответы с одинаковым началом «Прости, мой прошлый ответ…» похожи на рассылку — после повторных
+            # 403/80016 владелец решил «красиво ехать»: выключены 28.10.2026 (redo_code_replies оставлен в коде).
         await asyncio.sleep(30)
 
 

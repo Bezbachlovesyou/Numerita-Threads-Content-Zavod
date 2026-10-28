@@ -30,10 +30,11 @@ LOOKBACK = timedelta(days=3)  # под какими постами смотри�
 # Разовые потолки на день: 25.10 до полудня доллар съела дорогая модель — после перехода на дешёвую
 # продолжаем отвечать тем, кто пишет (слово владельца 25.10.2026).
 BUDGET_DAYS = {"2026-10-25": 1.6}
-MAX_GENERATIONS_PER_RUN = 10  # включая переписывания; лимит на человека отсутствует
+MAX_GENERATIONS_PER_RUN = 6  # включая переписывания; 28.10.2026 — спокойный темп после повторных 403/80016
 FRESH_WINDOW = timedelta(minutes=30)
-DAILY_REPLY_CAP = 900  # Локальный потолок; это не измерение остатка реальной квоты Meta.
-PAUSE = (10, 30)  # секунд между ответами внутри одного прохода
+DAILY_REPLY_CAP = 250  # Локальный потолок (28.10.2026: было 900); не измерение остатка реальной квоты Meta.
+HOUR_REPLY_CAP = 25  # не чаще, чем пишет живой человек, сколько бы ни стояло в AUTOREPLY_PER_HOUR
+PAUSE = (45, 100)  # секунд между ответами внутри одного прохода (было 10–30)
 # Ссылка в ответе — только если человек сам попросил (не навязываемся): не больше 3 в час на всех
 # и не чаще раза в неделю одному человеку. Остальных зовём «в шапку профиля» или не зовём вовсе.
 LINKS_PER_HOUR = 4
@@ -232,6 +233,7 @@ async def answer_comments(
             await db.kv_set("autoreply_error", f"{now:%d.%m %H:%M} бюджет: ответы на сегодня "
                                                f"исчерпали ${daily_usd:.2f} ({await spend_lines(db, tz)}), продолжу завтра")
         return 0
+    per_hour = min(per_hour, HOUR_REPLY_CAP)
     budget = min(per_run, per_hour - await db.replies_since(now - timedelta(hours=1)),
                  DAILY_REPLY_CAP - await db.replies_since(now - timedelta(days=1)))
     if budget <= 0:
