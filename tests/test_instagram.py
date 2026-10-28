@@ -34,7 +34,7 @@ class InstagramTests(unittest.IsolatedAsyncioTestCase):
         self.db = PgStorage(dsn) if dsn else Storage(self.temp.name + '/t.sqlite')
         await self.db.init()
         if dsn:
-            await self.db.pool.execute('TRUNCATE posts, kv RESTART IDENTITY')
+            await self.db.pool.execute('TRUNCATE posts, kv, autopost_slots RESTART IDENTITY')
         self.base = datetime.now(TZ).replace(hour=12, minute=0)
         self.notes = []
 
