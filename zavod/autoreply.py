@@ -87,9 +87,9 @@ def smart_arm(author: str) -> str:
     return "code" if zlib.crc32(f"smart:{author}".encode()) % 100 < CODE_SHARE * 100 else "ai"
 
 
-# Доля людей, которым ответ на дату или пару пишет код (28.10.2026: «снизить ещё — кодом, а не DeepSeek»).
-# Начинаем с половины; раз в сутки tune_code_share двигает долю по данным: код не хуже — больше кода (до 90%).
-CODE_SHARE = 0.5
+# Ответы кодом выключены (слово владельца 28.10.2026: «тупейше отвечает на нормальные вопросы»):
+# шаблон по дате не заменяет живой ответ. Каждому, кто получил такой шаблон, redo_code_replies отвечает заново.
+CODE_SHARE = 0.0
 
 
 async def spent_on_replies(db: Storage, tz) -> float:
@@ -216,9 +216,7 @@ async def answer_comments(
     tz=None,
 ) -> int:
     """Отвечает на новые комментарии. Возвращает, сколько ответов отправлено за этот прогон."""
-    global CODE_SHARE
     now = datetime.now(timezone.utc)
-    CODE_SHARE = float(await db.kv_get("code_share") or CODE_SHARE)
     if await reply_cooldown.blocked(db, now):
         return 0
     daily_usd = BUDGET_DAYS.get(datetime.now(tz).date().isoformat(), daily_usd) if daily_usd else daily_usd
@@ -391,4 +389,64 @@ async def answer_comments(
     return sent
 
 
+REDO_SINCE = datetime(2026, 10, 25, tzinfo=timezone.utc)
+REDO_PER_RUN = 3
+APOLOGY = "Прости, мой прошлый ответ вышел шаблонным — отвечаю по-настоящему. "
 
+
+def is_code_reply(reply: str) -> bool:
+    """Шаблонный ответ кодом узнаём по его началу и вопросу в конце (codereply.py)."""
+    from .codereply import OPENINGS, PAIR_ASK, PAIR_OPEN, QUESTIONS
+    text = (reply or "").strip()
+    return text.startswith(tuple(OPENINGS + PAIR_OPEN)) and text.endswith(tuple(QUESTIONS + PAIR_ASK))
+
+
+async def redo_code_replies(db: Storage, threads: ThreadsClient, generator: Generator, per_hour: int) -> int:
+    """Тем, кто получил шаблонный ответ кодом, — живой ответ нейросети в той же ветке с коротким извинением.
+    По REDO_PER_RUN за проход, в общих лимитах и паузах автоответов; каждому один раз (kv redo:<id>)."""
+    now = datetime.now(timezone.utc)
+    if await reply_cooldown.blocked(db, now):
+        return 0
+    budget = min(REDO_PER_RUN, per_hour - await db.replies_since(now - timedelta(hours=1)))
+    sent = 0
+    for row in await db.replied_since(REDO_SINCE):
+        if sent >= budget:
+            break
+        if not is_code_reply(row["reply"]) or await db.kv_get(f"redo:{row['comment_id']}"):
+            continue
+        target = await db.reply_target(row["comment_id"])
+        if not target:
+            await db.kv_set(f"redo:{row['comment_id']}", "no-target")
+            continue
+        post = await db.get(row["post_id"]) if row.get("post_id") else None
+        context = ((post.text if post else "") + "\n\nТвой прошлый ответ этому человеку был шаблоном, собранным "
+                   f"без понимания вопроса:\n{row['reply']}\nТеперь ответь по существу его комментария.")
+        try:
+            text = finish_reply(await generator.write_reply(context, row["comment"], row["author"], "plain"))
+        except GenerationError as e:
+            log.warning("Переответ на %s не написан: %s", row["comment_id"], e)
+            return sent
+        if not text or text.upper().strip(" .!\"'«»") == "SKIP" or len(text) < 25:
+            await db.kv_set(f"redo:{row['comment_id']}", "skip")
+            continue
+        text = finish_reply(APOLOGY + text)
+        if sent:
+            await asyncio.sleep(random.uniform(*PAUSE))
+        await db.kv_set(f"redo:{row['comment_id']}", "sending")  # сбой не повторяем бесконечно
+        try:
+            await threads.reply(target, row["comment_id"], text)
+        except ThreadsError as e:
+            log.warning("Переответ на %s не отправлен: %s", row["comment_id"], e)
+            if await reply_cooldown.defer(db, e, now):
+                return sent
+            continue
+        current = await db.dialogue_message(target, row["comment_id"])
+        root = current["root_id"] if current else row["comment_id"]
+        await db.remember_message(target, root, "local-redo:" + row["comment_id"], row["comment_id"], "numerita",
+                                  "numerita.ai", "assistant", text, datetime.now(timezone.utc).isoformat())
+        await db.record_comment("redo:" + row["comment_id"], row["post_id"], row["author"], row["comment"], text,
+                                "replied")
+        await db.kv_set(f"redo:{row['comment_id']}", "done")
+        await reply_cooldown.success(db, datetime.now(timezone.utc))
+        sent += 1
+    return sent

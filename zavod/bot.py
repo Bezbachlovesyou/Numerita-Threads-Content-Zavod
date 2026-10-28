@@ -19,7 +19,8 @@ from .cards import (
     GRID_TITLES, PLANETS, Card, birth_days, card_from_text, carousel_from_json, carousel_json, grid_json, make_grid, render_card,
     render_grid, soul_carousel,
 )
-from .autoreply import answer_comments, finish_reply
+from .autoreply import answer_comments, finish_reply, redo_code_replies
+from . import autoreply
 from . import text_mode
 from .optimizer import optimize
 from . import costs, constraint, funnel, performance, approved_post, zero_research, api_budget, tgchannel, brandvideo, instagram, sketch
@@ -563,6 +564,18 @@ async def send_long(bot: Bot, cfg: Config, text: str, limit: int = 3900) -> None
         part += line + "\n"
     if part.strip():
         await notify_admins(bot, cfg, part)
+
+
+async def day_review(db, now: datetime) -> str:
+    """Обход дня одним сообщением: цифры Threads, переходы и оплаты в боте, шаблонные ответы и их переответы."""
+    rows = await db.replied_since(redo_since := autoreply.REDO_SINCE)
+    coded = [r for r in rows if autoreply.is_code_reply(r["reply"])]
+    redone = sum([await db.kv_get(f"redo:{r['comment_id']}") == "done" for r in coded])
+    parts = ["📊 Обход дня в Threads", await constraint.metrics(db, now, now.tzinfo),
+             "Бот за сутки:\n" + ("\n".join(funnel.lines(await funnel.fetch(1))) or "нет данных"),
+             f"Шаблонных ответов кодом с {redo_since:%d.%m}: {len(coded)}. Ответы кодом выключены; "
+             f"живой ответ с извинением уже получили {redone}, остальные — по 3 за проход в лимитах."]
+    return "\n\n".join(parts)[:4000]
 
 
 async def notify_admins(bot: Bot, cfg: Config, text: str, post: Post | None = None) -> None:
@@ -1282,6 +1295,11 @@ async def run_scheduler(
                     await notify_admins(bot, cfg, "⚠️ " + problem)
             except Exception:
                 log.exception("Telegram channel tick failed")
+            if await db.claim_slot("day review 2026-10-28"):  # разовый обход дня по просьбе владельца
+                try:
+                    await notify_admins(bot, cfg, await day_review(db, now))
+                except Exception:
+                    log.exception("Day review failed")
             try:
                 await instagram.tick(db, threads, cfg.timezone, lambda text: notify_admins(bot, cfg, text))
             except Exception:
@@ -1324,6 +1342,10 @@ async def run_scheduler(
                 await report_autoreply_error(bot, cfg, db)
             except Exception:
                 log.exception("Autoreply iteration failed")
+            try:
+                await redo_code_replies(db, threads, generator, cfg.autoreply_per_hour)
+            except Exception:
+                log.exception("Redo of code replies failed")
         await asyncio.sleep(30)
 
 

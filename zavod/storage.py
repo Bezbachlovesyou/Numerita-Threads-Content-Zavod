@@ -320,6 +320,18 @@ class Storage:
         rows = await self._rows(sql, params)
         return int(rows[0]["n"])
 
+    async def replied_since(self, since: datetime) -> list[dict]:
+        return await self._rows(
+            "SELECT * FROM comment_replies WHERE status = 'replied' AND created_at >= ? ORDER BY created_at",
+            (since.astimezone(timezone.utc).isoformat(),),
+        )
+
+    async def reply_target(self, comment_id: str) -> str | None:
+        """Под каким постом (id Zernio) мы ответили на этот комментарий."""
+        rows = await self._rows("SELECT target_id FROM dialogue_messages WHERE message_id IN (?, ?)",
+                                (comment_id, "local-reply:" + comment_id))
+        return rows[0]["target_id"] if rows else None
+
     async def recent_comments(self, limit: int) -> list[dict]:
         return await self._rows(
             "SELECT * FROM comment_replies ORDER BY created_at DESC LIMIT ?", (limit,)

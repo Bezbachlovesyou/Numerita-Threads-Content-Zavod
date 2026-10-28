@@ -198,6 +198,7 @@ async def reply_ab(db, generator, now: datetime) -> list[str]:
 async def tune_code_share(db, now: datetime) -> str | None:
     """Раз в сутки: если ответ кодом держит разговор не хуже нейросети — больше людей получают ответ кодом ($0).
     Шаг 0,2; пределы 0,3–0,9 (10% — нейросеть для контроля). Решение — по доле продолживших разговор."""
+    return None  # 28.10.2026 ответы кодом выключены владельцем — долю больше не поднимаем
     from . import autoreply
     stats = await smart_ab(db, now, raw=True)
     (nc, tc), (na, ta) = stats["code"], stats["ai"]
