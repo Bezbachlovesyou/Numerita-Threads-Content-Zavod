@@ -37,6 +37,12 @@ PAUSE = (10, 30)  # секунд между ответами внутри одн
 # Ссылка в ответе — только если человек сам попросил (не навязываемся): не больше 3 в час на всех
 # и не чаще раза в неделю одному человеку. Остальных зовём «в шапку профиля» или не зовём вовсе.
 LINKS_PER_HOUR = 4
+# Стена в комментариях (слово владельца 28.10.2026: «дали ценность — потом обмениваем на деньги, иначе разоримся»):
+# человеку FREE_PER_DAY ответов за сутки; последний — польза и приглашение в @Numeritabot, дальше до завтра молчим.
+# Когда потрачено больше TIGHT_SPEND дневного бюджета ответов — стена ниже (TIGHT_PER_DAY).
+FREE_PER_DAY = 5
+TIGHT_PER_DAY = 3
+TIGHT_SPEND = 0.7
 LINKS_PER_DAY = 20  # ответов со ссылкой за сутки на всех — далеко от поведения спамера (слово владельца 25.10.2026)
 ASKS_LINK = re.compile(
     r"ссылк|линк|\blink|где\b[^?]{0,40}(бот|сайт|канал|сервис|записаться|купить)"
@@ -292,6 +298,8 @@ async def answer_comments(
     # Содержательные продолжения важны наравне с первым вопросом или датой.
     queue.sort(key=lambda q: 0 if gave_number(q[3]["message"]) or "?" in q[3]["message"]
                or "Твой прошлый ответ" in q[2] else 1)
+    tight = bool(daily_usd) and await spent_on_replies(db, tz) >= TIGHT_SPEND * daily_usd
+    free_per_day = TIGHT_PER_DAY if tight else FREE_PER_DAY
     reply_focus = await focus(db, "reply_focus")  # обход по Голдратту: фокус ответов на 12 часов
     generated = 0
     sent = 0
@@ -314,6 +322,12 @@ async def answer_comments(
         )
         if links_ok and asks_link(comment["message"]):
             mode = "link"
+        given = await db.replies_to_author(author, now - timedelta(days=1))
+        if given > free_per_day:  # бесплатные ответы на сегодня закончились
+            await db.record_comment(comment["id"], post_id, author, comment["message"], "skip:paywall", "skipped")
+            continue
+        if given == free_per_day:
+            mode = "paywall" if links_ok else "paywall_bio"
         # 25.10.2026 (слово владельца): дата или день рождения без вопроса — ответ кодом по базе, без нейросети ($0)
         kb = getattr(getattr(generator, "knowledge", None), "data", None)
         arm = smart_arm(author) if (find_birth(comment["message"]) or find_pair(comment["message"])) \
@@ -354,8 +368,8 @@ async def answer_comments(
         if len(text) < 25 and not re.search(r"[.!?…)»✨🌙💫🔥🤍😊🙂]\s*$", text):  # обрывок вроде «5 — это» — не отправляем
             log.warning("Слишком короткий ответ на %s: %r — не отправляю", comment["id"], text)
             continue
-        if mode == "link":
-            text = (f"{text[: MAX_REPLY_LENGTH - 45]}\n{BOT_LINK}r{post_id or 0}_{'a' if mode == 'link' else 'p'}"
+        if mode in ("link", "paywall"):
+            text = (f"{text[: MAX_REPLY_LENGTH - 45]}\n{BOT_LINK}r{post_id or 0}_{'a' if mode == 'link' else 'w'}"
                     + (arm[0] if arm else ""))  # метка ветки A/B: …_pc — ответ кодом, …_pi — ответ нейросети
         if sent:
             await asyncio.sleep(random.uniform(*PAUSE))
@@ -369,7 +383,7 @@ async def answer_comments(
             if is_gone(e):  # комментарий удалили или скрыли — просто пропускаем
                 await db.record_comment(comment["id"], post_id, author, comment["message"], "skip:gone", "skipped")
                 continue
-            if mode == "link":  # стоп-кран: Threads не принял ответ со ссылкой
+            if mode in ("link", "paywall"):  # стоп-кран: Threads не принял ответ со ссылкой
                 await db.kv_set("reply_links_paused_until", (now + LINK_PAUSE).isoformat())
                 e = ThreadsError(f"{e} — ссылки в ответах выключил на 7 дней")
             await db.kv_set("autoreply_error", f"{now:%d.%m %H:%M} ответ: {e}")

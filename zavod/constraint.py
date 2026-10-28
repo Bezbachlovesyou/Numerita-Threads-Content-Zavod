@@ -80,7 +80,7 @@ async def metrics(db: Storage, now: datetime, tz) -> str:
         why = await db._rows("SELECT reply, COUNT(*) AS n FROM comment_replies WHERE status='skipped' AND created_at >= ? "
                              "AND created_at < ? GROUP BY reply", (iso(start), iso(end)))
         names = {"skip:noise": "«+», «спасибо», смайлики", "skip:dialog": "согласие или 3-я реплика без вопроса",
-                 "skip:model": "спам/грубость/бессмыслица", "skip:gone": "удалённые"}
+                 "skip:model": "спам/грубость/бессмыслица", "skip:gone": "удалённые", "skip:paywall": "сверх бесплатных ответов за сутки"}
         skipped_why = ", ".join(f"{names.get(r['reply'], 'прочее')} {r['n']}" for r in why)
         n_posts = int(posts[0]["n"])
         comments = int(heard[0]["n"])

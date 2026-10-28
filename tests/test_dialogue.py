@@ -77,6 +77,10 @@ class MemoryTests(unittest.IsolatedAsyncioTestCase):
         await self.exercise_ten_turns(self.db)
 
     async def exercise_ten_turns(self, db):
+        # Память длинного диалога; стену бесплатных ответов (28.10.2026) проверяет test_conversation_first.
+        patcher = patch("zavod.autoreply.FREE_PER_DAY", 100)
+        patcher.start()
+        self.addCleanup(patcher.stop)
         model = Model()
         class Threads:
             def __init__(self):

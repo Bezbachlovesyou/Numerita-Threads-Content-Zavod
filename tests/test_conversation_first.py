@@ -75,3 +75,24 @@ class ConversationFirstPostgres(ConversationFirst):
 
     async def asyncTearDown(self):
         await self.db.pool.close()
+
+
+class FreeWall(ConversationFirst):
+    async def given(self, n):
+        for i in range(n):
+            await self.db.record_comment(f'old{i}', None, 'reader', 'вопрос', 'ответ по сути', 'replied')
+
+    async def test_last_free_answer_invites_to_bot(self):
+        await self.given(5)
+        await self.exercise('Как мне попросить помощи?', 'paywall')
+
+    async def test_after_wall_no_more_answers_today(self):
+        await self.given(6)
+        threads = AsyncMock()
+        threads.comments.return_value = [comment('new', 'Как мне попросить помощи?')]
+        model = AsyncMock()
+        with patch('zavod.autoreply.reply_targets', new=AsyncMock(return_value=[('p', None, 'Ремонт')])), \
+             patch('zavod.autoreply.focus', new=AsyncMock(return_value='')):
+            self.assertEqual(await answer_comments(self.db, threads, model, 90, 10), 0)
+        threads.reply.assert_not_awaited()
+        model.write_reply.assert_not_awaited()
