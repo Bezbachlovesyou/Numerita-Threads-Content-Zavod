@@ -1082,7 +1082,10 @@ async def post_next(
             last = await db.kv_get("grid:last_style") or "classic"
             shape = GRID_STYLES[(GRID_STYLES.index(last) + 1) % len(GRID_STYLES)] if last in GRID_STYLES else "spiral"
             await db.kv_set("grid:last_style", shape)
-            grid = make_grid(rng, style=shape)
+            # Пасхалка выпуска по очереди: дата выпуска или 611 (Нумеритм приходит в 6:11) — слово владельца 28.10.2026.
+            egg, egg_note = ((f"{now:%d%m}", f"дата этого выпуска, {now:%d.%m}") if rng.random() < 0.5
+                             else ("611", "6:11 — время, когда приходит утренний Нумеритм"))
+            grid = make_grid(rng, style=shape, egg=egg)
             grid_title = SHAPES[shape][0] if shape in SHAPES else rng.choice(GRID_TITLES)
             issue = int(await db.kv_get("grid:issue") or 1) + 1  # серия «Угадай число»; выпуск 1 — спираль 28.10
             await db.kv_set("grid:issue", str(issue))
@@ -1090,6 +1093,9 @@ async def post_next(
             slot = replace(slot, topic=slot.topic + "\nНа картинке спрятаны: " + ", ".join(grid["hidden"])
                            + ". Не перечисляй их в тексте."
                            + f"\nЭто серия «Угадай число» — первая строка поста: «Угадай число · выпуск {issue}»."
+                           + (f"\nЕщё в картинке спрятана пасхалка без подсветки: {egg} — {egg_note}. Скажи, что здесь "
+                              "спрятана пасхалка, намекни загадкой, но не называй её; нашедшего похвалю в ответах."
+                              if grid.get("egg") else "")
                            + (f"\nФорма картинки: {SHAPES[shape][1]}. Вопрос на картинке: «{grid_title}» — "
                               "в тексте задай свой, новый вопрос в духе формы, не повторяя картинку." if shape in SHAPES else ""))
         log.info("Автопост (%s): %s", slot.rubric.key, slot.topic)
@@ -1114,6 +1120,8 @@ async def post_next(
             text = await hook_gate(generator, text)
         if grid:
             card_json = grid_json(grid, grid_title, palette)
+            if grid.get("egg"):
+                card_json = json.dumps({**json.loads(card_json), "egg_note": egg_note}, ensure_ascii=False)
             if shape in SHAPES:  # через раз — живое видео с музыкой, через раз — картинка: сравниваем отклик
                 anim = (await db.kv_get("grid:last_anim")) != "1"
                 await db.kv_set("grid:last_anim", "1" if anim else "0")

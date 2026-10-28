@@ -259,10 +259,11 @@ SEQUENCES = ["111", "222", "333", "444", "555", "777", "888", "999", "1111", "12
 GRID_COLS, GRID_ROWS = 12, 14
 
 
-def make_grid(rng: random.Random, count: int = 7, style: str = "classic") -> dict:
-    """Сетка цифр со спрятанными сочетаниями: {"rows": [...], "marks": [[r, c], ...], "hidden": [...]}."""
+def make_grid(rng: random.Random, count: int = 7, style: str = "classic", egg: str | None = None) -> dict:
+    """Сетка цифр со спрятанными сочетаниями: {"rows": [...], "marks": [[r, c], ...], "hidden": [...]}.
+    egg — пасхалка: ещё одно сочетание, без подсветки (knowledge/research/easter_eggs.md)."""
     if style in SHAPES:
-        return make_shape(rng, style, count)
+        return make_shape(rng, style, count, egg)
     grid = [[None] * GRID_COLS for _ in range(GRID_ROWS)]
     marks, hidden = set(), []
     for seq in rng.sample(SEQUENCES, len(SEQUENCES)):
@@ -279,11 +280,19 @@ def make_grid(rng: random.Random, count: int = 7, style: str = "classic") -> dic
                     marks.add((y, x))
                 hidden.append(seq)
                 break
+    placed_egg = None
+    for _ in range(200 if egg else 0):
+        r, c = rng.randrange(GRID_ROWS), rng.randrange(GRID_COLS - len(egg))
+        if all(grid[r][c + i] is None for i in range(len(egg))):
+            for i, ch in enumerate(egg):
+                grid[r][c + i] = ch
+            placed_egg = egg
+            break
     for y in range(GRID_ROWS):
         for x in range(GRID_COLS):
             if grid[y][x] is None:
                 grid[y][x] = str(rng.randrange(10))
-    return {"style": "classic", "rows": ["".join(row) for row in grid], "marks": sorted(marks), "hidden": hidden}
+    return {"egg": placed_egg, "style": "classic", "rows": ["".join(row) for row in grid], "marks": sorted(marks), "hidden": hidden}
 
 
 # Формы матрицы (слово владельца 28.10.2026: «чередуй матрицу в разных красивых стилях, крути, вращай числа,
@@ -308,7 +317,7 @@ DRIFT_COLORS = [(18, 18, 30), (50, 100, 230), (250, 250, 250), (250, 205, 40)]
 GRID_STYLES = ["classic", *SHAPES]
 
 
-def make_shape(rng: random.Random, style: str, count: int = 7) -> dict:
+def make_shape(rng: random.Random, style: str, count: int = 7, egg: str | None = None) -> dict:
     n = len(_shape_points(style))
     digits: list[str | None] = [None] * n
     marks, hidden = set(), []
@@ -324,8 +333,17 @@ def make_shape(rng: random.Random, style: str, count: int = 7) -> dict:
                     marks.add(i)
                 hidden.append(seq)
                 break
+    placed_egg = None
+    for _ in range(200 if egg else 0):  # пасхалка — без подсветки, не вплотную к спрятанным сочетаниям
+        start = rng.randrange(n - len(egg))
+        cells = range(start - 1, start + len(egg) + 1)
+        if all(0 <= i < n and digits[i] is None for i in cells):
+            for i, ch in zip(range(start, start + len(egg)), egg):
+                digits[i] = ch
+            placed_egg = egg
+            break
     text = "".join(d if d is not None else str(rng.randrange(10)) for d in digits)
-    return {"style": style, "digits": text, "marks": sorted(marks), "hidden": hidden}
+    return {"style": style, "digits": text, "marks": sorted(marks), "hidden": hidden, "egg": placed_egg}
 
 
 def _arc_sample(curve, count: int, steps: int = 4000) -> list[tuple[float, float, float]]:
@@ -604,7 +622,10 @@ def grid_hint(raw: str | None) -> str:
     data = json.loads(raw) if raw else None
     if not data or "grid" not in data:
         return ""
-    return "\n\n(К посту — картинка-матрица чисел, в ней спрятаны: " + ", ".join(data["grid"]["hidden"]) + ")"
+    egg = data["grid"].get("egg")
+    note = (f"; пасхалка без подсветки — {egg} ({data.get('egg_note') or 'секрет выпуска'}): нашедшего тепло похвали "
+            "и раскрой смысл, остальным не выдавай") if egg else ""
+    return "\n\n(К посту — картинка-матрица чисел, в ней спрятаны: " + ", ".join(data["grid"]["hidden"]) + note + ")"
 
 
 def eight_growth_carousel(palette: int) -> list[Card]:
