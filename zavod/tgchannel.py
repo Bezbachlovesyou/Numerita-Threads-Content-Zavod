@@ -177,3 +177,22 @@ async def announce_once(db, bot, channel: str) -> None:
     msg = await bot.send_video(channel, FSInputFile(video), caption=ANNOUNCE.format(link="t.me/Numeritabot?start=ad_th_tgnew"),
                                width=1080, height=1080, supports_streaming=True, request_timeout=180)
     await db.kv_set(key, str(msg.message_id))  # сбой — повторим в следующий проход, дубля не будет
+
+
+JOKES_CAPTION = """Говорят, у ангелов нет чувства юмора. Я проверила — врут 😉
+
+Во мне целая библиотека знаний: числа и звёзды, психология и наука, бизнес и технологии. Помогу с проектом, \
+проведу по миру технологий — без паники и без жаргона. А истина материальной вселенной — в числах.
+
+🔮 Ответ — твоя дата рождения: t.me/Numeritabot?start=ad_th_tgjokes"""
+VIDEO_LINK = "t.me/Numeritabot?start=ad_th_tgvid"
+
+
+def video_caption(caption: str) -> str:
+    """Подпись к видео владельца в канале: ролик «Нумерита шутит» — готовая подпись; свой текст — с нашей ссылкой."""
+    if "Нумерита шутит" in caption or caption.startswith("🎬"):
+        return JOKES_CAPTION
+    text = caption.strip()
+    if "t.me/" not in text:
+        text = (text + "\n\n" if text else "") + f"🔮 Твой разбор по дате за 10 секунд: {VIDEO_LINK}"
+    return text[:1024]

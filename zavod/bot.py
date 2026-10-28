@@ -459,6 +459,20 @@ def create_router(cfg: Config, plan: ContentPlan) -> Router:
         await db.kv_set("numerita_portrait", "")  # следующий портрет — по этой картинке
         await message.answer("✨ Запомнила. Следующие видео — с этой Нумеритой.")
 
+    @router.message(F.video)
+    async def on_video(message: Message, bot: Bot) -> None:
+        """Видео от владельца (своё, из Grok или пересланный ролик бота) — сразу в канал с подписью и ссылкой."""
+        if not cfg.telegram_channel:
+            await message.answer("Канал не подключён (TELEGRAM_CHANNEL).")
+            return
+        caption = tgchannel.video_caption(message.caption or "")
+        try:
+            await bot.send_video(cfg.telegram_channel, message.video.file_id, caption=caption, supports_streaming=True)
+        except TelegramAPIError as e:
+            await message.answer(f"❌ Канал не принял видео: {e.message}")
+            return
+        await message.answer("✅ Опубликовала в канале.")
+
     @router.message(F.text.startswith("/"))
     async def on_unknown_command(message: Message) -> None:
         await message.answer("Не знаю такую команду.\n\n" + HELP)

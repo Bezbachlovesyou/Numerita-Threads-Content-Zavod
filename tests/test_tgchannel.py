@@ -91,5 +91,16 @@ class ChannelTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(tgchannel.no_grid_word('Сетка и в сетке'), 'Матрица и в матрице')
 
 
+
+
+class VideoCaptionTests(unittest.TestCase):
+    def test_jokes_video_gets_ready_caption(self):
+        self.assertIn('ad_th_tgjokes', tgchannel.video_caption('🎬 «Нумерита шутит» — фирменный голос.'))
+
+    def test_owner_text_gets_link_once(self):
+        self.assertTrue(tgchannel.video_caption('Смотрите!').startswith('Смотрите!'))
+        self.assertEqual(tgchannel.video_caption('см. t.me/Numeritabot'), 'см. t.me/Numeritabot')
+
+
 if __name__ == '__main__':
     unittest.main()
