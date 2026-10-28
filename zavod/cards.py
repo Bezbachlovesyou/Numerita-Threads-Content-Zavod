@@ -294,6 +294,8 @@ SHAPES = {
     "heart": ("Какое число в сердце ты увидишь первым?", "Сердце из чисел: читай по контурам"),
     "wave": ("Какое число вынесла к тебе волна?", "Волны чисел: читай слева направо"),
     "galaxy": ("Какое число светит тебе из галактики?", "Галактика чисел: читай по рукавам от центра"),
+    # Слово владельца 28.10.2026: «ДНК из цифр — спираль переливается цифрами, вращается».
+    "dna": ("Какое число зашифровано в твоей ДНК?", "Двойная спираль ДНК из цифр: читай по нитям сверху вниз"),
     # Оптические иллюзии только из цифр: спираль Фрейзера (1908) — ровные круги кажутся спиралью;
     # «вращающиеся змеи» Акиёси Китаоки (2003) — неподвижные кольца будто вращаются.
     "fraser": ("Это круги или спираль? И какое число ты увидел первым?",
@@ -342,10 +344,24 @@ def _arc_sample(curve, count: int, steps: int = 4000) -> list[tuple[float, float
     return out
 
 
-def _shape_points(style: str) -> list[tuple[float, float, float, float]]:
-    """Точки формы на картинке: (x, y, поворот, масштаб шрифта)."""
+def _shape_points(style: str, phase: float = 0.0) -> list[tuple[float, float, float, float]]:
+    """Точки формы на картинке: (x, y, поворот, масштаб шрифта). phase — поворот ДНК в живом видео."""
     cx, cy, R = W / 2, H / 2 + 20, 430
     pts: list[tuple[float, float, float, float]] = []
+    if style == "dna":  # нить A сверху вниз, нить B снизу вверх, потом перемычки; глубина — в масштабе
+        strand_a, strand_b, rungs = [], [], []
+        for k in range(DNA_LEVELS):
+            th = k * 0.29 + phase
+            y = 285 + k * 19.5
+            xa, za = cx + 235 * math.sin(th), math.cos(th)
+            xb, zb = cx - 235 * math.sin(th), -math.cos(th)
+            strand_a.append((xa, y, -14 * za, 0.72 + 0.32 * za))
+            strand_b.append((xb, y, -14 * zb, 0.72 + 0.32 * zb))
+            if k % 2 == 0:
+                for f in (0.2, 0.4, 0.6, 0.8):
+                    z = za + (zb - za) * f
+                    rungs.append((xa + (xb - xa) * f, y, 0, 0.48 + 0.12 * z))
+        return strand_a + strand_b[::-1] + rungs
     if style == "spiral":
         turns = 5.2
         curve = lambda t: (cx + (40 + 380 * t) * math.cos(t * turns * 2 * math.pi),  # noqa: E731
@@ -387,7 +403,13 @@ def _shape_points(style: str) -> list[tuple[float, float, float, float]]:
     return pts
 
 
+DNA_LEVELS = 44
+
+
 def _shape_color(style: str, i: int, scale: float) -> tuple:
+    if style == "dna":  # нити — золотая и голубая, перемычки тише; дальняя сторона спирали темнее
+        rgb = (255, 214, 140) if i < DNA_LEVELS else (140, 205, 255) if i < 2 * DNA_LEVELS else (215, 215, 235)
+        return rgb + (int(max(70, min(255, 330 * (scale - 0.3)))),)
     if style == "drift":  # лестница цвета по ходу кольца — она и создаёт ощущение вращения
         return DRIFT_COLORS[i % 4] + (255,)
     if style == "fraser":  # чередование светлых и тёмных наклонённых цифр — «скрученный шнур»
@@ -413,6 +435,8 @@ def shape_parts(grid: dict, title: str, palette: int, seed: str) -> dict:
     digits = [(x, y, angle, int(40 * scale), ch, hint + (255,) if i in marks else _shape_color(grid["style"], i, scale),
                i in marks)
               for i, ((x, y, angle, scale), ch) in enumerate(zip(_shape_points(grid["style"]), grid["digits"]))]
+    if grid["style"] == "dna":  # дальние цифры рисуем первыми — спираль объёмная
+        digits.sort(key=lambda d: d[3])
     over = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     draw = ImageDraw.Draw(over)
     font = _font("PlayfairDisplay.ttf", 56, "SemiBold")

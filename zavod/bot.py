@@ -202,12 +202,20 @@ async def confirm_heart(db: Storage, threads: ThreadsClient, bot: Bot, cfg: Conf
     """Владельцу — только квитанция Threads: ссылка на вышедший пост или причина отказа. Если Threads не принял
     видео — тот же пост один раз выходит картинкой (живое сердце остаётся в канале владельца отдельно)."""
     raw = await db.kv_get("heart:post")
-    if not raw or raw.startswith("done"):
+    if not raw:  # пост выложила прежняя версия бота — находим его по теме
+        rows = await db._rows("SELECT id FROM posts WHERE topic = 'heart-grid-now-2026-10-28' ORDER BY id LIMIT 1")
+        raw = str(rows[0]["id"]) if rows else "done:none"
+        await db.kv_set("heart:post", raw)
+    if raw.startswith("done"):
         return
     post = await db.get(int(raw))
-    if not post or not post.threads_id or post.threads_id == "published":
+    if not post:
         return
-    status, url, error = await threads.post_status(post.threads_id)
+    remote = post.threads_id if post.threads_id not in (None, "published") else None
+    if not remote:  # номера нет — ищем в самом Zernio; не нашли — пост не вышел
+        found = await threads.find_posts("В этом сердце", datetime.now(timezone.utc) - timedelta(days=2))
+        remote = found[0].get("_id") if found else None
+    status, url, error = await threads.post_status(remote) if remote else ("failed", None, post.error)
     if status == "published":
         await db.kv_set("heart:post", "done:" + raw)
         await notify_admins(bot, cfg, f"💗 Живое сердце в Threads: {url or 'вышло, ссылку Zernio не дал'}")
@@ -935,9 +943,13 @@ async def post_next(
                 break
             rubric = plan.choose(recent, rng)
         grid_rubric = next((r for r in plan.all_rubrics() if r.key == "grid"), None)
-        if grid_rubric and (not text_mode.enabled() or text_mode.allowed(grid_rubric)) \
-                and await db.claim_slot("grid new shapes first 2026-10-28"):  # слово владельца: новая матрица
-            rubric = plan.effective(grid_rubric)
+        if grid_rubric and (not text_mode.enabled() or text_mode.allowed(grid_rubric)):
+            if await db.claim_slot("grid new shapes first 2026-10-28"):  # слово владельца: новая матрица
+                rubric = plan.effective(grid_rubric)
+            elif await db.claim_slot("grid dna first 2026-10-28"):  # слово владельца: ДНК из цифр — живым видео
+                await db.kv_set("grid:last_style", GRID_STYLES[GRID_STYLES.index("dna") - 1])
+                await db.kv_set("grid:last_anim", "0")
+                rubric = plan.effective(grid_rubric)
         # Рубрики со ссылкой не повторяем: у ссылок свои лимиты (prompts/threads_rules.md).
         dead = await find_dead_post(db, now, {r.key for r in plan.all_rubrics() if r.cta == "link"})
         if dead:

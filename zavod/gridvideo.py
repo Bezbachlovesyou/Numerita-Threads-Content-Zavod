@@ -15,7 +15,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFilter
 
-from .cards import H, W, digit_tile, shape_parts
+from .cards import H, W, _shape_color, _shape_points, digit_tile, shape_parts
 
 FPS = 24
 SECONDS = 12
@@ -53,7 +53,11 @@ def frames(grid: dict, title: str, palette: int, seed: str, seconds: float = SEC
     rng = random.Random(seed + "stars")
     stars = [(x, y, r, a, rng.uniform(0.25, 0.9), rng.uniform(0, 2 * math.pi)) for x, y, r, a in parts["stars"]]
     style, digits, n = grid["style"], parts["digits"], max(1, len(parts["digits"]))
-    static = style not in ROTATING and style not in ("heart", "wave")
+    if style == "dna":  # исходный порядок цифр по ленте (shape_parts сортирует по глубине)
+        marks = set(grid["marks"])
+        hint = next((d[5] for d in parts["digits"] if d[6]), (255, 220, 150, 255))
+        order = [(ch, i in marks) for i, ch in enumerate(grid["digits"])]
+    static = style not in ROTATING and style not in ("heart", "wave", "dna")
     cache: dict = {}
     rotated: dict = {}
     glows: dict = {}
@@ -70,11 +74,16 @@ def frames(grid: dict, title: str, palette: int, seed: str, seconds: float = SEC
                 sd.line((x, y - 7, x, y + 7), fill=(255, 255, 255, int(120 * tw)))
         img = Image.alpha_composite(img, sky)
         layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        if style == "dna":  # спираль вращается: точки пересчитываются, дальние цифры — первыми
+            live = [(x, y, a, int(40 * sc), ch, hint if marked else _shape_color(style, i, sc), marked)
+                    for i, ((x, y, a, sc), (ch, marked)) in enumerate(zip(_shape_points("dna", 0.8 * t), order))]
+            digits = sorted(live, key=lambda d: d[3])
         for i, (x, y, angle, size, ch, color, marked) in enumerate(digits):
             appear = min(1.0, max(0.0, (t - 1.6 * i / n) / 0.35))  # цифры прорисовываются по линии формы
             if appear <= 0:
                 continue
-            light = 0.55 + 0.45 * math.sin(2 * math.pi * (0.55 * t - i / 28))
+            light = (0.75 if style == "dna" else 0.55) + (0.25 if style == "dna" else 0.45) * math.sin(
+                2 * math.pi * (0.55 * t - i / 28))
             if marked:
                 light = 0.75 + 0.25 * math.sin(2 * math.pi * 0.9 * t)
             level = max(1, round(light * appear * LEVELS))
