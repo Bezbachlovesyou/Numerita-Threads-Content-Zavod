@@ -20,7 +20,7 @@ log = logging.getLogger(__name__)
 API_URL = "https://openrouter.ai/api/v1/chat/completions"
 MODEL, VOICE, RATE = "openai/gpt-audio", "shimmer", 24000
 ASSETS = Path(__file__).parent.parent / "assets/channel"
-KEY = "brandvideo:jokes:v1"
+KEY = "brandvideo:jokes:v2"  # v2: финал держится и плавно гаснет (замечание владельца 28.10.2026)
 
 # Ударения — знаком над гласной: модель читает их правильно, на экране текста нет.
 LINES = [
@@ -34,7 +34,7 @@ LINES = [
     "Ответ — твоя дата рожде́ния. Прове́рим?",
 ]
 # Сцены картинки (секунды): голос каждой реплики входит на 0,3 с позже начала сцены и должен уложиться в сцену.
-SCENES = [7.636, 11.836, 8.188, 6.1, 8.02, 5.452]
+SCENES = [7.636, 11.836, 8.188, 6.1, 8.02, 7.452]
 
 PROMPT = (
     "Ты — Нумерита: живая, тёплая, обаятельная молодая женщина с искрой юмора. Прочитай вслух ДОСЛОВНО текст "
@@ -92,7 +92,7 @@ def assemble(pcms: list[bytes], workdir: Path) -> Path:
     total = sum(SCENES)
     args = [ffmpeg(), "-v", "error", "-y", "-i", str(ASSETS / "jokes_silent.mp4"),
             "-stream_loop", "-1", "-i", str(ASSETS / "cosmos.m4a")]
-    flt = [f"[1:a]atrim=0:{total},asetpts=N/SR/TB,volume=0.2,afade=t=in:d=1,afade=t=out:st={total - 2.5}:d=2.5[m]"]
+    flt = [f"[1:a]atrim=0:{total},asetpts=N/SR/TB,volume=0.2,afade=t=in:d=1,afade=t=out:st={total - 1.6}:d=1.6[m]"]
     for i, pcm in enumerate(pcms):
         path = workdir / f"v{i}.wav"
         with wave.open(str(path), "wb") as w:
@@ -101,7 +101,7 @@ def assemble(pcms: list[bytes], workdir: Path) -> Path:
             w.setframerate(RATE)
             w.writeframes(pcm)
         args += ["-i", str(path)]
-        room = SCENES[i] - 0.5
+        room = SCENES[i] - (2.5 if i == len(SCENES) - 1 else 0.5)  # после финальной фразы — пауза и затухание
         tempo = min(1.3, max(1.0, seconds(pcm) / room))
         ms = int((starts[i] + 0.3) * 1000)
         flt.append(f"[{i + 2}:a]atempo={tempo:.3f},aresample=48000,adelay={ms}|{ms},volume=1.3[v{i}]")
