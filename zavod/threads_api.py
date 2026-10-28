@@ -133,6 +133,22 @@ class ThreadsClient:
                 return post.get("_id") or "published"
         return None
 
+    async def find_posts(self, fragment: str, since: datetime) -> list[dict]:
+        """Посты аккаунта в Zernio, где в тексте есть этот кусок (для снятия по просьбе владельца)."""
+        _, payload = await self._request("GET", "/posts", params={
+            "limit": 50, "accountId": self.account_id, "fromDate": since.date().isoformat(),
+            "search": fragment.strip()[:40], "fields": "content,status",
+        })
+        return [p for p in payload.get("posts") or [] if fragment in (p.get("content") or "")]
+
+    async def post_status(self, post_id: str) -> tuple[str, str | None, str | None]:
+        """Квитанция Threads по посту Zernio: (статус, публичная ссылка, причина отказа)."""
+        _, payload = await self._request("GET", f"/posts/{post_id}")
+        remote = payload.get("post") or payload
+        target = next((p for p in remote.get("platforms") or [] if p.get("platform") == "threads"), {})
+        return (target.get("status") or remote.get("status") or "unknown", target.get("platformPostUrl"),
+                target.get("errorMessage"))
+
     async def commented_posts(self, since: datetime) -> list[dict]:
         """Все посты аккаунта в Threads, под которыми есть комментарии (в том числе опубликованные не ботом)."""
         _, payload = await self._request(
