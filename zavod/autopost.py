@@ -146,7 +146,7 @@ def load_rubrics(path: Path) -> list[Rubric]:
 
 
 # Новые форматы по слову владельца — чаще, пока оптимизатор не наберёт по ним данных.
-BOOST = {"text_hype": 3.0}  # не чаще раза в день — следит post_next
+BOOST = {"text_hype": 3.0, "text_levels": 2.5}  # не чаще раза в день — следит post_next
 
 
 class ContentPlan:
