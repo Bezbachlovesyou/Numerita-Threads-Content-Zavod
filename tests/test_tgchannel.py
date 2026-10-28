@@ -34,7 +34,8 @@ class ChannelTests(unittest.IsolatedAsyncioTestCase):
             await self.db.pool.close()
         self.temp.cleanup()
 
-    async def post(self, hours, likes, comments, text='Хук.\nНапиши число в комментариях.'):
+    async def post(self, hours, likes, comments, text='Шестёрки опаздывают красиво: сначала цветы, потом извинения, '
+                   'потом ещё цветы. Хук.\nНапиши число в комментариях — отвечу, как ладят твои числа.'):
         ident = await self.db.add_draft('t', text, 'humor')
         await self.db.set_threads_id(ident, f'r{ident}')
         await self.db.mark_published(ident)
@@ -149,6 +150,18 @@ class ReactionTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(await tgchannel.react_backfill(db, bot, '@ch', 5), 0)
         self.assertTrue(all(e in tgchannel.REACTIONS for _, e in calls))
         temp.cleanup()
+
+
+class StandaloneTests(ChannelTests):
+    async def test_short_caption_not_moved_and_bad_post_removed(self):
+        short = await self.post(5, 20, 9, text='Узнаёте себя? 🤍\nШестёрки, откликнитесь — сделаю разбор.')
+        with self.at(12):
+            await tgchannel.tick(self.db, self.bot, '@ch', TZ)
+        self.bot.send_message.assert_not_awaited()
+        await self.db.set_tg_message_id(short, '68')
+        await tgchannel.remove_posts(self.db, self.bot, '@ch', [short])
+        await tgchannel.remove_posts(self.db, self.bot, '@ch', [short])
+        self.bot.delete_message.assert_awaited_once_with('@ch', 68)
 
 
 if __name__ == '__main__':

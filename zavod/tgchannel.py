@@ -135,10 +135,22 @@ def adapt(post, rng: random.Random) -> str:
     return f"{text}\n\n{rng.choice(CTA).format(link=link(post.id))}"
 
 
+MIN_TEXT = 120  # короче — обычно подпись к картинке или карусели; в канале без картинки она непонятна
+
+
+def standalone(post) -> bool:
+    """Пост понятен без картинки: матрица идёт со своей картинкой, а подписи к карточкам и каруселям в канал не берём
+    (слово владельца 28.10.2026 — «Узнаёте себя? Шестёрки, откликнитесь» без картинки было непонятно)."""
+    if grid_image(post):
+        return True
+    from .text_mode import needs_visual
+    return not post.image_url and not post.card and len(post.text.strip()) >= MIN_TEXT and not needs_visual(post.text)
+
+
 async def pick(db, now: datetime):
     best, best_score = None, MIN_SCORE - 1
     for post in await db.recent_published(now - MAX_AGE):
-        if post.tg_message_id or now - post.published_at < MIN_AGE:
+        if post.tg_message_id or now - post.published_at < MIN_AGE or not standalone(post):
             continue
         raw = await db.kv_get(f"performance:{post.id}:latest")
         if not raw:
@@ -298,3 +310,19 @@ async def run_backfill(db, bot, channel: str) -> None:
     upto = await latest_id(db)
     if upto:
         await react_backfill(db, bot, channel, upto)
+
+
+async def remove_posts(db, bot, channel: str, post_ids) -> None:
+    """Однократно убирает из канала неудачные переносы (слово владельца 28.10.2026)."""
+    from aiogram.exceptions import TelegramAPIError
+    for post_id in post_ids:
+        key = f"tgch:removed:{post_id}"
+        if not channel or await db.kv_get(key):
+            continue
+        post = await db.get(post_id)
+        if post and post.tg_message_id and str(post.tg_message_id).isdigit():
+            try:
+                await bot.delete_message(channel, int(post.tg_message_id))
+            except TelegramAPIError as e:
+                log.warning("Пост #%s из канала не удалён: %s", post_id, e)
+        await db.kv_set(key, "done")  # tg_message_id оставляем — повторно этот пост в канал не пойдёт

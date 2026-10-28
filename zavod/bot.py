@@ -1270,6 +1270,7 @@ async def run_scheduler(
                 log.exception("Post performance collection failed")
             try:
                 await tgchannel.announce_once(db, bot, cfg.telegram_channel)
+                await tgchannel.remove_posts(db, bot, cfg.telegram_channel, [68])  # подпись без картинки, 28.10
                 await tgchannel.publish_sent_jokes(db, bot, cfg.telegram_channel, cfg.admin_ids)
                 await tgchannel.fix_grid_post(db, bot, cfg.telegram_channel, 64)  # матрица без картинки, 28.10
                 problem = await tgchannel.tick(db, bot, cfg.telegram_channel, cfg.timezone)
