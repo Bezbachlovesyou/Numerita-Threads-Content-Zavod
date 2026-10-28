@@ -21,7 +21,7 @@ from .cards import (
 from .autoreply import answer_comments, finish_reply
 from . import text_mode
 from .optimizer import optimize
-from . import costs, constraint, funnel, performance, approved_post, zero_research, api_budget
+from . import costs, constraint, funnel, performance, approved_post, zero_research, api_budget, tgchannel
 from .config import Config
 from .generator import GenerationError, Generator
 from .storage import PgStorage, Post, Storage
@@ -238,7 +238,7 @@ async def publish(
             await db.set_threads_id(post.id, threads_id or "published")
         except ThreadsError as e:
             errors.append(f"Threads: {e}")
-    if channel and not post.tg_message_id:
+    if channel and threads is None and not post.tg_message_id:  # с Threads канал получает лучшее (tgchannel)
         try:
             sent = await bot.send_message(channel, post.text)
         except TelegramAPIError as e:
@@ -1226,6 +1226,12 @@ async def run_scheduler(
                 await performance.collect(db, threads, now)
             except Exception:
                 log.exception("Post performance collection failed")
+            try:
+                problem = await tgchannel.tick(db, bot, cfg.telegram_channel, cfg.timezone)
+                if problem and await db.claim_slot(f"tgch error {now.date().isoformat()}"):
+                    await notify_admins(bot, cfg, "⚠️ " + problem)
+            except Exception:
+                log.exception("Telegram channel tick failed")
         if plan.enabled and now.time() >= OPTIMIZE_AT and await db.claim_slot(f"optimize {now.date().isoformat()}"):
             try:
                 report = await optimize(db, threads, generator, plan, now)
