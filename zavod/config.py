@@ -9,7 +9,16 @@ DEFAULT_MODEL = "anthropic/claude-sonnet-5.5"  # посты; Opus вдвое д�
 # Ответы на комментарии — короткие и массовые: Haiku 5.5 в 20 раз дешевле Sonnet. Часть — на Sonnet (A/B качества).
 # 25.10.2026: ещё дешевле — DeepSeek V4 Flash (вход в 2,4 раза, выход в 3 раза дешевле Haiku); Haiku остаётся
 # на трети людей как контроль качества — обе модели копеечные, A/B больше не съедает бюджет.
-DEFAULT_REPLY_MODEL = "deepseek/deepseek-v4-flash-0731"
+# 28.10.2026 (слово владельца: «ответы кривые, на нормальный вопрос про Луну во Льве и в Тельце — ерунда»):
+# дешёвая DeepSeek Flash отвечала слабо — все ответы пишет Haiku, в прежнем дневном потолке расходов.
+DEFAULT_REPLY_MODEL = "anthropic/claude-haiku-5.5"
+WEAK_REPLY_MODELS = ("deepseek/",)
+
+
+def reply_model(env: str) -> str:
+    """Старое значение REPLY_MODEL на Railway (DeepSeek) больше не действует — владельцу ничего менять не нужно."""
+    env = env.strip()
+    return DEFAULT_REPLY_MODEL if not env or env.startswith(WEAK_REPLY_MODELS) else env
 DEFAULT_REPLY_AB_MODEL = "anthropic/claude-haiku-5.5"
 DEFAULT_KB_URL = "https://numerita.up.railway.app/kb.json"
 
@@ -99,9 +108,9 @@ def load_config() -> Config:
         # Автоответы на комментарии в Threads: включены по умолчанию, AUTOREPLY=0 — выключить.
         autoreply=os.getenv("AUTOREPLY", "1") != "0",
         autoreply_per_hour=int(os.getenv("AUTOREPLY_PER_HOUR", "90") or 90),
-        reply_model=os.getenv("REPLY_MODEL", "").strip() or DEFAULT_REPLY_MODEL,
+        reply_model=reply_model(os.getenv("REPLY_MODEL", "")),
         reply_ab_model=os.getenv("REPLY_AB_MODEL", "").strip() or DEFAULT_REPLY_AB_MODEL,
-        reply_ab_share=float(os.getenv("REPLY_AB_SHARE", "0.3") or 0.3),
+        reply_ab_share=0.0,  # A/B DeepSeek против Haiku закончен 28.10.2026: отвечает только Haiku
         # Потолок расходов на ответы и сводки диалогов в сутки, $ (закон «всегда в плюсе»).
         reply_budget_usd=float(os.getenv("REPLY_BUDGET_USD", "1") or 1),
         # Видео с Нумеритой (fal.ai, Seedance 2.0). Без FAL_KEY видео не делаются, VIDEO=off — выключить.

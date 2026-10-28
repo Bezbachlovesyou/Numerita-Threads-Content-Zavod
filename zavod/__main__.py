@@ -33,6 +33,7 @@ async def main() -> None:
     if text_mode.enabled() and not await storage.kv_get('experiment:text-only:started_at'):
         await storage.kv_set('experiment:text-only:started_at',datetime.now(timezone.utc).isoformat())
     await text_mode.seed(storage)
+    await text_mode.seed_apology(storage)
     generator = Generator(cfg.openrouter_api_key, cfg.openrouter_model, VOICE_PROMPT, KnowledgeBase(cfg.kb_url))
     generator.cost_sink = make_sink(storage, cfg.timezone)
     funnel.KEY = os.getenv("NUMERITA_THREADS_KEY", "").strip()

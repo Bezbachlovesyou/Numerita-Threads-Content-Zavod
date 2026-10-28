@@ -145,6 +145,10 @@ def load_rubrics(path: Path) -> list[Rubric]:
     return rubrics
 
 
+# Новые форматы по слову владельца — чаще, пока оптимизатор не наберёт по ним данных.
+BOOST = {"text_hype": 3.0}
+
+
 class ContentPlan:
     def __init__(self, rubrics: list[Rubric], enabled: bool = True):
         self.rubrics = rubrics
@@ -184,7 +188,7 @@ class ContentPlan:
             pool = fresh_text or pool
         if recent_ctas[:1] == ["link"] or recent_ctas.count("link") >= 2:
             pool = [r for r in pool if r.cta != "link"] or pool
-        weights = [max(0.2, self.weights.get(r.key, 1.0)) for r in pool]
+        weights = [max(0.2, self.weights.get(r.key, BOOST.get(r.key, 1.0))) for r in pool]
         return self.effective(rng.choices(pool, weights=weights)[0])
 
     def render(self, rubric: Rubric, now: datetime, rng: random.Random) -> Slot:

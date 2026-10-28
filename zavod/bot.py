@@ -31,7 +31,7 @@ from .threads_api import MAX_LENGTH, ThreadsClient, ThreadsError
 from .tts import synthesize
 from . import video as vid
 from .knowledge import reduce_number
-from .news import GoodNews
+from .news import GoodNews, HypeNews
 
 log = logging.getLogger(__name__)
 
@@ -804,6 +804,7 @@ async def find_dead_post(db: Storage, now: datetime, skip: set[str] = frozenset(
 
 
 NEWS = GoodNews()
+HYPE = HypeNews()
 NEWS_PAUSE = timedelta(hours=3)  # если доброго повода не нашлось — не пробуем новости пару часов
 NEWS_RULES = (
     "\n\nДобрые новости последних часов (только заголовки):\n{items}\n\n"
@@ -813,6 +814,20 @@ NEWS_RULES = (
     "к фактам из заголовка. Дальше — свой лёгкий, умный и тёплый взгляд: улыбнись, поддержи, свяжи с числом дня "
     "{day} или числом души — как опора для людей. Никакой политики, войны и трагедий. "
     "Последней строкой напиши «ИСТОЧНИК: <номер новости>». Если ни одна новость не радостная — верни только SKIP."
+)
+
+
+HYPE_RULES = (
+    "\n\nСвежие новости о медийных людях (только заголовки):\n{items}\n\n"
+    "Выбери ОДНУ — самую хайповую и смешную историю про поп-звезду, юмориста, блогера, тиктокера или шоумена. "
+    "Первая строка — хук: имя и суть повода коротко, как заголовок, от которого невозможно не дочитать. Перескажи "
+    "факт только из заголовка, ничего к нему не добавляй и не додумывай, назови источник («пишет StarHit»). Дальше — "
+    "твой остроумный, дерзкий и провокационный взгляд: ирония над ситуацией и хайпом, а не над человеком; можно "
+    "сравнить, как бы на месте звезды повели себя разные числа души (Единицы, Пятёрки, Восьмёрки…). Дату рождения и "
+    "числа самой звезды не называй — их легко перепутать. Не трогай внешность, вес, болезни, детей, развод, деньги "
+    "в долг, суды; никаких силовиков, военных, войны и политики; без мата и пошлости. Закончи острым вопросом, на "
+    "который хочется ответить спором. До 450 знаков. Последней строкой напиши «ИСТОЧНИК: <номер новости>». "
+    "Если ни одна история не подходит — верни только SKIP."
 )
 
 
@@ -841,7 +856,7 @@ async def post_next(
         rubric = plan.choose(recent, rng)
         news_pause = await db.kv_get("news_pause_until")
         for _ in range(5):  # новости — только когда есть свежий добрый повод
-            if rubric.key != "news" or not (news_pause and now < datetime.fromisoformat(news_pause)):
+            if rubric.key not in ("news", "text_hype") or not (news_pause and now < datetime.fromisoformat(news_pause)):
                 break
             rubric = plan.choose(recent, rng)
         # Рубрики со ссылкой не повторяем: у ссылок свои лимиты (prompts/threads_rules.md).
@@ -867,14 +882,16 @@ async def post_next(
         if slot.rubric.key == "jackpot" and await post_from_bank(cfg, db, threads, bot, plan, slot, rng, generator):
             return True
         news = []
-        if slot.rubric.key == "news":
+        hype = slot.rubric.key == "text_hype"
+        if slot.rubric.key == "news" or hype:
             used = set(json.loads(await db.kv_get("news_used") or "[]"))
-            news = await NEWS.candidates(used, rng)
+            news = await (HYPE if hype else NEWS).candidates(used, rng)
             if not news:
                 await db.kv_set("news_pause_until", (now + NEWS_PAUSE).isoformat())
                 return False
             items = "\n".join(f"{i}. {h.title} ({h.source})" for i, h in enumerate(news, 1))
-            slot = replace(slot, topic=slot.topic + NEWS_RULES.format(items=items, day=reduce_number(now.day)))
+            rules = HYPE_RULES if hype else NEWS_RULES
+            slot = replace(slot, topic=slot.topic + rules.format(items=items, day=reduce_number(now.day)))
         portrait_deck = None
         if slot.rubric.key == "one_portrait":
             from . import solar_portraits

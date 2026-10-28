@@ -77,8 +77,9 @@ class Headline:
 
 
 class GoodNews:
-    def __init__(self, feeds: dict[str, str] = FEEDS):
+    def __init__(self, feeds: dict[str, str] = FEEDS, check=None):
         self.feeds = feeds
+        self.check = check or is_good
         self.items: list[Headline] = []
         self.loaded_at = 0.0
 
@@ -99,7 +100,7 @@ class GoodNews:
                 taken = 0
                 for item in root.iter("item"):
                     title = re.sub(r"\s+", " ", (item.findtext("title") or "")).strip()
-                    if taken < PER_SOURCE and is_good(title, science=source in SCIENCE_FEEDS):
+                    if taken < PER_SOURCE and self.check(title, science=source in SCIENCE_FEEDS):
                         found.append(Headline(title, source))
                         taken += 1
         seen, unique = set(), []
@@ -125,3 +126,42 @@ def is_good(title: str, science: bool = False) -> bool:
     if science:
         return bool(SCIENCE.search(title)) and not SCIENCE_BAD.search(title)
     return bool(GOOD.search(title)) and not BAD.search(title)
+
+
+# Хайп дня (слово владельца 28.10.2026: «провокационнее, остроумнее, на злобу дня; обыгрываем медийных личностей —
+# поп-звёзд, юмористов, блогеров, тиктокеров, хайпожоров; военных, силовиков и войну не трогаем»).
+HYPE_FEEDS = {
+    "Лента.ру": "https://lenta.ru/rss/news/culture",
+    "StarHit": "https://www.starhit.ru/rss/",
+    "7 Дней": "https://7days.ru/rss/",
+    "Google Новости": "https://news.google.com/rss/search?q=%D0%B1%D0%BB%D0%BE%D0%B3%D0%B5%D1%80+OR+"
+                      "%D1%82%D0%B8%D0%BA%D1%82%D0%BE%D0%BA%D0%B5%D1%80+OR+%D0%BF%D0%B5%D0%B2%D0%B8%D1%86%D0%B0+OR+"
+                      "%D1%80%D1%8D%D0%BF%D0%B5%D1%80+OR+%D1%8E%D0%BC%D0%BE%D1%80%D0%B8%D1%81%D1%82&hl=ru&gl=RU&ceid=RU:ru",
+}
+HYPE = re.compile(
+    r"певиц|певец|рэпер|блогер|тикток|ютуб|стример|юморист|комик|стендап|Comedy|шоумен|ведущ|актёр|актер|актрис|"
+    r"звезд|поп-|клип|трек|альбом|концерт|тур\b|шоу|сериал|премьер|фильм|наряд|образ|выход|заявил|признал|рассказал|"
+    r"ответил|высмеял|пошутил|снял|хайп|вирусн|подписчик|миллион|рекорд|свадьб|роман",
+    re.I,
+)
+# Сверх общего табу: силовики, суды и иски, деньги в долг, боль людей — развод, болезнь, дети, внешность и вес.
+HYPE_BAD = re.compile(
+    r"ФСБ|МВД|полиц|силов|Росгвард|прокур|следств|следовател|СК\b|уголовн|задерж|суд|иск\b|иски|адвокат|"
+    r"изнасил|домогат|насили|развод|алимент|измен|болезн|болен|больниц|реанимац|операци|похорон|прощан|"
+    r"больн|тяжел|врач|документалк|памят|убил|суицид|самоуб|травм|маньяк|дочь|дочк|сын\b|сына|сыном|внук|внуч|похуд|вес\b|фигур|пластик|внешност|ребён|ребен|дет(и|ей|ям)\b|беремен|роди(ть|ла)|"
+    r"иноагент|уехал|эмигр|релокант|отмен|запрет|долг|банкрот|ДТП|авари|умер|смерт|скончал|похищ|"
+    r"Украин|войн|СВО|военн|армия|армии|санкц|Путин|Трамп|Зеленск|политик|депутат|министр",
+    re.I,
+)
+
+
+def is_hype(title: str, science: bool = False) -> bool:
+    return bool(title and len(title) >= 25 and HYPE.search(title)
+                and not HARD_BAD.search(title) and not HYPE_BAD.search(title))
+
+
+class HypeNews(GoodNews):
+    """Заголовки о медийных людях, над которыми можно остроумно и без унижения пошутить."""
+
+    def __init__(self, feeds: dict[str, str] = HYPE_FEEDS):
+        super().__init__(feeds, is_hype)
