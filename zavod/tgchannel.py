@@ -196,3 +196,42 @@ def video_caption(caption: str) -> str:
     if "t.me/" not in text:
         text = (text + "\n\n" if text else "") + f"🔮 Твой разбор по дате за 10 секунд: {VIDEO_LINK}"
     return text[:1024]
+
+
+async def publish_sent_jokes(db, bot, channel: str, admin_ids) -> str | None:
+    """Однократно (слово владельца 28.10.2026: «последнее видео хорошее, его используем»): находит в личке с владельцем
+    последний присланный ботом ролик «Нумерита шутит» и публикует его в канал. Пересланные для проверки копии сразу
+    удаляются. Возвращает итог для владельца или None."""
+    key = "tgch:jokes_published"
+    if not channel or await db.kv_get(key):
+        return None
+    from aiogram.exceptions import TelegramAPIError
+    for admin in admin_ids:
+        try:
+            marker = await bot.send_message(admin, "⏳ Публикую ролик «Нумерита шутит» в канал…", disable_notification=True)
+        except TelegramAPIError:
+            continue
+        found = None
+        for back in range(1, 60):
+            try:
+                copy = await bot.forward_message(admin, admin, marker.message_id - back, disable_notification=True)
+            except TelegramAPIError:
+                continue
+            try:
+                await bot.delete_message(admin, copy.message_id)
+            except TelegramAPIError:
+                pass
+            if copy.video and "Нумерита шутит" in (copy.caption or ""):
+                found = copy.video.file_id
+                break
+        if not found:
+            await bot.edit_message_text("Не нашла ролик в нашей переписке — Claude разберётся.",
+                                        chat_id=admin, message_id=marker.message_id)
+            continue
+        msg = await bot.send_video(channel, found, caption=JOKES_CAPTION, supports_streaming=True)
+        await db.kv_set(key, str(msg.message_id))
+        await bot.edit_message_text("✅ Ролик «Нумерита шутит» опубликован в канале.", chat_id=admin,
+                                    message_id=marker.message_id)
+        return "done"
+    await db.kv_set(key, "not_found")
+    return None

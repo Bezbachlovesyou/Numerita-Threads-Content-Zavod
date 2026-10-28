@@ -102,5 +102,30 @@ class VideoCaptionTests(unittest.TestCase):
         self.assertEqual(tgchannel.video_caption('см. t.me/Numeritabot'), 'см. t.me/Numeritabot')
 
 
+
+
+class SentJokesTests(unittest.IsolatedAsyncioTestCase):
+    async def test_finds_last_sent_jokes_video_and_publishes(self):
+        temp = tempfile.TemporaryDirectory()
+        db = Storage(temp.name + '/t.sqlite'); await db.init()
+        chat = {95: SimpleNamespace(video=SimpleNamespace(file_id='OLD'), caption='🎬 «Нумерита шутит» — старый'),
+                98: SimpleNamespace(video=None, caption=None),
+                99: SimpleNamespace(video=SimpleNamespace(file_id='NEW'), caption='🎬 «Нумерита шутит» — фирменный голос')}
+        from aiogram.exceptions import TelegramBadRequest
+        async def fwd(to, frm, mid, **kw):
+            if mid not in chat:
+                raise TelegramBadRequest(method=None, message='not found')
+            return SimpleNamespace(message_id=500 + mid, **vars(chat[mid]))
+        bot = SimpleNamespace(send_message=AsyncMock(return_value=SimpleNamespace(message_id=100)),
+                              forward_message=fwd, delete_message=AsyncMock(), edit_message_text=AsyncMock(),
+                              send_video=AsyncMock(return_value=SimpleNamespace(message_id=7)))
+        self.assertEqual(await tgchannel.publish_sent_jokes(db, bot, '@ch', [1]), 'done')
+        self.assertEqual(bot.send_video.await_args.args[1], 'NEW')
+        self.assertIn('ангелов', bot.send_video.await_args.kwargs['caption'])
+        self.assertIsNone(await tgchannel.publish_sent_jokes(db, bot, '@ch', [1]))
+        self.assertEqual(bot.send_video.await_count, 1)
+        temp.cleanup()
+
+
 if __name__ == '__main__':
     unittest.main()
