@@ -68,3 +68,25 @@ class UnpublishAndConfirm(unittest.IsolatedAsyncioTestCase):
             await B.confirm_heart(self.db, remote, None, None)
         self.assertIn("не принял видео", sent[0])
         self.assertIn("https://threads.net/p/x", sent[1])
+
+
+class GridTonight(unittest.IsolatedAsyncioTestCase):
+    async def test_spiral_goes_now_and_owner_gets_link_only_after_receipt(self):
+        tmp = tempfile.TemporaryDirectory()
+        db = Storage(tmp.name + "/t.db")
+        await db.init()
+        remote = Remote("published")
+        sent = []
+        async def publish(post, *a, **k):
+            await db.set_threads_id(post.id, "z1")
+            await db.mark_published(post.id)
+            return await db.get(post.id)
+        with patch.object(B, "notify_admins", AsyncMock(side_effect=lambda b, c, t: sent.append(t))), \
+             patch.object(B, "publish", publish):
+            await B.grid_tonight(db, remote, None, None)
+            await B.confirm_grid_videos(db, remote, None, None)
+            await B.confirm_grid_videos(db, remote, None, None)
+        self.assertIn("Ссылку пришлю", sent[0])
+        self.assertIn("https://threads.net/p/x", sent[1])
+        self.assertEqual(len(sent), 2)
+        tmp.cleanup()

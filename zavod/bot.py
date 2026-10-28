@@ -241,6 +241,24 @@ async def confirm_heart(db: Storage, threads: ThreadsClient, bot: Bot, cfg: Conf
                                       "Выкладываю то же сердце картинкой — пришлю ссылку, когда Threads подтвердит.")
 
 
+async def grid_tonight(db: Storage, threads: ThreadsClient, bot: Bot, cfg: Config) -> None:
+    """Однократно: выпуск 1 серии «Угадай число» — живая спираль. Владельцу — только квитанция Threads
+    (confirm_grid_videos; не принял видео — спираль перевыходит картинкой)."""
+    await db.claim_slot("grid new shapes first 2026-10-28")  # прежний принудительный выпуск спирали больше не нужен
+    grid = make_grid(random.Random(28), style="spiral")
+    text = ("Угадай число · выпуск 1\n"
+            "В этой спирали спрятаны семь сочетаний. Глаз выхватит одно — первым, и это не обязательно самое яркое.\n"
+            "Не ищи. Просто смотри три секунды.\n"
+            "Какое число вынырнуло у тебя? Напиши в ответах — расскажу, о чём оно ✨")
+    card = json.dumps({**json.loads(grid_json(grid, SHAPES["spiral"][0], 1)), "anim": True}, ensure_ascii=False)
+    post_id = await db.add_draft("grid-tonight-2026-10-28", text, "grid", None, card)
+    await db.kv_set("grid:issue", "1")
+    await db.kv_set("grid:last_style", "spiral")
+    post = await publish(await db.get(post_id), db, threads, bot, "", True)
+    await notify_admins(bot, cfg, "🌀 «Угадай число · выпуск 1» отправлен в Threads. Ссылку пришлю, когда Threads "
+                                  "подтвердит публикацию." if post.threads_id else f"⚠️ Спираль не вышла: {post.error}")
+
+
 async def confirm_grid_videos(db: Storage, threads: ThreadsClient, bot: Bot, cfg: Config) -> None:
     """Живые матрицы за сутки: Threads не принял видео — тот же пост один раз выходит картинкой, владельцу причина.
     Два отказа подряд — видео-матрицы выключаются (gridvideo:broken), дальше только картинки."""
@@ -250,11 +268,16 @@ async def confirm_grid_videos(db: Storage, threads: ThreadsClient, bot: Bot, cfg
             continue
         card = json.loads(post.card)
         key = f"gridcheck:{post.id}"
-        if not card.get("anim") or await db.kv_get(key) or post.threads_id in (None, "published"):
+        image_retry = post.topic.endswith(":image")
+        if not (card.get("anim") or image_retry) or await db.kv_get(key) or post.threads_id in (None, "published"):
             continue
         status, url, error = await threads.post_status(post.threads_id)
         if status == "published":
             await db.kv_set(key, "ok")
+            await notify_admins(bot, cfg, f"✅ Матрица в Threads: {url or 'вышла, ссылку Zernio не дал'}")
+        elif status in ("failed", "partial", "cancelled") and image_retry:
+            await db.kv_set(key, "failed")
+            await notify_admins(bot, cfg, f"⚠️ Threads не принял и картинку матрицы: {error or status}.")
         elif status in ("failed", "partial", "cancelled"):
             await db.kv_set(key, "failed")
             fails = int(await db.kv_get("gridvideo:fails") or 0) + 1
@@ -265,7 +288,7 @@ async def confirm_grid_videos(db: Storage, threads: ThreadsClient, bot: Bot, cfg
             retry = await db.add_draft(post.topic + ":image", post.text, "grid", None, json.dumps(card, ensure_ascii=False))
             await publish(await db.get(retry), db, threads, bot, "", True)
             await notify_admins(bot, cfg, f"⚠️ Threads не принял живую матрицу ({error or status}) — "
-                                          "выложила её картинкой.")
+                                          "выкладываю её картинкой, ссылку пришлю после подтверждения.")
 
 
 async def ensure_grid_video(post: Post, db: Storage, threads: ThreadsClient) -> str | None:
@@ -1009,9 +1032,9 @@ async def post_next(
             rubric = plan.choose(recent, rng)
         grid_rubric = next((r for r in plan.all_rubrics() if r.key == "grid"), None)
         if grid_rubric and (not text_mode.enabled() or text_mode.allowed(grid_rubric)):
-            if await db.claim_slot("grid new shapes first 2026-10-28"):  # слово владельца: новая матрица
-                rubric = plan.effective(grid_rubric)
-            elif await db.claim_slot("grid dna first 2026-10-28"):  # слово владельца: ДНК из цифр — живым видео
+            # Слово владельца 28.10.2026: сегодня спираль (grid_tonight), ДНК — «завтра с утра», за ней сердце.
+            if now >= datetime(2026, 10, 29, 8, 0, tzinfo=now.tzinfo) \
+                    and await db.claim_slot("grid dna first 2026-10-28"):  # ДНК из цифр — живым видео
                 await db.kv_set("grid:last_style", GRID_STYLES[GRID_STYLES.index("dna") - 1])
                 await db.kv_set("grid:last_anim", "0")
                 rubric = plan.effective(grid_rubric)
@@ -1061,9 +1084,12 @@ async def post_next(
             await db.kv_set("grid:last_style", shape)
             grid = make_grid(rng, style=shape)
             grid_title = SHAPES[shape][0] if shape in SHAPES else rng.choice(GRID_TITLES)
+            issue = int(await db.kv_get("grid:issue") or 1) + 1  # серия «Угадай число»; выпуск 1 — спираль 28.10
+            await db.kv_set("grid:issue", str(issue))
             # Модели — какие числа спрятаны, чтобы пост мог намекнуть, но не выдать их все.
             slot = replace(slot, topic=slot.topic + "\nНа картинке спрятаны: " + ", ".join(grid["hidden"])
                            + ". Не перечисляй их в тексте."
+                           + f"\nЭто серия «Угадай число» — первая строка поста: «Угадай число · выпуск {issue}»."
                            + (f"\nФорма картинки: {SHAPES[shape][1]}. Вопрос на картинке: «{grid_title}» — "
                               "в тексте задай свой, новый вопрос в духе формы, не повторяя картинку." if shape in SHAPES else ""))
         log.info("Автопост (%s): %s", slot.rubric.key, slot.topic)
@@ -1516,6 +1542,11 @@ async def run_scheduler(
                     await confirm_heart(db, threads, bot, cfg)
             except Exception:
                 log.exception("Проверка поста с сердцем не удалась")
+            if await db.claim_slot("grid tonight 2026-10-28"):  # слово владельца: «сегодня перед сном — один пост»
+                try:
+                    await grid_tonight(db, threads, bot, cfg)
+                except Exception:
+                    log.exception("Ночная матрица не вышла")
             if await db.claim_slot("heart grid now 2026-10-28"):  # слово владельца: «сердечко — прямо сейчас постом»
                 try:
                     await heart_now(db, threads, bot, cfg)

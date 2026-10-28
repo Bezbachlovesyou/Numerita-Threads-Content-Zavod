@@ -418,7 +418,7 @@ def _dna_points(phase: float) -> list[tuple[float, float, float, float]]:
             for f in range(1, DNA_RUNG + 1):
                 t = f / (DNA_RUNG + 1)
                 x, y = _dna_xy(u, va + (vb - va) * t)
-                rungs.append((x, y, -tilt_deg, 0.55 + 0.14 * (za + (zb - za) * t)))
+                rungs.append((x, y, -tilt_deg, 0.6 + 0.12 * (za + (zb - za) * t)))
     return strand_a + strand_b[::-1] + rungs
 
 
@@ -430,6 +430,14 @@ def dna_backbones(points: list) -> tuple[list, list]:
 def draw_dna_backbones(img: Image.Image, points: list) -> Image.Image:
     glow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     gd = ImageDraw.Draw(glow)
+    # Ступеньки-перемычки: светящаяся планка от нити к нити, половина золотая, половина голубая.
+    a_pts, b_pts = points[:DNA_LEVELS], points[DNA_LEVELS:2 * DNA_LEVELS][::-1]
+    for k in range(1, DNA_LEVELS, DNA_RUNG_EVERY):
+        (xa, ya, _, sa), (xb, yb, _, sb) = a_pts[k], b_pts[k]
+        mx, my = (xa + xb) / 2, (ya + yb) / 2
+        a = int(max(40, min(170, 260 * ((sa + sb) / 2 - 0.3))))
+        gd.line((xa, ya, mx, my), fill=(255, 196, 120, a), width=4)
+        gd.line((mx, my, xb, yb), fill=(120, 185, 255, a), width=4)
     for strand, rgb in zip(dna_backbones(points), ((255, 205, 120), (110, 190, 255))):
         for (x0, y0, _, s0), (x1, y1, _, s1) in zip(strand, strand[1:]):
             a = int(max(20, min(150, 260 * ((s0 + s1) / 2 - 0.45))))
