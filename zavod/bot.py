@@ -22,7 +22,7 @@ from .cards import (
 from .autoreply import answer_comments, finish_reply
 from . import text_mode
 from .optimizer import optimize
-from . import costs, constraint, funnel, performance, approved_post, zero_research, api_budget, tgchannel
+from . import costs, constraint, funnel, performance, approved_post, zero_research, api_budget, tgchannel, brandvideo
 from .config import Config
 from .generator import GenerationError, Generator
 from .storage import PgStorage, Post, Storage
@@ -1207,6 +1207,12 @@ async def run_scheduler(
         await notify_admins(bot, cfg, "👤 Маргарита — @Ruma7775\n\nТвоя личная клиентка продюсера (стримерша, мама двоих "
                                       "детей). В боте Нумериты за 7 дней на неё ушло $2,3 нейросети, оплат 0 ⭐ — "
                                       "40% всех расходов бота. Реши: ведём без ограничений или ставим потолок.")
+    async def send_brand_video(path, caption):  # ролик «Нумерита шутит» фирменным голосом — владельцу (28.10.2026)
+        from aiogram.types import FSInputFile
+        for admin_id in cfg.admin_ids:
+            await bot.send_video(admin_id, FSInputFile(path), caption=caption, width=1080, height=1080,
+                                 supports_streaming=True, request_timeout=180)
+    brand_task = asyncio.create_task(brandvideo.run_once(db, generator.api_key, send_brand_video))
     if await db.claim_slot("owner names kindness 2026-10-28"):  # владелец попросил 1000 названий в Telegram
         await send_long(bot, cfg, (Path(__file__).parent.parent / "docs/drafts/kindness-names-2026-10-28.md").read_text())
     if await db.claim_slot("toc summary"):  # владелец попросил выжимку теории ограничений
