@@ -22,7 +22,7 @@ from .cards import (
 from .autoreply import answer_comments, finish_reply
 from . import text_mode
 from .optimizer import optimize
-from . import costs, constraint, funnel, performance, approved_post, zero_research, api_budget, tgchannel, brandvideo
+from . import costs, constraint, funnel, performance, approved_post, zero_research, api_budget, tgchannel, brandvideo, instagram
 from .config import Config
 from .generator import GenerationError, Generator
 from .storage import PgStorage, Post, Storage
@@ -1272,6 +1272,10 @@ async def run_scheduler(
                     await notify_admins(bot, cfg, "⚠️ " + problem)
             except Exception:
                 log.exception("Telegram channel tick failed")
+            try:
+                await instagram.tick(db, threads, cfg.timezone, lambda text: notify_admins(bot, cfg, text))
+            except Exception:
+                log.exception("Instagram tick failed")
         if plan.enabled and now.time() >= OPTIMIZE_AT and await db.claim_slot(f"optimize {now.date().isoformat()}"):
             try:
                 report = await optimize(db, threads, generator, plan, now)
