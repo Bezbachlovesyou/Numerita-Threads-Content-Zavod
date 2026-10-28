@@ -193,8 +193,38 @@ async def heart_now(db: Storage, threads: ThreadsClient, bot: Bot, cfg: Config) 
     card = json.dumps({**json.loads(grid_json(grid, SHAPES["heart"][0], 2)), "anim": True}, ensure_ascii=False)
     post_id = await db.add_draft("heart-grid-now-2026-10-28", text, "grid", None, card)
     post = await publish(await db.get(post_id), db, threads, bot, "", True)
-    await notify_admins(bot, cfg, "💗 Живое сердце из цифр вышло в Threads." if post.threads_id
-                        else f"⚠️ Сердце не вышло: {post.error}")
+    await db.kv_set("heart:post", str(post_id))
+    if not post.threads_id:
+        await notify_admins(bot, cfg, f"⚠️ Сердце не вышло: {post.error}")
+
+
+async def confirm_heart(db: Storage, threads: ThreadsClient, bot: Bot, cfg: Config) -> None:
+    """Владельцу — только квитанция Threads: ссылка на вышедший пост или причина отказа. Если Threads не принял
+    видео — тот же пост один раз выходит картинкой (живое сердце остаётся в канале владельца отдельно)."""
+    raw = await db.kv_get("heart:post")
+    if not raw or raw.startswith("done"):
+        return
+    post = await db.get(int(raw))
+    if not post or not post.threads_id or post.threads_id == "published":
+        return
+    status, url, error = await threads.post_status(post.threads_id)
+    if status == "published":
+        await db.kv_set("heart:post", "done:" + raw)
+        await notify_admins(bot, cfg, f"💗 Живое сердце в Threads: {url or 'вышло, ссылку Zernio не дал'}")
+    elif status in ("failed", "partial", "cancelled"):
+        await db.kv_set("heart:post", "done:" + raw)
+        card = json.loads(post.card)
+        if not card.get("anim"):
+            await notify_admins(bot, cfg, f"⚠️ Сердце картинкой Threads тоже не принял: {error or status}.")
+            return
+        card["anim"] = False
+        await db.kv_set("gridvideo:broken", error or status)
+        retry = await db.add_draft("heart-grid-image-2026-10-28", post.text, "grid", None,
+                                   json.dumps(card, ensure_ascii=False))
+        again = await publish(await db.get(retry), db, threads, bot, "", True)
+        await db.kv_set("heart:post", str(retry) if again.threads_id else "done:" + raw)
+        await notify_admins(bot, cfg, f"⚠️ Threads не принял видео-сердце ({error or status}). "
+                                      "Выкладываю то же сердце картинкой — пришлю ссылку, когда Threads подтвердит.")
 
 
 async def ensure_grid_video(post: Post, db: Storage, threads: ThreadsClient) -> str | None:
@@ -204,6 +234,8 @@ async def ensure_grid_video(post: Post, db: Storage, threads: ThreadsClient) -> 
     except ValueError:
         return None
     if not puzzle.get("anim") or puzzle.get("grid", {}).get("style") not in SHAPES:
+        return None
+    if await db.kv_get("gridvideo:broken"):  # Threads не принял живую матрицу — пока выходим картинкой
         return None
     saved = await db.kv_get(f"gridvideo:{post.id}")
     if saved:
@@ -1223,21 +1255,39 @@ UNPUBLISH = ["Колесо крутится, пока ты раздумывае�
              "Протокол проверки бизнес-идеи"]  # 28.10: «тематика мимо» — без нумерологии
 
 
-async def unpublish_matching(db: Storage, threads: ThreadsClient, fragments: list[str]) -> int:
-    """Снимает из Threads опубликованные за неделю посты с этими кусками текста или фразы на картинке."""
-    removed = 0
+async def unpublish_matching(db: Storage, threads: ThreadsClient, fragments: list[str]) -> list[str]:
+    """Снимает из Threads посты недели с этими кусками текста. Номер поста ищет и в базе, и в самом Zernio
+    (в базе бывает заглушка «published»); после снятия сверяет статус. Возвращает строки для владельца."""
+    report = []
     since = datetime.now(timezone.utc) - timedelta(days=7)
     for fragment in fragments:
-        for post in await db.find_published(fragment, since):
+        if await db.kv_get(f"unpub:{fragment[:40]}") == "done":
+            continue
+        local = await db.find_published(fragment, since)
+        remote_ids = {p.threads_id for p in local if p.threads_id and p.threads_id != "published"}
+        try:
+            remote_ids |= {p.get("_id") for p in await threads.find_posts(fragment, since) if p.get("_id")}
+        except ThreadsError as e:
+            log.warning("Поиск поста «%s» в Zernio не удался: %s", fragment, e)
+        removed = False
+        for remote in remote_ids:
             try:
-                await threads.unpublish(post.threads_id)
+                status, _, _ = await threads.post_status(remote)
+                if status in ("published", "publishing"):
+                    await threads.unpublish(remote)
+                    status, _, _ = await threads.post_status(remote)
+                removed = removed or status not in ("published", "publishing")
             except ThreadsError as e:
-                log.warning("Не удалось снять пост #%s: %s", post.id, e)
-                continue
-            await db.delete(post.id)
-            removed += 1
-            log.info("Пост #%s снят из Threads по просьбе владельца", post.id)
-    return removed
+                log.warning("Не удалось снять пост %s: %s", remote, e)
+        if removed or (remote_ids and not local):
+            for post in local:
+                await db.delete(post.id)
+        if removed:
+            await db.kv_set(f"unpub:{fragment[:40]}", "done")
+            report.append(f"🗑 Снят из Threads: «{fragment}»")
+        elif local or remote_ids:
+            report.append(f"⚠️ Не получилось снять «{fragment}» — попробую снова через 10 минут.")
+    return report
 
 
 async def report_autoreply_error(bot: Bot, cfg: Config, db: Storage) -> None:
@@ -1338,7 +1388,8 @@ async def run_scheduler(
             log.exception("Отчёт о расходах не собран")
     if threads is not None:
         try:
-            await unpublish_matching(db, threads, UNPUBLISH)
+            for line in await unpublish_matching(db, threads, UNPUBLISH):
+                await notify_admins(bot, cfg, line)
         except Exception:
             log.exception("Снятие неудачных постов не удалось")
     while True:
@@ -1374,6 +1425,17 @@ async def run_scheduler(
                     await notify_admins(bot, cfg, "⚠️ " + problem)
             except Exception:
                 log.exception("Telegram channel tick failed")
+            if now.minute % 10 == 0 and await db.claim_slot(f"unpub retry {now:%Y-%m-%d %H:%M}"):
+                try:
+                    for line in await unpublish_matching(db, threads, UNPUBLISH):
+                        if "Снят" in line:
+                            await notify_admins(bot, cfg, line)
+                except Exception:
+                    log.exception("Повторное снятие постов не удалось")
+            try:
+                await confirm_heart(db, threads, bot, cfg)
+            except Exception:
+                log.exception("Проверка поста с сердцем не удалась")
             if await db.claim_slot("heart grid now 2026-10-28"):  # слово владельца: «сердечко — прямо сейчас постом»
                 try:
                     await heart_now(db, threads, bot, cfg)

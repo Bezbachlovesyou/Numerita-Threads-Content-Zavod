@@ -89,6 +89,10 @@ async def seed_apology(db):
 
 
 async def next_seed(db):
+    # Урок 28.10.2026 («Протокол проверки бизнес-идеи» — мимо): готовый текст без чисел в очередь не идёт.
+    for row in await db._rows("SELECT id, text FROM posts WHERE status = 'queued' AND rubric = 'text_seed'"):
+        if not re.search(r'\d', row['text']) and not row['text'].startswith('Новость дня'):
+            await db._execute("UPDATE posts SET status = 'draft' WHERE id = ?", (row['id'],))
     rows = await db._rows("SELECT id FROM posts WHERE status = 'queued' AND rubric = 'text_seed' "
                           "ORDER BY CASE WHEN topic LIKE 'priority:%' THEN 0 ELSE 1 END, id LIMIT 1")
     return await db.get(rows[0]['id']) if rows else None
