@@ -1,4 +1,5 @@
 import asyncio
+from pathlib import Path
 import json
 import logging
 import random
@@ -534,6 +535,18 @@ def create_router(cfg: Config, plan: ContentPlan) -> Router:
         await callback.message.edit_text(post_card(post, cfg), reply_markup=post_keyboard(post))
 
     return router
+
+
+async def send_long(bot: Bot, cfg: Config, text: str, limit: int = 3900) -> None:
+    """Длинный текст — несколькими сообщениями, режем по строкам."""
+    part = ""
+    for line in text.splitlines():
+        if len(part) + len(line) + 1 > limit:
+            await notify_admins(bot, cfg, part)
+            part = ""
+        part += line + "\n"
+    if part.strip():
+        await notify_admins(bot, cfg, part)
 
 
 async def notify_admins(bot: Bot, cfg: Config, text: str, post: Post | None = None) -> None:
@@ -1191,6 +1204,8 @@ async def run_scheduler(
         await notify_admins(bot, cfg, "👤 Маргарита — @Ruma7775\n\nТвоя личная клиентка продюсера (стримерша, мама двоих "
                                       "детей). В боте Нумериты за 7 дней на неё ушло $2,3 нейросети, оплат 0 ⭐ — "
                                       "40% всех расходов бота. Реши: ведём без ограничений или ставим потолок.")
+    if await db.claim_slot("owner names kindness 2026-10-28"):  # владелец попросил 1000 названий в Telegram
+        await send_long(bot, cfg, (Path(__file__).parent.parent / "docs/drafts/kindness-names-2026-10-28.md").read_text())
     if await db.claim_slot("toc summary"):  # владелец попросил выжимку теории ограничений
         await notify_admins(bot, cfg, constraint.SUMMARY)
     if await db.claim_slot("cost report 2026-10-24"):  # владелец спросил, куда ушли деньги, — отчёт сразу
