@@ -1,4 +1,4 @@
-"""Обход по теории ограничений Голдратта — два раза в день (слово владельца 24.10.2026).
+"""Обход по теории ограничений Голдратта — три раза в день (уточнение владельца).
 
 Бот смотрит на всю цепочку: посты → комментарии → наши ответы → переход в @Numeritabot → оплата, и на расходы.
 Нейросеть по пяти шагам Голдратта находит одно узкое звено и предлагает, как его «расшить». Обратимое бот
@@ -37,7 +37,7 @@ SUMMARY = """📘 Теория ограничений Голдратта — к�
 «барабан — буфер — верёвка»: темп задаёт узкое звено, перед ним буфер, вход ограничен его темпом;
 мыслительные процессы — дерево текущей реальности (корень проблем), «грозовая туча» (разрешение конфликта).
 
-Как это у нас: два раза в день, в 11:00 и 19:00, я прохожу цепочку «пост → комментарий → ответ → бот →
+Как это у нас: три раза в день, в 11:00, 15:00 и 19:00, я прохожу цепочку «пост → комментарий → ответ → бот →
 оплата» и расходы, называю одно узкое звено и сразу включаю обратимое улучшение на 12 часов. Необратимое —
 только с твоего слова, с пометкой ‼️."""
 
@@ -181,3 +181,65 @@ async def digest(db: Storage, now: datetime) -> str | None:
         keep = [ln for ln in text.splitlines() if ln.startswith(("Узкое звено", "Шаг", "•"))]
         parts.append(f"⏱ {head}\n" + "\n".join(keep))
     return f"📒 Сводка обходов за {now:%d.%m} — что я нашла и включила сама\n\n" + "\n\n".join(parts)
+
+
+async def run_due(db: Storage, generator: Generator, now: datetime, tz) -> list[str]:
+    """Run each scheduled review with durable receipts and at most three attempts.
+
+    Only the existing two-hour windows are used. Restarting never generates a
+    burst of missed reviews. A consumed attempt is not a successful review.
+    """
+    now = now.astimezone(tz)
+    notices = []
+    for hour in RUN_HOURS:
+        if not hour <= now.hour < hour + 2:
+            continue
+        key = f'toc_run:{now.date().isoformat()}:{hour}'
+        state = json.loads(await db.kv_get(key) or '{}')
+        if state.get('status') == 'success' or state.get('attempts', 0) >= 3:
+            continue
+        if state.get('attempted_at') and now - datetime.fromisoformat(state['attempted_at']) < timedelta(minutes=15):
+            continue
+        attempt = state.get('attempts', 0) + 1
+        if not await db.claim_slot(f'{key}:attempt:{attempt}'):
+            # A prior process may have stopped after claiming. Recover after a
+            # bounded lease instead of reclaiming a possibly live attempt.
+            await db.kv_set(key, json.dumps({'status':'interrupted', 'attempts':attempt,
+                                           'attempted_at':now.isoformat()}))
+            continue
+        state = {'status':'running', 'attempts':attempt, 'attempted_at':now.isoformat()}
+        await db.kv_set(key, json.dumps(state))
+        try:
+            text = await review(db, generator, now, tz)
+            if not text:
+                raise ValueError('No valid review returned')
+            await remember(db, now, text)
+            state.update(status='success', completed_at=datetime.now(tz).isoformat(), result=text)
+            if '‼️' in text:
+                notices.append(text)
+        except Exception as error:
+            state.update(status='failed', error_type=type(error).__name__)
+            log.warning('Review slot %s attempt %s failed (%s)', key, attempt, type(error).__name__)
+            if attempt == 3:
+                notices.append(f'⚠️ Обход {now:%d.%m} {hour}:00 не завершён после трёх попыток. '
+                               'В журнале сохранён сбой; успешным этот обход не считается.')
+        await db.kv_set(key, json.dumps(state, ensure_ascii=False))
+        log.info('Review receipt %s status=%s attempts=%s', key, state['status'], attempt)
+    if now.hour >= DIGEST_HOUR:
+        summary = await digest(db, now)
+        if summary and await db.claim_slot(f'toc_digest:{now.date().isoformat()}'):
+            notices.append(summary)
+    return notices
+
+
+async def report(db: Storage, now: datetime) -> str:
+    lines = [f'📋 Обходы за {now:%d.%m}: фактические квитанции, не только расписание.']
+    for hour in RUN_HOURS:
+        state = json.loads(await db.kv_get(f'toc_run:{now.date().isoformat()}:{hour}') or '{}')
+        label = {'success':'выполнен', 'running':'попытка начата', 'failed':'сбой',
+                 'interrupted':'предыдущая попытка прервана'}.get(state.get('status'), 'квитанции пока нет')
+        lines.append(f'{hour}:00 — {label}; попыток {state.get("attempts",0)}.')
+        if state.get('completed_at'):
+            lines.append('Завершение: ' + state['completed_at'])
+    lines.append('Время — часовой пояс бота; до выпуска журнала старые обходы здесь не подтверждаются.')
+    return '\n'.join(lines)

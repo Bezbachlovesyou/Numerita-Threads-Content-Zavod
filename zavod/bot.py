@@ -23,7 +23,7 @@ from .autoreply import answer_comments, finish_reply, redo_code_replies
 from . import autoreply
 from . import text_mode
 from .optimizer import optimize
-from . import costs, constraint, funnel, performance, approved_post, zero_research, api_budget, tgchannel, brandvideo, instagram, sketch
+from . import costs, constraint, funnel, performance, approved_post, zero_research, api_budget, tgchannel, brandvideo, instagram, sketch, zero_cleanup
 from .config import Config
 from .generator import GenerationError, Generator
 from .storage import PgStorage, Post, Storage
@@ -49,6 +49,8 @@ COMMANDS = [
     ("stats", "статистика в Threads"),
     ("performance", "лайки и комментарии каждого поста"),
     ("safety", "квоты API и ограничения автоответов"),
+    ("reviews", "квитанции трёх ежедневных обходов"),
+    ("cleanup", "квитанции удаления нулевых постов"),
     ("costs", "расходы на нейросеть за сегодня"),
     ("compare", "сравнить ответы двух нейросетей"),
     ("status", "модель, база знаний, подключения"),
@@ -374,6 +376,14 @@ def create_router(cfg: Config, plan: ContentPlan) -> Router:
     @router.message(Command('safety'))
     async def safety_handler(message: Message, db: Storage):
         await message.answer(await api_budget.report(db,datetime.now(timezone.utc)),parse_mode=None)
+
+    @router.message(Command("cleanup"))
+    async def cleanup_handler(message: Message, db: Storage):
+        await message.answer(await zero_cleanup.report(db, datetime.now(cfg.timezone)), parse_mode=None)
+
+    @router.message(Command("reviews"))
+    async def reviews_handler(message: Message, db: Storage):
+        await message.answer(await constraint.report(db, datetime.now(cfg.timezone)), parse_mode=None)
 
     @router.message(Command("performance"))
     async def performance_handler(message: Message, db: Storage):
@@ -1425,6 +1435,7 @@ async def run_scheduler(
         if threads is not None:
             try:
                 await performance.collect(db, threads, now)
+                await zero_cleanup.tick(db, threads, now)
             except Exception:
                 log.exception("Post performance collection failed")
             try:
@@ -1473,21 +1484,11 @@ async def run_scheduler(
                     await notify_admins(bot, cfg, tuned)
             except Exception:
                 log.exception("Optimizer failed")
-        for hour in constraint.RUN_HOURS:  # обходы в 11, 15, 19; владельцу — сводка в 19 и ‼️ сразу
-            due = hour <= now.hour < hour + 2 and await db.claim_slot(f"toc {now.date().isoformat()} {hour}")
-            if due or (hour == constraint.RUN_HOURS[0] and await db.claim_slot("toc first run")):
-                try:
-                    text = await constraint.review(db, generator, now, cfg.timezone)
-                    if text:
-                        await constraint.remember(db, now, text)
-                        if "‼️" in text:  # нужно слово владельца — сразу; остальное — в вечерней сводке
-                            await notify_admins(bot, cfg, text)
-                    if hour == constraint.DIGEST_HOUR:
-                        summary = await constraint.digest(db, now)
-                        if summary:
-                            await notify_admins(bot, cfg, summary)
-                except Exception:
-                    log.exception("Обход по Голдратту упал")
+        try:
+            for notice in await constraint.run_due(db, generator, now, cfg.timezone):
+                await notify_admins(bot, cfg, notice)
+        except Exception:
+            log.exception("Review scheduler failed")
         if threads is not None and cfg.autoreply and datetime.now() >= next_replies:
             # Первые 15–30 минут решают, покажет ли Threads пост шире: в первый час после поста отвечаем быстрее.
             last = await db.last_published_at()
