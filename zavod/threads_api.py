@@ -94,7 +94,7 @@ class ThreadsClient:
             grid_ok = (text_mode.grid_enabled() and media_kind == 'number_grid'
                        and image_urls and len(image_urls)==1 and not video_url)
             # Живая матрица (слово владельца 28.10.2026): одно видео формы с цифрами вместо картинки.
-            grid_video_ok = (text_mode.grid_enabled() and media_kind == 'number_grid_video'
+            grid_video_ok = (text_mode.grid_enabled() and media_kind in ('number_grid_video', 'sky_video')
                              and bool(video_url) and not image_urls)
             if not grid_ok: image_urls = None
             if not grid_video_ok: video_url = None

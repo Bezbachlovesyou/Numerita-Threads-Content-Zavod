@@ -241,6 +241,34 @@ async def confirm_heart(db: Storage, threads: ThreadsClient, bot: Bot, cfg: Conf
                                       "Выкладываю то же сердце картинкой — пришлю ссылку, когда Threads подтвердит.")
 
 
+VENUS_TEXT = (
+    "Венера сейчас идёт назад — так это видно с Земли.\n"
+    "24 октября она прошла между нами и Солнцем, а до 14 ноября «пятится» из Скорпиона в Весы. Так же было осенью "
+    "2018-го и будет в 2034-м: за 8 лет её путь складывается в розу с пятью лепестками — на видео настоящие положения "
+    "планеты.\nА пройти по диску Солнца она сможет только 11 декабря 2117 года.\n"
+    "В языке чисел Венера — шестёрка. Рождённые 6, 15, 24, это ваша осень: кого из прошлого вы бы сейчас поблагодарили?")
+
+
+async def venus_post(db: Storage, threads: ThreadsClient, bot: Bot, cfg: Config) -> None:
+    """Однократно 29.10: «Роза Венеры» — видео из настоящих положений планеты (venusrose.py) и пост. Владельцу —
+    только квитанция Threads со ссылкой."""
+    from .venusrose import render_video
+    data = await asyncio.to_thread(render_video)
+    url = await threads.upload_image(data, "numerita_venus_rose.mp4", "video/mp4")
+    post_id = await db.add_draft("venus-rose-2026-10-29", VENUS_TEXT, "text_sky")
+    remote = await threads.publish_text(VENUS_TEXT, topic_tag_for("text_sky"), None, None, url, media_kind="sky_video")
+    await db.set_threads_id(post_id, remote or "published")
+    await db.mark_published(post_id)
+    status, link, error = ("unknown", None, None)
+    for _ in range(12):  # Threads обрабатывает видео не сразу — ждём квитанцию до ~6 минут
+        await asyncio.sleep(30)
+        status, link, error = await threads.post_status(remote) if remote else ("unknown", None, None)
+        if status in ("published", "failed", "partial"):
+            break
+    await notify_admins(bot, cfg, f"🌹 Роза Венеры в Threads: {link}" if status == "published"
+                        else f"⚠️ Роза Венеры: Threads ответил «{status}» {error or ''}")
+
+
 async def grid_tonight(db: Storage, threads: ThreadsClient, bot: Bot, cfg: Config) -> None:
     """Однократно: выпуск 1 серии «Угадай число» — живая спираль. Владельцу — только квитанция Threads
     (confirm_grid_videos; не принял видео — спираль перевыходит картинкой)."""
@@ -1071,6 +1099,12 @@ async def post_next(
             items = "\n".join(f"{i}. {h.title} ({h.source})" for i, h in enumerate(news, 1))
             rules = HYPE_RULES if hype else NEWS_RULES
             slot = replace(slot, topic=slot.topic + rules.format(items=items, day=reduce_number(now.day)))
+        if slot.rubric.key == "text_sky":  # небесный календарь: настоящие события Swiss Ephemeris
+            from . import skyevents
+            sky = await asyncio.to_thread(skyevents.topic, now)
+            if not sky:
+                return False
+            slot = replace(slot, topic=slot.topic + sky)
         portrait_deck = None
         if slot.rubric.key == "one_portrait":
             from . import solar_portraits
@@ -1550,6 +1584,11 @@ async def run_scheduler(
                     await confirm_heart(db, threads, bot, cfg)
             except Exception:
                 log.exception("Проверка поста с сердцем не удалась")
+            if now >= datetime(2026, 10, 29, 14, 0, tzinfo=now.tzinfo) and await db.claim_slot("venus rose 2026-10-29"):
+                try:
+                    await venus_post(db, threads, bot, cfg)
+                except Exception:
+                    log.exception("Роза Венеры не вышла")
             if await db.claim_slot("grid tonight 2026-10-28"):  # слово владельца: «сегодня перед сном — один пост»
                 try:
                     await grid_tonight(db, threads, bot, cfg)
