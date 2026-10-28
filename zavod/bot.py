@@ -22,7 +22,7 @@ from .cards import (
 from .autoreply import answer_comments, finish_reply
 from . import text_mode
 from .optimizer import optimize
-from . import costs, constraint, funnel, performance, approved_post, zero_research, api_budget, tgchannel, brandvideo, instagram
+from . import costs, constraint, funnel, performance, approved_post, zero_research, api_budget, tgchannel, brandvideo, instagram, sketch
 from .config import Config
 from .generator import GenerationError, Generator
 from .storage import PgStorage, Post, Storage
@@ -1230,6 +1230,10 @@ async def run_scheduler(
                                         supports_streaming=True, request_timeout=180)
             await db.kv_set("brandvideo:file_id", sent.video.file_id)  # чтобы потом выложить без пересылки
     brand_task = asyncio.create_task(brandvideo.run_once(db, generator.api_key, send_brand_video))
+    async def send_sketch(data, caption):  # проба рисованных картинок — владельцу (28.10.2026)
+        for admin_id in cfg.admin_ids:
+            await bot.send_photo(admin_id, BufferedInputFile(data, "numerita_sketch.jpg"), caption=caption[:1024])
+    sketch_task = asyncio.create_task(sketch.run_trial(db, generator, send_sketch))
     react_task = asyncio.create_task(tgchannel.run_backfill(db, bot, cfg.telegram_channel))  # реакции на все посты канала
     if await db.claim_slot("owner names kindness 2026-10-28"):  # владелец попросил 1000 названий в Telegram
         await send_long(bot, cfg, (Path(__file__).parent.parent / "docs/drafts/kindness-names-2026-10-28.md").read_text())
