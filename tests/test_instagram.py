@@ -71,7 +71,7 @@ class InstagramTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("ссылка в шапке", body["content"])
         self.assertTrue(z.uploads[0] > 1000)
         self.assertEqual(await self.db.kv_get(f"ig:posted:{best}"), "ig1")
-        self.assertIn("ad_th_igbio", self.notes[0])
+        self.assertIn("ad_ig_bio", self.notes[0])
         with self.at(13):  # пауза 5 часов
             await instagram.tick(self.db, z, TZ, self.note)
         self.assertEqual(len(z.posts), 1)
