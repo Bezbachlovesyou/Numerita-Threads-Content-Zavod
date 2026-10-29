@@ -74,9 +74,14 @@ async def surprise(db, threads, now: datetime) -> str | None:
         await db.kv_set("giveaway:state", json.dumps(st))
         return None
     used = set(st.get("nonces", []))
-    nonce = secrets.token_hex(3)
+    from .lang import is_en
+
+    def fresh() -> str:  # английский завод — первая цифра 8–f, русский — 0–7: подарки двух заводов не пересекаются
+        n = secrets.token_hex(3)
+        return format(int(n[0], 16) | 8 if is_en() else int(n[0], 16) & 7, "x") + n[1:]
+    nonce = fresh()
     while nonce in used:  # nonce уникален на каждый подарок
-        nonce = secrets.token_hex(3)
+        nonce = fresh()
     st["nonces"] = sorted(used | {nonce})[-2000:]
     code = gift_code(funnel.KEY, nonce)
     from .lang import is_en
