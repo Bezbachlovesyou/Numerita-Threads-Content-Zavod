@@ -1237,7 +1237,7 @@ async def coherence_gate(generator: Generator, text: str) -> str:
 async def hook_gate(generator: Generator, text: str) -> str:
     """Каждый пост перед выходом проходит проверку крючка: не цепляет — переписываем один раз.
     Ссылки с меткой сохраняем как были. Затем — проверка цельности (coherence_gate)."""
-    text = await coherence_gate(generator, text)
+    text = await safe_gate(generator, await coherence_gate(generator, text))
     links = SCRIPT_LINK_LINE.findall(text)
     body = SCRIPT_LINK_LINE.sub("", text).strip()
     try:
@@ -1251,6 +1251,26 @@ async def hook_gate(generator: Generator, text: str) -> str:
         return text
     result = "\n".join([better] + links)
     return result if better and len(result) <= MAX_LENGTH else text
+
+
+async def safe_gate(generator: Generator, text: str) -> str:
+    """Фильтр Threads скрывает и наказывает за отсылки к самоповреждению, РПП, мату (урок 29.10.2026).
+    Такой пост переписываем один раз; не помогло — убираем рискованные фразы."""
+    from .autoreply import RISKY_REPLY
+    if not RISKY_REPLY.search(text):
+        return text
+    links = SCRIPT_LINK_LINE.findall(text)
+    body = SCRIPT_LINK_LINE.sub("", text).strip()
+    try:
+        body = strip_credits(SCRIPT_LINK_LINE.sub("", (await generator.strengthen(
+            body, "убери мат и слова о смерти, вреде себе, еде, весе, похудении и нехватке сил; смысл и юмор сохрани"
+        )).strip()).strip()) or body
+    except GenerationError as e:
+        log.warning("Безопасная переписка не удалась: %s", e)
+    if RISKY_REPLY.search(body):
+        parts = re.split(r"(?<=[.!?…])\s+", body)
+        body = " ".join(p for p in parts if not RISKY_REPLY.search(p)).strip() or body
+    return "\n".join([body] + links)
 
 
 # Перерывы в постах по слову владельца: с, по (время Config.timezone).
