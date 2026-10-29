@@ -466,7 +466,15 @@ async def en_connect_text(threads: ThreadsClient | None) -> str:
         if any((a.get("username") or "").lower().lstrip("@") == "numerita.love" for a in accounts):
             return "✅ Английский Threads numerita.love уже подключён в Zernio — завод запустит его сам в течение 10 минут."
         profile = next((a.get("profileId") for a in accounts if a.get("_id") == threads.account_id), None)
-        _, link = await threads._request("GET", "/connect/threads", params={"profileId": profile} if profile else {})
+        if isinstance(profile, dict):  # Zernio отдаёт профиль объектом {_id, name}
+            profile = profile.get("_id") or profile.get("id")
+        if not isinstance(profile, str) or not profile:
+            _, profs = await threads._request("GET", "/profiles")
+            items = profs.get("profiles", [])
+            profile = (items[0].get("_id") or items[0].get("id")) if items else None
+        if not profile:
+            return "⚠️ Zernio не показал профиль — подключить можно вручную: Connections → Threads → Connect."
+        _, link = await threads._request("GET", "/connect/threads", params={"profileId": profile})
         url = link.get("authUrl") or link.get("url")
     except Exception as e:
         return f"⚠️ Не получилось взять ссылку у Zernio: {e}"
