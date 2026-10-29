@@ -12,4 +12,4 @@ class Stories(unittest.IsolatedAsyncioTestCase):
         line = stories.numbers_line({"people": [{"role": "она", "soul": 6, "destiny": 3},
                                                 {"role": "он", "soul": 8}]})
         self.assertEqual(line, "она: soul 6, destiny 3; он: soul 8")
-        self.assertIn("без имён", stories.STORY_RULES)
+        self.assertIn("никаких имён", stories.STORY_RULES)
