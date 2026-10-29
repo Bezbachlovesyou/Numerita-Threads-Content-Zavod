@@ -137,7 +137,10 @@ GROWTH = """Это дневной обход по всем нашим теори
 async def review(db: Storage, generator: Generator, now: datetime, tz, growth: bool = True) -> str | None:
     data = await metrics(db, now, tz)
     try:
-        system = SYSTEM + ("\n\n" + GROWTH if growth else "")
+        from .optimizer import RUBRIC_NAMES
+        system = SYSTEM + ("\n\n" + GROWTH if growth else "") + (
+            "\n\nВладелец не программист: рубрики называй только по-русски, без английских ключей. Названия: "
+            + "; ".join(f"{k} — {v}" for k, v in RUBRIC_NAMES.items()) + ".")
         raw = await generator.improve(system, f"Данные:\n{data}", max_tokens=900, kind="toc")
     except GenerationError as e:
         log.warning("Обход по Голдратту не удался: %s", e)
