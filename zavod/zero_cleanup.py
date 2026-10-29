@@ -6,6 +6,9 @@ from datetime import timedelta
 from . import performance, reply_cooldown
 from .threads_api import ThreadsError
 
+# Слово владельца 29.10.2026: пост без лайков и комментариев через 6 ч — «мертвечина», снимаем (было 24 ч).
+MIN_AGE = timedelta(hours=6)
+
 log = logging.getLogger(__name__)
 
 
@@ -72,7 +75,7 @@ async def tick(db, client, now):
             continue
         reconcile = saved.get('status') in ('attempting', 'unknown')
         if not reconcile:
-            if not post.published_at or now-post.published_at < timedelta(hours=24):
+            if not post.published_at or now-post.published_at < MIN_AGE:
                 continue
             sample = json.loads(await db.kv_get(f'performance:{post.id}:latest') or '{}')
             if sample.get('likes') != 0 or sample.get('comments') != 0:
