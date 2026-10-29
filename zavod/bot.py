@@ -421,6 +421,32 @@ async def note_post(db: Storage, threads: ThreadsClient, generator: Generator, b
     await db.mark_published(post_id)
 
 
+NOTE8_BODY = ("Я не жадная. Я просто записываю, кто сколько должен.\nВ отпуск взяла таблицу расходов и калькулятор, "
+              "а купальник забыла.\nКогда мне сказали «расслабься», я составила план расслабления на 12 пунктов.\n"
+              "Прошу считать меня надёжной, а не скучной.\nСкучной я бываю только по графику: во вторник с 14:00 до 14:15.")
+NOTE8_CAPTION = "Объяснительная от восьмёрки 😅\nРождённые 8, 17, 26 — узнали свой почерк? А у вас кто в семье ведёт таблицу расходов?"
+
+
+async def note8_now(db: Storage, threads: ThreadsClient, bot: Bot, cfg: Config) -> None:
+    """Однократно 29.10 (слово владельца: «очень хорошая объяснительная — прямо сейчас в Threads»): та самая
+    записка, одобренная владельцем (seed «d»). Владельцу — квитанция Threads со ссылкой."""
+    from . import note
+    image = await asyncio.to_thread(note.render, "Объяснительная", "от восьмёрки, 26-го числа", NOTE8_BODY, "d", 8)
+    url = await threads.upload_image(image, "numerita_note_8.jpg", "image/jpeg")
+    post_id = await db.add_draft("Объяснительная от восьмёрки", NOTE8_CAPTION, "text_note")
+    remote = await threads.publish_text(NOTE8_CAPTION, topic_tag_for("text_note"), None, [url], media_kind="note_image")
+    await db.set_threads_id(post_id, remote or "published")
+    await db.mark_published(post_id)
+    status, link, error = ("unknown", None, None)
+    for _ in range(10):
+        await asyncio.sleep(30)
+        status, link, error = await threads.post_status(remote) if remote else ("unknown", None, None)
+        if status in ("published", "failed", "partial"):
+            break
+    await notify_admins(bot, cfg, f"📝 Объяснительная от восьмёрки в Threads: {link}" if status == "published"
+                        else f"⚠️ Объяснительная от восьмёрки: Threads ответил «{status}» {error or ''}")
+
+
 async def grid_tonight(db: Storage, threads: ThreadsClient, bot: Bot, cfg: Config) -> None:
     """Однократно: выпуск 1 серии «Угадай число» — живая спираль. Владельцу — только квитанция Threads
     (confirm_grid_videos; не принял видео — спираль перевыходит картинкой)."""
@@ -1853,6 +1879,12 @@ async def run_scheduler(
                         await run_stories(db, threads, generator, bot, cfg, now, batch)
             except Exception:
                 log.exception("Истории подписчиц не сработали")
+            if await db.claim_slot("note8 2026-10-29"):  # слово владельца: «прямо сейчас в Threads»
+                await db.claim_slot(f"note {now:%Y-%m-%d}")  # сегодняшняя записка — эта
+                try:
+                    await note8_now(db, threads, bot, cfg)
+                except Exception:
+                    log.exception("Объяснительная от восьмёрки не вышла")
             note_hour = 13 + int(hashlib.md5(f"{now:%Y-%m-%d}".encode()).hexdigest(), 16) % 7
             if now.hour == note_hour and await db.claim_slot(f"note {now:%Y-%m-%d}"):
                 try:  # рукописная записка от лица числа — раз в день (формат «Жалоба от отца ученика»)
