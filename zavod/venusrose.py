@@ -54,7 +54,7 @@ def render_video(seconds: float = 13.0, seed: str = "venus") -> bytes:
     d.text((W / 2, 70), "Роза Венеры", font=_font("PlayfairDisplay.ttf", 64, "SemiBold"), fill=(255, 255, 255), anchor="ma")
     d.text((W / 2, 150), "8 лет · 5 лепестков · настоящие положения планеты",
            font=_font("Montserrat.ttf", 30, "Medium"), fill=(235, 220, 245), anchor="ma")
-    d.text((W / 2, H - 120), "Swiss Ephemeris · 2018–2026 · @numerita.ai",
+    d.text((W / 2, H - 120), "Swiss Ephemeris · 2018–2026 · Telegram @Numeritabot",
            font=_font("Montserrat.ttf", 28, "Medium"), fill=(220, 205, 235), anchor="ma")
     cache: dict = {}
     total = int(seconds * FPS)

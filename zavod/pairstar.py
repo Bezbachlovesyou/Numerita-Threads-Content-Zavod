@@ -66,7 +66,7 @@ def frames(a: int, b: int, seconds: float = 14.0, seed: str = "pairstar"):
             anchor="ma")
     od.text((W / 2, 160), "две окружности · одна новая энергия", font=_font("Montserrat.ttf", 30, "Medium"),
             fill=(230, 215, 245), anchor="ma")
-    od.text((W / 2, H - 88), "@numerita.ai", font=_font("Montserrat.ttf", 28, "Medium"), fill=(215, 200, 235),
+    od.text((W / 2, H - 88), "Telegram @Numeritabot", font=_font("Montserrat.ttf", 28, "Medium"), fill=(215, 200, 235),
             anchor="ma")
     big = _font("PlayfairDisplay.ttf", 120, "SemiBold")
     mid = _font("Montserrat.ttf", 44, "Medium")
