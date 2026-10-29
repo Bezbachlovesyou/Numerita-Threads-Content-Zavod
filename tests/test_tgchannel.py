@@ -56,13 +56,16 @@ class ChannelTests(unittest.IsolatedAsyncioTestCase):
         await self.post(5, None, None)     # нет замера — не ноль, ждём
         with self.at(12):
             self.assertIsNone(await tgchannel.tick(self.db, self.bot, "@ch", TZ, random.Random(1)))
-        text = self.bot.send_message.await_args.args[1]
-        self.assertIn(f'ad_th_tg{best}', text)
+        call = self.bot.send_photo.await_args  # у каждого поста канала — картинка, текст подписью (29.10.2026)
+        text = call.kwargs['caption']
+        self.assertIn(f'href="https://t.me/Numeritabot?start=ad_th_tg{best}"', text)
+        self.assertNotIn('🔮', text)
         self.assertIn('в комментариях к посту', text)
-        self.assertEqual((await self.db.get(best)).tg_message_id, '77')
+        self.assertEqual(call.kwargs['parse_mode'], 'HTML')
+        self.assertEqual((await self.db.get(best)).tg_message_id, '88')
         with self.at(13):  # меньше 3 часов — ждём
             await tgchannel.tick(self.db, self.bot, '@ch', TZ)
-        self.assertEqual(self.bot.send_message.await_count, 1)
+        self.assertEqual(self.bot.send_photo.await_count, 1)
         self.assertIsNone((await self.db.get(weak)).tg_message_id)
 
     async def test_silent_without_reactions_or_at_night(self):
@@ -72,7 +75,7 @@ class ChannelTests(unittest.IsolatedAsyncioTestCase):
         await self.post(5, 10, 3)
         with self.at(2):
             await tgchannel.tick(self.db, self.bot, '@ch', TZ)
-        self.bot.send_message.assert_not_awaited()
+        self.bot.send_message.assert_not_awaited(); self.bot.send_photo.assert_not_awaited()
         self.assertIsNone(await tgchannel.tick(self.db, self.bot, '', TZ))
 
     async def test_grid_goes_with_picture_and_word_matrix(self):
@@ -166,3 +169,10 @@ class StandaloneTests(ChannelTests):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class ChannelPoll(unittest.TestCase):
+    def test_number_groups_become_poll_options(self):
+        text = "Зачем Вселенная свела?\n\n2, 11, 20, 29: чтобы научиться «нет».\n8, 17, 26: скучаю.\n9, 18, 27: помогать."
+        self.assertEqual(tgchannel.poll_options(text), ["2, 11, 20, 29", "8, 17, 26", "9, 18, 27"])
+        self.assertEqual(tgchannel.poll_options("Один абзац без групп. 6, 15, 24 — шестёрки."), [])

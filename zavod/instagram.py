@@ -25,7 +25,7 @@ MIN_AGE, MAX_AGE = timedelta(hours=3), timedelta(hours=72)
 MIN_SCORE = 3
 BIO_LINK = "t.me/Numeritabot?start=ad_ig_bio"  # её владелец ставит в шапку профиля Instagram
 TAGS = "#нумерология #числосудьбы #астрология #нумерита #саморазвитие"
-CTA = "🔮 Твой разбор по дате рождения за 10 секунд — ссылка в шапке профиля @numerita.ai"
+CTA = "✨ Твой разбор по дате рождения за 10 секунд — ссылка в шапке профиля @numerita.ai"
 
 
 async def account_id(db, client) -> str | None:

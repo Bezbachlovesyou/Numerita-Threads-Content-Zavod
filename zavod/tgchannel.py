@@ -24,12 +24,15 @@ HOURS = range(9, 22)  # по часовому поясу бота; ночью к
 MIN_AGE, MAX_AGE = timedelta(hours=3), timedelta(hours=48)
 MIN_SCORE = 3  # лайк — 1, комментарий — 3: пост, на который никто не отозвался, в канал не идёт
 
+# Ссылка — аккуратной строкой-ссылкой в конце, без длинного адреса и «магических» эмодзи (слово владельца 29.10.2026:
+# «убого выглядит — ссылка внизу и розовая сфера»).
 CTA = (
-    "🔮 Твой разбор по дате — за 10 секунд: {link}",
-    "✨ Узнай, что говорит твоя дата: {link}",
-    "💫 Напиши дату рождения Нумерите — покажу твою сильную сторону: {link}",
-    "🤍 Хочешь так же про себя? Разбор по дате: {link}",
+    "Узнать своё число у Нумериты →",
+    "Посчитать мою дату →",
+    "А какое число у тебя? Нумерита скажет за 10 секунд →",
+    "Разбор по моей дате →",
 )
+GROUP = re.compile(r"^\s*((?:\d{1,2},\s*){1,4}\d{1,2})\s*[:—–-]", re.M)
 
 
 def link(post_id: int) -> str:
@@ -87,14 +90,42 @@ async def react(bot, channel: str, message_id: int, rng: random.Random | None = 
 
 
 async def send(bot, channel: str, post, text: str):
+    """У каждого поста — картинка (матрица или карточка), текст подписью; группы чисел — опрос под постом."""
     from aiogram.types import BufferedInputFile, LinkPreviewOptions
-    image = await asyncio.to_thread(grid_image, post)
-    if image:
-        msg = await bot.send_photo(channel, BufferedInputFile(image, f"numerita_{post.id}.jpg"), caption=text[:1024])
-    else:
-        msg = await bot.send_message(channel, text, link_preview_options=LinkPreviewOptions(is_disabled=True))
+    image = await asyncio.to_thread(grid_image, post) or await asyncio.to_thread(card_image, post)
+    photo = BufferedInputFile(image, f"numerita_{post.id}.jpg")
+    if len(re.sub(r"<[^>]+>", "", text)) <= 1024:
+        msg = await bot.send_photo(channel, photo, caption=text, parse_mode="HTML")
+    else:  # длинный текст в подпись не влезет — картинка, затем текст
+        await bot.send_photo(channel, photo)
+        msg = await bot.send_message(channel, text, parse_mode="HTML",
+                                     link_preview_options=LinkPreviewOptions(is_disabled=True))
     await react(bot, channel, msg.message_id)
+    options = poll_options(post.text)
+    if options:
+        try:
+            await bot.send_poll(channel, "Какая группа — про тебя?", options, is_anonymous=True)
+        except Exception as e:  # опрос — украшение, без него пост всё равно вышел
+            log.warning("Опрос к посту #%s не отправлен: %s", post.id, e)
     return msg
+
+
+async def restyle(db, bot, channel: str, post_id: int) -> None:
+    """Однократно: пост, вышедший голым текстом с длинной ссылкой, — заново в новом виде."""
+    key = f"tgch:restyled:{post_id}"
+    if not channel or await db.kv_get(key):
+        return
+    await db.kv_set(key, "done")
+    post = await db.get(post_id)
+    if not post or not post.tg_message_id or not str(post.tg_message_id).isdigit():
+        return
+    from aiogram.exceptions import TelegramAPIError
+    try:
+        await bot.delete_message(channel, int(post.tg_message_id))
+    except TelegramAPIError as e:
+        log.warning("Старый пост #%s не удалён: %s", post_id, e)
+    msg = await send(bot, channel, post, adapt(post, random.Random(post_id)))
+    await db.set_tg_message_id(post_id, str(msg.message_id))
 
 
 async def fix_grid_post(db, bot, channel: str, post_id: int) -> None:
@@ -111,7 +142,7 @@ async def fix_grid_post(db, bot, channel: str, post_id: int) -> None:
         from aiogram.types import LinkPreviewOptions
         try:
             await bot.edit_message_text(adapt(post, random.Random(post_id)), chat_id=channel,
-                                        message_id=int(post.tg_message_id),
+                                        message_id=int(post.tg_message_id), parse_mode="HTML",
                                         link_preview_options=LinkPreviewOptions(is_disabled=True))
         except (TelegramAPIError, ValueError):
             log.warning("Пост #%s в канале не исправлен", post_id)
@@ -127,12 +158,26 @@ async def fix_grid_post(db, bot, channel: str, post_id: int) -> None:
 
 
 def adapt(post, rng: random.Random) -> str:
-    """Текст Threads → пост канала: без чужих упоминаний и Threads-ссылок, с одним призывом в бота."""
+    """Текст Threads → пост канала (HTML): без чужих упоминаний и Threads-ссылок, в конце — одна строка-ссылка."""
+    from html import escape
     from .bot import LINK_LINE
     text = no_grid_word(strip_credits(post.text))
     text = "\n".join(line.rstrip() for line in LINK_LINE.sub("", text).splitlines()).strip()
     text = text.replace("в комментариях", "в комментариях к посту")
-    return f"{text}\n\n{rng.choice(CTA).format(link=link(post.id))}"
+    return f'{escape(text)}\n\n<a href="https://{link(post.id)}">{rng.choice(CTA)}</a>'
+
+
+def poll_options(text: str) -> list[str]:
+    """Группы дней рождения из поста («2, 11, 20, 29») — варианты опроса «Какая группа про тебя?»."""
+    groups = [re.sub(r"\s+", " ", g).strip() for g in GROUP.findall(text)]
+    return list(dict.fromkeys(groups))[:10] if len(groups) >= 3 else []
+
+
+def card_image(post) -> bytes:
+    """Картинка к текстовому посту канала: карточка «ночь и золото» из первой строки ($0)."""
+    from .cards import card_from_text, render_card
+    from dataclasses import replace
+    return render_card(replace(card_from_text(post.text), cta_text="Обсудим в комментариях ↓"), f"tg-{post.id}")
 
 
 MIN_TEXT = 120  # короче — обычно подпись к картинке или карусели; в канале без картинки она непонятна
@@ -232,7 +277,7 @@ def video_caption(caption: str) -> str:
         return JOKES_CAPTION
     text = caption.strip()
     if "t.me/" not in text:
-        text = (text + "\n\n" if text else "") + f"🔮 Твой разбор по дате за 10 секунд: {VIDEO_LINK}"
+        text = (text + "\n\n" if text else "") + f"✨ Твой разбор по дате за 10 секунд: {VIDEO_LINK}"
     return text[:1024]
 
 
