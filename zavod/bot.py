@@ -337,6 +337,33 @@ async def pair_star_post(db: Storage, threads: ThreadsClient, bot: Bot, cfg: Con
                         else f"⚠️ Звезда пары: Threads ответил «{status}» {error or ''}")
 
 
+async def baza6_post(db: Storage, threads: ThreadsClient, generator: Generator, bot: Bot, cfg: Config) -> None:
+    """Однократно 29.10 (слово владельца: «золотые правила рождённых 6, 15, 24 — подтверждаю, делай огонь»).
+    Владельцу — квитанция Threads со ссылкой."""
+    from pathlib import Path as _Path
+    from .autopost import load_rubrics
+    rubric = next(r for r in load_rubrics(_Path(__file__).parent.parent / "prompts" / "content_plan.md")
+                  if r.key == "text_baza")
+    topic = rubric.text.replace("{group}", "6, 15, 24").replace("{digit}", "6")
+    text, _ = split_card_hook(await generator.write_post(f"{topic}\n\n{text_mode.STYLE}"))
+    text = await antidupe_gate(db, generator, await hook_gate(generator, text), datetime.now(timezone.utc))
+    if not text:
+        await notify_admins(bot, cfg, "⚠️ «Золотые правила 6, 15, 24» не прошли контролёр текста — перепишу в следующий раз.")
+        return
+    post_id = await db.add_draft("Золотые правила рождённых 6, 15, 24", text, "text_baza")
+    post = await publish(await db.get(post_id), db, threads, bot, "", False)
+    status, link, error = ("unknown", None, None)
+    for _ in range(10):
+        await asyncio.sleep(30)
+        if not post.threads_id or post.threads_id == "published":
+            break
+        status, link, error = await threads.post_status(post.threads_id)
+        if status in ("published", "failed", "partial"):
+            break
+    await notify_admins(bot, cfg, f"🔥 Золотые правила 6, 15, 24 в Threads: {link}" if status == "published"
+                        else f"⚠️ Золотые правила 6, 15, 24: Threads ответил «{status}» {error or ''}")
+
+
 async def grid_tonight(db: Storage, threads: ThreadsClient, bot: Bot, cfg: Config) -> None:
     """Однократно: выпуск 1 серии «Угадай число» — живая спираль. Владельцу — только квитанция Threads
     (confirm_grid_videos; не принял видео — спираль перевыходит картинкой)."""
@@ -1761,6 +1788,11 @@ async def run_scheduler(
                         await notify_admins(bot, cfg, report)
             except Exception:
                 log.exception("Сюрприз-подарок не сработал")
+            if await db.claim_slot("baza6 2026-10-29"):  # слово владельца: «подтверждаю, делай огонь»
+                try:
+                    await baza6_post(db, threads, generator, bot, cfg)
+                except Exception:
+                    log.exception("Золотые правила 6, 15, 24 не вышли")
             await db.claim_slot("pair star 2026-10-29")  # 29.10: владелец отклонил видео — не публиковать (новое — по одобрению)
             if await db.claim_slot("grid tonight 2026-10-28"):  # слово владельца: «сегодня перед сном — один пост»
                 try:
