@@ -125,6 +125,20 @@ async def english_child() -> None:
         if not account:
             await asyncio.sleep(600)
     logging.info("Английский завод: аккаунт @%s найден в Zernio, запускаю", handle)
+    try:  # владельцу — квитанция, что английский Threads подхвачен
+        import httpx
+        token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+        admins = next((os.getenv(n) for n in ("ADMIN_IDS", "ADMIN_ID", "ADMIN_TELEGRAM_ID", "TELEGRAM_ID")
+                       if os.getenv(n)), "")
+        async with httpx.AsyncClient(timeout=20) as http:
+            for admin in admins.replace(" ", "").split(","):
+                if admin:
+                    await http.post(f"https://api.telegram.org/bot{token}/sendMessage", json={
+                        "chat_id": int(admin),
+                        "text": f"🌍 Английский Threads @{handle} подключён в Zernio — английский завод запущен. "
+                                "Его отчёты будут с пометкой [EN]."})
+    except Exception as e:
+        logging.warning("Квитанция об английском заводе не отправлена: %s", e)
     env = {k: v for k, v in os.environ.items() if k not in ("TELEGRAM_CHANNEL", "ZERNIO_INSTAGRAM_ACCOUNT_ID")}
     env.update(FACTORY_LANG="en", ZERNIO_ACCOUNT_ID=account, OWN_HANDLE=handle,
                DB_SCHEMA="en", DB_PATH="zavod_en.db", ZAVOD_NO_POLLING="1", INSTANCE_LABEL="EN")
