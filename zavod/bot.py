@@ -1228,6 +1228,9 @@ async def post_next(
             return False
         if not (grid and text_mode.enabled()):
             text = await hook_gate(generator, text)
+        text = await antidupe_gate(db, generator, text, now)
+        if text is None:
+            return False
         if grid:
             card_json = grid_json(grid, grid_title, palette)
             if grid.get("egg"):
@@ -1327,6 +1330,32 @@ async def hook_gate(generator: Generator, text: str) -> str:
         return text
     result = "\n".join([better] + links)
     return result if better and len(result) <= MAX_LENGTH else text
+
+
+async def antidupe_gate(db: Storage, generator: Generator, text: str, now: datetime) -> str | None:
+    """Контролёр текста (урок Влада 29.10.2026): пост не должен быть похож на прошлые — тройки слов ≥ 35%,
+    первая строка или вопрос в конце > 80% общих слов, служебный мусор. Похож — переписываем один раз;
+    не вышло — пост не выпускаем (следующий слот выберет другой формат)."""
+    from .textguard import post_problem
+    recent = [p.text for p in sorted(await db.recent_published(now - timedelta(days=30)),
+                                     key=lambda p: p.id, reverse=True)][:300]
+    problem = post_problem(text, recent)
+    if not problem:
+        return text
+    log.info("Контролёр текста: %s — переписываю", problem)
+    links = SCRIPT_LINK_LINE.findall(text)
+    body = SCRIPT_LINK_LINE.sub("", text).strip()
+    try:
+        better = strip_credits(SCRIPT_LINK_LINE.sub("", (await generator.strengthen(
+            body, f"{problem}. Перепиши по-новому: другой заход, другая первая строка и другой вопрос в конце, "
+                  "смысл и числа сохрани")).strip()).strip())
+    except GenerationError:
+        better = ""
+    result = "\n".join([better] + links) if better else ""
+    if result and not post_problem(result, recent):
+        return result
+    log.warning("Контролёр текста не пропустил пост: %s", problem)
+    return None
 
 
 async def safe_gate(generator: Generator, text: str) -> str:

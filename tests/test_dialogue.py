@@ -27,7 +27,11 @@ class Model:
 
     async def write_reply(self, post, comment, author, mode, model=None):
         self.calls += 1
-        return f"Ответ номер {self.calls}: полезная мысль для {author} по новой реплике {comment}"
+        ideas = ["сюжет держится на выборе героя", "автор прячет главное в паузах", "финал спорит с началом",
+                 "второстепенный персонаж ведёт историю", "язык меняется вместе с героем", "время в книге течёт иначе",
+                 "мотив дороги повторяется трижды", "ирония спасает трагедию", "письма раскрывают характер",
+                 "город звучит как отдельный голос", "детская память решает всё", "последняя глава переворачивает первую"]
+        return f"{ideas[(self.calls - 1) % len(ideas)].capitalize()} — {comment}? Ответ {self.calls}"
 
     async def improve(self, system, prompt, max_tokens=None, kind=None, model=None):
         self.summaries += 1

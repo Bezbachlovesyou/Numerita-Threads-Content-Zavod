@@ -14,6 +14,7 @@ from datetime import datetime, timedelta, timezone
 
 from .autopost import BOT_LINK, strip_credits
 from .cards import grid_hint
+from .textguard import reply_problem
 from .codereply import find_birth, find_pair, pair_reply, reply as code_reply
 from .constraint import focus
 from .dialogue import archive_comments, conversation_context, fair_queue, walk_comments
@@ -388,8 +389,10 @@ async def answer_comments(
                 await db.record_comment(comment["id"], post_id, author, comment["message"], "skip:sensitive", "skipped")
                 continue
         # Одинаковые ответы Threads считает спамом: похожий на недавний — переписываем или пропускаем.
-        recent = {(r.get("reply") or "")[:60] for r in await db.recent_comments(50)}
-        if text[:60] in recent:
+        # Контролёр ответа (урок Влада 29.10.2026): тройки слов против последних ответов и служебный мусор.
+        recent_replies = [r.get("reply") or "" for r in await db.recent_comments(50)]
+        recent = {r[:60] for r in recent_replies}
+        if text != CRISIS_REPLY and (text[:60] in recent or reply_problem(text, recent_replies)):
             if generated >= MAX_GENERATIONS_PER_RUN:
                 break
             try:
@@ -397,7 +400,9 @@ async def answer_comments(
                 text = finish_reply(await generator.write_reply(post_text, comment["message"], author, mode, model))
             except GenerationError:
                 continue
-            if text[:60] in recent:
+            if text[:60] in recent or reply_problem(text, recent_replies):
+                await db.record_comment(comment["id"], post_id, author, comment["message"], "skip:duplicate",
+                                        "skipped")
                 continue
         if not text or text.upper().strip(" .!") == "SKIP":
             continue
