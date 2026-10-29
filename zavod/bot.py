@@ -1746,24 +1746,14 @@ async def run_scheduler(
                     await venus_post(db, threads, bot, cfg)
                 except Exception:
                     log.exception("Роза Венеры не вышла")
-            try:  # «Разбор в подарок»: пост раз в 2 дня и честный случайный выбор победителя на следующий вечер
+            try:  # сюрприз-подарок раз в 2 дня (без объявленного розыгрыша — его Threads не рекомендует)
                 from . import giveaway
-                local = now.astimezone(cfg.timezone)
-                if await db.claim_slot(f"giveaway {local:%Y-%m-%d %H}"):
-                    report = await giveaway.draw(db, threads, local)
+                if await db.claim_slot(f"gift surprise {now:%Y-%m-%d %H}"):
+                    report = await giveaway.surprise(db, threads, now)
                     if report:
                         await notify_admins(bot, cfg, report)
-                    if await giveaway.due_to_post(db, local):
-                        async def publish_giveaway(text: str) -> int | None:
-                            text = await antidupe_gate(db, generator, await hook_gate(generator, text), now)
-                            if not text:
-                                return None
-                            pid = await db.add_draft("Разбор в подарок", text, "text_giveaway")
-                            post = await publish(await db.get(pid), db, threads, bot, "", False)
-                            return pid if post.status != "failed" else None
-                        await giveaway.start(db, generator, publish_giveaway, local)
             except Exception:
-                log.exception("Розыгрыш разбора не сработал")
+                log.exception("Сюрприз-подарок не сработал")
             await db.claim_slot("pair star 2026-10-29")  # 29.10: владелец отклонил видео — не публиковать (новое — по одобрению)
             if await db.claim_slot("grid tonight 2026-10-28"):  # слово владельца: «сегодня перед сном — один пост»
                 try:

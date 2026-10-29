@@ -17,6 +17,19 @@ GARBAGE = re.compile(
     r"\bnull\b|<[a-z/][^>]*>|\{LINK\}|```", re.IGNORECASE | re.MULTILINE)
 
 
+# Призывы ради реакций (Meta: vote/react/share/tag/comment bait) и розыгрыши — Threads не рекомендует такие посты
+# людям, которые на нас не подписаны, а повторы снимают рекомендации со всего аккаунта (29.10.2026).
+BAIT = re.compile(
+    r"лайк(?:ни|ай)?,?\s+если|ставь(?:те)?\s+(?:лайк|сердечк|❤)|за\s+лайк|репост|сделай(?:те)?\s+репост|поделись|"
+    r"перешли|отметь(?:те)?\b|тегни|сохрани(?:те)?\b|голосуй|проголосуй|напиши(?:те)?\s+[«\"]?(?:да|\+|1)[»\"]?\s|"
+    r"розыгрыш|разыгрыва|конкурс|победител|giveaway|подпишись|подписывайся", re.IGNORECASE)
+
+
+def bait(text: str) -> str | None:
+    m = BAIT.search(text or "")
+    return m.group(0) if m else None
+
+
 def words(text: str) -> list[str]:
     return [w.lower().replace("ё", "е") for w in WORD.findall(text or "")]
 
@@ -59,6 +72,8 @@ def post_problem(text: str, recent: list[str]) -> str | None:
     """Почему пост нельзя выпускать как есть, или None."""
     if junk := garbage(text):
         return f"служебный мусор «{junk}»"
+    if hook := bait(text):
+        return f"призыв ради реакций «{hook}» — Threads не рекомендует такие посты; дай причину ответить без призыва"
     title, question = first_line(text), last_question(text)
     for old in recent:
         if similarity(text, old) >= SHINGLE_LIMIT:
