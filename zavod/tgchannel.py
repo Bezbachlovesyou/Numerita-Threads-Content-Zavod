@@ -128,6 +128,13 @@ async def drop(db, bot, channel: str, post_id: int) -> None:
             log.warning("Сообщение %s поста #%s из канала не удалено: %s", message_id, post_id, e)
 
 
+async def drop_matching(db, bot, channel: str, fragment: str) -> None:
+    """Однократно убирает из канала посты недели с этим началом текста (и опрос под ними)."""
+    rows = await db._rows("SELECT id FROM posts WHERE tg_message_id IS NOT NULL AND text LIKE ?", (f"%{fragment}%",))
+    for row in rows:
+        await drop(db, bot, channel, row["id"])
+
+
 async def restyle(db, bot, channel: str, post_id: int) -> None:
     """Однократно: пост, вышедший голым текстом с длинной ссылкой, — заново в новом виде."""
     key = f"tgch:restyled:{post_id}"
@@ -201,13 +208,19 @@ def card_image(post) -> bytes:
 MIN_TEXT = 120  # короче — обычно подпись к картинке или карусели; в канале без картинки она непонятна
 
 
+# Слово владельца 29.10.2026 («Суд идёт» — мимо): в Telegram сейчас другое настроение, суд, приговор, обвинение и
+# протоколы отталкивают всех. В Threads такая сатира остаётся, в канал — никогда.
+TG_BLOCK = re.compile(r"суд\b|суда|судь|подсуд|приговор|обвинени|прокур|протокол|заседани|верхов|арест|штраф", re.I)
+
+
 def standalone(post) -> bool:
     """Пост понятен без картинки: матрица идёт со своей картинкой, а подписи к карточкам и каруселям в канал не берём
     (слово владельца 28.10.2026 — «Узнаёте себя? Шестёрки, откликнитесь» без картинки было непонятно)."""
     if grid_image(post):
         return True
     from .text_mode import needs_visual
-    return not post.image_url and not post.card and len(post.text.strip()) >= MIN_TEXT and not needs_visual(post.text)
+    return (not post.image_url and not post.card and len(post.text.strip()) >= MIN_TEXT
+            and not needs_visual(post.text) and not TG_BLOCK.search(post.text))
 
 
 async def pick(db, now: datetime):

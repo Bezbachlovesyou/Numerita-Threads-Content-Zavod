@@ -196,3 +196,11 @@ class ChannelDrop(unittest.IsolatedAsyncioTestCase):
             self.assertEqual([c.args[1] for c in bot.delete_message.await_args_list], [120, 121])
             self.assertIsNone(await tgchannel.tick(db, bot, "@ch", TZ))
             bot.send_photo.assert_not_awaited()
+
+
+class ChannelBlock(unittest.TestCase):
+    def test_court_satire_never_goes_to_channel(self):
+        post = SimpleNamespace(text="Суд идёт. Подсудимый: родившийся 8, 17 или 26. " * 4, image_url=None, card=None)
+        self.assertFalse(tgchannel.standalone(post))
+        post.text = "Шестёрки и кофе: 6, 15, 24 — кто первым заметит, что сахара нет? " * 3
+        self.assertTrue(tgchannel.standalone(post))
