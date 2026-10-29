@@ -455,6 +455,29 @@ async def note8_now(db: Storage, threads: ThreadsClient, bot: Bot, cfg: Config) 
                         else f"⚠️ Объяснительная от восьмёрки: Threads ответил «{status}» {error or ''}")
 
 
+async def en_connect_text(threads: ThreadsClient | None) -> str:
+    """Ссылка Zernio для подключения английского Threads в тот же профиль, где русский (слово владельца
+    29.10.2026: один сервис — два аккаунта). В профиле Zernio может быть несколько аккаунтов одной площадки."""
+    if threads is None:
+        return "Zernio не настроен — ссылку получить нельзя."
+    try:
+        _, data = await threads._request("GET", "/accounts")
+        accounts = data.get("accounts", [])
+        if any((a.get("username") or "").lower().lstrip("@") == "numerita.love" for a in accounts):
+            return "✅ Английский Threads numerita.love уже подключён в Zernio — завод запустит его сам в течение 10 минут."
+        profile = next((a.get("profileId") for a in accounts if a.get("_id") == threads.account_id), None)
+        _, link = await threads._request("GET", "/connect/threads", params={"profileId": profile} if profile else {})
+        url = link.get("authUrl") or link.get("url")
+    except Exception as e:
+        return f"⚠️ Не получилось взять ссылку у Zernio: {e}"
+    if not url:
+        return "⚠️ Zernio не дал ссылку для подключения."
+    return ("Подключение английского Threads — 3 шага:\n"
+            "1. Скопируй ссылку ниже и открой её в Safari в ЧАСТНОЙ вкладке (Вкладки → Частный доступ).\n"
+            "2. Войди как numerita.love (не личный аккаунт!) и нажми «Разрешить».\n"
+            "3. Всё. Завод сам найдёт аккаунт и запустит английские посты в течение 10 минут.\n\n" + url)
+
+
 async def grid_tonight(db: Storage, threads: ThreadsClient, bot: Bot, cfg: Config) -> None:
     """Однократно: выпуск 1 серии «Угадай число» — живая спираль. Владельцу — только квитанция Threads
     (confirm_grid_videos; не принял видео — спираль перевыходит картинкой)."""
@@ -644,6 +667,10 @@ def create_router(cfg: Config, plan: ContentPlan) -> Router:
     @router.message(Command('safety'))
     async def safety_handler(message: Message, db: Storage):
         await message.answer(await api_budget.report(db,datetime.now(timezone.utc)),parse_mode=None)
+
+    @router.message(Command("connect_en"))
+    async def connect_en_handler(message: Message, threads: ThreadsClient | None):
+        await message.answer(await en_connect_text(threads), parse_mode=None, disable_web_page_preview=True)
 
     @router.message(Command("cleanup"))
     async def cleanup_handler(message: Message, db: Storage):
@@ -1906,6 +1933,11 @@ async def run_scheduler(
                     await note_post(db, threads, generator, bot, cfg, now)
                 except Exception:
                     log.exception("Записка от числа не вышла")
+            if not EN and threads is not None and await db.claim_slot("en connect link 2026-10-30"):
+                try:  # ссылка для подключения английского Threads — владельцу сразу, чтобы не искать в меню Zernio
+                    await notify_admins(bot, cfg, await en_connect_text(threads))
+                except Exception:
+                    log.exception("Ссылка подключения английского Threads не отправлена")
             if await db.claim_slot("baza6 2026-10-29"):  # слово владельца: «подтверждаю, делай огонь»
                 try:
                     await baza6_post(db, threads, generator, bot, cfg)

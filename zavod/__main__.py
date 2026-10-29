@@ -85,17 +85,48 @@ async def main() -> None:
         scheduler.cancel()
 
 
+EN_HANDLE_DEFAULT = "numerita.love"
+
+
+async def zernio_get(path: str, **params) -> dict:
+    import httpx
+    async with httpx.AsyncClient(timeout=30) as http:
+        r = await http.get("https://zernio.com/api/v1" + path, params=params,
+                           headers={"Authorization": f"Bearer {os.getenv('ZERNIO_API_KEY', '').strip()}"})
+        r.raise_for_status()
+        return r.json()
+
+
+async def find_en_account(handle: str) -> str:
+    """ID английского Threads в Zernio по нику — владельцу не нужно ничего вписывать вручную."""
+    data = await zernio_get("/accounts")
+    for acc in data.get("accounts", []):
+        user = (acc.get("username") or "").lower().lstrip("@")
+        if acc.get("platform") == "threads" and user == handle:
+            return acc.get("_id") or ""
+    return ""
+
+
 async def english_child() -> None:
-    """Слово владельца 29.10.2026: один сервис — два аккаунта Threads. Если задан ZERNIO_EN_ACCOUNT_ID, русский
-    завод запускает рядом английский экземпляр отдельным процессом: тот же код, FACTORY_LANG=en, свой аккаунт Zernio,
-    своя схема «en» в той же базе (или свой файл SQLite), без опроса Telegram (бот общий — отчёты он только шлёт).
-    Упал — перезапускаем с паузой."""
+    """Слово владельца 29.10.2026: один сервис — два аккаунта Threads. Русский завод запускает рядом английский
+    экземпляр отдельным процессом: тот же код, FACTORY_LANG=en, свой аккаунт Zernio (ZERNIO_EN_ACCOUNT_ID или найденный
+    по нику EN_OWN_HANDLE, по умолчанию numerita.love), своя схема «en» в той же базе, без опроса Telegram (бот общий —
+    отчёты он только шлёт). Пока аккаунт не подключён в Zernio — проверяем раз в 10 минут. Упал — перезапуск с паузой."""
     import sys
-    account = os.getenv("ZERNIO_EN_ACCOUNT_ID", "").strip()
-    if not account or os.getenv("FACTORY_LANG", "ru").strip().lower() == "en":
+    if os.getenv("FACTORY_LANG", "ru").strip().lower() == "en" or not os.getenv("ZERNIO_API_KEY", "").strip():
         return
+    handle = (os.getenv("EN_OWN_HANDLE", "").strip().lower().lstrip("@") or EN_HANDLE_DEFAULT)
+    account = os.getenv("ZERNIO_EN_ACCOUNT_ID", "").strip()
+    while not account:
+        try:
+            account = await find_en_account(handle)
+        except Exception as e:
+            logging.warning("Английский Threads в Zernio не проверен: %s", e)
+        if not account:
+            await asyncio.sleep(600)
+    logging.info("Английский завод: аккаунт @%s найден в Zernio, запускаю", handle)
     env = {k: v for k, v in os.environ.items() if k not in ("TELEGRAM_CHANNEL", "ZERNIO_INSTAGRAM_ACCOUNT_ID")}
-    env.update(FACTORY_LANG="en", ZERNIO_ACCOUNT_ID=account, OWN_HANDLE=os.getenv("EN_OWN_HANDLE", ""),
+    env.update(FACTORY_LANG="en", ZERNIO_ACCOUNT_ID=account, OWN_HANDLE=handle,
                DB_SCHEMA="en", DB_PATH="zavod_en.db", ZAVOD_NO_POLLING="1", INSTANCE_LABEL="EN")
     pause = 10
     while True:
