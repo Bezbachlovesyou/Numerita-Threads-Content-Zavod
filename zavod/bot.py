@@ -1207,9 +1207,37 @@ async def sharpen_script(db: Storage, generator: Generator, post: Post) -> Post:
 HOOK_MIN = 8  # ниже — пост переписывается (слово владельца 24.10.2026: «в каждом посте интрига и хук»)
 
 
+COHERENCE_SYSTEM = (
+    "Ты — литературный редактор Нумериты. Проверь короткий пост на цельность (knowledge/research/coherence.md): "
+    "одна главная мысль; каждая фраза вырастает из предыдущей и работает на эту мысль; переход от науки к символу — "
+    "через общий образ, а не «кстати»; финальный вопрос продолжает тот же образ и спрашивает о нём в жизни читателя; "
+    "нет фактов, которые можно вычеркнуть без потери смысла. Если всё так — верни ровно OK. Если нет — перепиши пост "
+    "цельно: завязка → развитие → кульминация (перенос образа на жизнь читателя) → вопрос из того же образа. Сохрани "
+    "факты, числа, дни рождения и язык автора, не добавляй новых фактов, длина не больше исходной. Верни только текст.")
+
+
+async def coherence_gate(generator: Generator, text: str) -> str:
+    """Слово владельца 29.10.2026 («нет цельности: облака белые… а кого бы вы хотели забыть?»): перед выходом пост
+    проверяет редактор на одну сквозную мысль и финальный вопрос из той же плоскости. Ссылки сохраняем."""
+    links = SCRIPT_LINK_LINE.findall(text)
+    body = SCRIPT_LINK_LINE.sub("", text).strip()
+    try:
+        answer = await generator.improve(COHERENCE_SYSTEM, body, max_tokens=700, kind="coherence")
+        answer = answer.strip() if isinstance(answer, str) else ""
+    except Exception as e:  # редактор — страховка: его сбой не мешает посту выйти
+        log.warning("Проверка цельности не удалась, пост выходит как есть: %s", e)
+        return text
+    if not isinstance(answer, str) or not answer or answer.upper().strip(" .") == "OK" \
+            or len(answer) > len(body) * 1.15:
+        return text
+    result = "\n".join([strip_credits(answer)] + links)
+    return result if len(result) <= MAX_LENGTH else text
+
+
 async def hook_gate(generator: Generator, text: str) -> str:
     """Каждый пост перед выходом проходит проверку крючка: не цепляет — переписываем один раз.
-    Ссылки с меткой сохраняем как были."""
+    Ссылки с меткой сохраняем как были. Затем — проверка цельности (coherence_gate)."""
+    text = await coherence_gate(generator, text)
     links = SCRIPT_LINK_LINE.findall(text)
     body = SCRIPT_LINK_LINE.sub("", text).strip()
     try:

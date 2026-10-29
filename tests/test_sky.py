@@ -29,3 +29,17 @@ class Sky(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(threads.publish_text.await_args.kwargs["media_kind"], "sky_video")
         self.assertIn("https://threads.net/p/v", sent[0])
         tmp.cleanup()
+
+
+class Coherence(unittest.IsolatedAsyncioTestCase):
+    async def test_ok_keeps_text_and_rewrite_replaces_it_keeping_link(self):
+        gen = AsyncMock()
+        gen.improve.return_value = "OK"
+        self.assertEqual(await B.coherence_gate(gen, "Пост про Венеру и шестёрку."), "Пост про Венеру и шестёрку.")
+        gen.improve.return_value = "Цельный пост про возвращение Венеры."
+        text = "Венера идёт назад. Кстати, 2117. Кого поблагодарить?\nt.me/Numeritabot?start=ad_th_x"
+        out = await B.coherence_gate(gen, text)
+        self.assertTrue(out.startswith("Цельный пост"))
+        self.assertIn("ad_th_x", out)
+        gen.improve.side_effect = RuntimeError("сбой")
+        self.assertEqual(await B.coherence_gate(gen, text), text)
