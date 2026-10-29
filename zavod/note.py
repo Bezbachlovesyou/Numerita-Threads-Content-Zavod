@@ -1,7 +1,7 @@
 """Рукописная записка от лица числа (слово владельца 29.10.2026: формат «Жалоба от отца ученика», который собирает
 тысячи реакций). Наша версия: «Объяснительная от восьмёрки», «Жалоба от шестёрки», «Заявление от единицы» — от лица
 ЧИСЛА, а не выдуманного реального человека (честно: это шутка, не «реальная история»). Нейросеть пишет текст с
-панчлайном в конце, код рисует его от руки (Marck Script, OFL) на тетрадном листе в клетку. Один пост в день, $0
+панчлайном в конце, код рисует его от руки (Marck Script, OFL) на тетрадном листе в клетку (почерк Bad Script, OFL). Один пост в день, $0
 на картинку. В текстовом режиме Threads — исключение media_kind note_image (одна картинка).
 """
 
@@ -40,8 +40,25 @@ def parse(raw: str) -> dict | None:
     return data
 
 
+_FONTCACHE: dict = {}
+
+
 def _font(size: int) -> ImageFont.FreeTypeFont:
-    return ImageFont.truetype(str(FONTS / "MarckScript.ttf"), size)
+    """Bad Script (OFL) — похож на обычный «школьный» почерк шариковой ручкой."""
+    if size not in _FONTCACHE:
+        _FONTCACHE[size] = ImageFont.truetype(str(FONTS / "BadScript.ttf"), size)
+    return _FONTCACHE[size]
+
+
+def _write(k: ImageDraw.ImageDraw, x: float, base: float, text: str, size: int, rng: random.Random,
+           alpha: int = 235) -> float:
+    """Пишет текст по буквам на строке: высота и нажим букв чуть гуляют, строка ровная. Возвращает новый x."""
+    for ch in text:
+        sz = max(20, int(size * rng.uniform(0.96, 1.04)))
+        a = max(150, min(255, int(alpha * rng.uniform(0.88, 1.0))))
+        k.text((x, base + rng.uniform(-1.2, 1.2)), ch, font=_font(sz), fill=INK + (a,), anchor="ls")
+        x += _font(sz).getlength(ch) * rng.uniform(0.97, 1.03)
+    return x
 
 
 def _wrap(draw, text: str, font, width: int) -> list[str]:
@@ -115,7 +132,7 @@ def _bend(img: Image.Image, rng: random.Random) -> Image.Image:
     return img.transform((W, H), Image.MESH, mesh, Image.BICUBIC, fillcolor=(40, 38, 46))
 
 
-def render(genre: str, sender: str, body: str, seed: str = "note") -> bytes:
+def render(genre: str, sender: str, body: str, seed: str = "note", digit: int | None = None) -> bytes:
     rng = random.Random(seed)
     paper = Image.new("RGB", (W, H), (246, 245, 240))
     d = ImageDraw.Draw(paper)
@@ -130,30 +147,61 @@ def render(genre: str, sender: str, body: str, seed: str = "note") -> bytes:
         d.point((x, y), fill=(c, c, c - 6))
     ink = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     k = ImageDraw.Draw(ink)
-    k.text((W - 70, 70), sender, font=_font(44), fill=INK + (225,), anchor="ra")
-    k.text((W / 2 + 20, 170), genre[:1].upper() + genre[1:].lower(), font=_font(92), fill=INK + (235,), anchor="ma")
-    size = 62
-    while size > 40:
+    _write(k, W - 70 - _font(42).getlength(sender), 88, sender, 42, rng, 220)
+    title = genre[:1].upper() + genre[1:].lower()
+    _write(k, W / 2 + 20 - _font(84).getlength(title) / 2, 220, title, 84, rng, 240)
+    size, step = 50, 88  # пишем по линиям клетки: две клетки на строку
+    while True:
         font = _font(size)
-        lines = _wrap(k, body, font, W - 250)
-        if 300 + len(lines) * size * 1.2 < H - 110:
+        lines = _wrap(k, body, font, W - 240)
+        if 308 + len(lines) * step < H - 120 or size <= 36:
             break
-        size -= 2
-    y = 300.0
-    drift = rng.uniform(-0.03, 0.03)  # строки чуть уходят вверх или вниз, как у живой руки
-    for line in lines:
-        x = 128 + rng.uniform(-8, 10)
+        size, step = size - 4, (88 if size - 4 >= 44 else 66)
+    base = 308.0
+    spots = []  # где перо остановилось — там и клякса
+    words_all = [(i, w) for i, line in enumerate(lines) for w in line.split()]
+    fix = rng.choice([w for w in words_all if len(w[1]) >= 5]) if any(len(w[1]) >= 5 for w in words_all) else None
+    for i, line in enumerate(lines):
+        x = 124 + rng.uniform(-3, 5)
         for word in line.split():
-            tile = _word(word, size, rng.randint(205, 245), rng)
-            yy = y + drift * (x - 128) + rng.uniform(-4, 4) - size * 0.3
-            ink.alpha_composite(tile, (int(x), int(yy)))
-            x += _font(size).getlength(word + " ") * rng.uniform(0.98, 1.06)
-        if rng.random() < 0.08 and lines:  # изредка зачёркнутое и переписанное слово
-            k.line((x - 120, y + size * 0.55, x - 30, y + size * 0.5), fill=INK + (190,), width=3)
-        y += size * 1.2 + rng.uniform(-4, 4)
-    k.line((W - 330, y + 40, W - 120, y + 26), fill=INK + (200,), width=3)  # росчерк-подпись
-    k.line((W - 300, y + 52, W - 180, y + 30), fill=INK + (170,), width=2)
-    ink = ink.filter(ImageFilter.GaussianBlur(0.7))
+            if fix and (i, word) == fix:  # описка: начало слова зачёркнуто и написано заново
+                start_x = x
+                x = _write(k, x, base, word[:3], size, rng)
+                k.line((start_x - 2, base - size * 0.28, x + 2, base - size * 0.34), fill=INK + (215,), width=3)
+                k.line((start_x, base - size * 0.18, x, base - size * 0.24), fill=INK + (190,), width=2)
+                x += _font(size).getlength(" ")
+                fix = None
+            x = _write(k, x, base, word, size, rng)
+            spots.append((x, base))
+            x += _font(size).getlength(" ") * rng.uniform(0.9, 1.15)
+        base += step
+    # подпись: сама цифра с росчерком
+    sign = str(digit) if digit else ""
+    if not sign:
+        k.line((W - 300, base + 12, W - 150, base), fill=INK + (200,), width=2)
+    else:
+        sx = _write(k, W - 300, base + 10, sign, int(size * 1.3), rng)
+        k.line((W - 310, base + 22, sx + 70, base + 8), fill=INK + (200,), width=2)
+    # чернила неровные: шарик ручки то подсыхает, то даёт больше пасты
+    grain = Image.new("L", (W // 6, H // 6), 255)
+    for gx in range(grain.width):
+        for gy in range(grain.height):
+            grain.putpixel((gx, gy), rng.randint(150, 255))
+    grain = grain.resize((W, H), Image.BICUBIC).filter(ImageFilter.GaussianBlur(2))
+    from PIL import ImageChops
+    ink.putalpha(ImageChops.multiply(ink.getchannel("A"), grain))
+    blots = ImageDraw.Draw(ink)
+    for _ in range(1 + (rng.random() < 0.3)):  # клякса пасты (одна, изредка две)
+        bx, by = rng.choice(spots) if spots else (W / 2, H / 2)
+        bx, by = bx + rng.uniform(4, 12), by - rng.uniform(1, 6)
+        r = rng.uniform(5, 8)
+        bx, by = bx + 14, by - size * 0.9  # над строкой, между словами
+        blots.ellipse((bx - r, by - r * 0.7, bx + r, by + r * 0.8), fill=INK + (215,))
+        blots.ellipse((bx - r * 0.5, by - r * 1.1, bx + r * 0.9, by + r * 0.2), fill=INK + (200,))
+        for _ in range(3):
+            sx, sy = bx + rng.uniform(-9, 9), by + rng.uniform(-6, 6)
+            blots.ellipse((sx - 1.5, sy - 1.5, sx + 1.5, sy + 1.5), fill=INK + (200,))
+    ink = ink.filter(ImageFilter.GaussianBlur(0.55))
     page = Image.alpha_composite(paper.convert("RGBA"), ink).convert("RGB")
     shade = _crumple(rng)  # мятость: умножаем свет/тень на лист
     light = Image.merge("RGB", [shade.point(lambda v: min(255, int(v * 1.95)))] * 3)
