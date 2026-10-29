@@ -194,7 +194,7 @@ def frames(a: int = 6, b: int = 8, seconds: float = 15.0, seed: str = "pairstar3
     union = d1 + d2 if s > 9 else s
     while union > 9:
         union = sum(int(c) for c in str(union))
-    bg = _gradient((1, 8, 4), (10, 14, 26)).convert("RGBA")
+    bg = _gradient((5, 4, 18), (30, 10, 44)).convert("RGBA")
     from .matrixrain import Rain
     rain = Rain(W, H, seed)
     neb = Image.new("RGBA", (W, H), (0, 0, 0, 0))
@@ -239,7 +239,7 @@ def frames(a: int = 6, b: int = 8, seconds: float = 15.0, seed: str = "pairstar3
                 sd.line((sx - 9, sy, sx + 9, sy), fill=(255, 255, 255, int(120 * tw)))
                 sd.line((sx, sy - 9, sx, sy + 9), fill=(255, 255, 255, int(120 * tw)))
         img = Image.alpha_composite(img, sky)
-        img = Image.alpha_composite(img, rain.layer(t, 0.75 - 0.35 * _ease((t - 10.0) / 1.0)))  # цифровой дождь
+        img = Image.alpha_composite(img, rain.layer(t, 0.8 - 0.4 * _ease((t - 10.0) / 1.0)))  # цифровой дождь
         for sprite, gx, gy, spin_g, sp, ph in galaxies:  # далёкие галактики медленно вращаются и мерцают
             g = sprite.rotate(spin_g * t, resample=Image.BICUBIC)
             tw = 0.7 + 0.3 * math.sin(2 * math.pi * sp * t + ph)
