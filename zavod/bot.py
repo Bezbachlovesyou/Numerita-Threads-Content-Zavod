@@ -59,6 +59,43 @@ COMMANDS = [
     ("help", "справка"),
 ]
 
+POST_PREFIX = re.compile(r"^\s*(?:пост|тема)\s*[:—-]\s*", re.IGNORECASE)
+OWNER_Q = re.compile(r"лимит|ссылк|как\s+работ|настро|расход|бюджет|статист|переход|оплат|"
+                     r"ответ(?:ы|ов|ах)?\b|можешь|умеешь|увелич|уменьш|включ|выключ|отключ|ключ|ошибк|завод|бот", re.I)
+
+
+def is_owner_question(text: str) -> bool:
+    return "?" in text and bool(OWNER_Q.search(text))
+
+
+def owner_facts() -> str:
+    a = autoreply
+    return (
+        f"Ответы на комментарии: не больше {a.HOUR_REPLY_CAP} в час и {a.DAILY_REPLY_CAP} в сутки, пауза "
+        f"{a.PAUSE[0]}–{a.PAUSE[1]} с, до {a.MAX_GENERATIONS_PER_RUN} генераций за проход. Ссылка на бота в ответе: "
+        f"не больше {a.LINKS_PER_HOUR} в час и {a.LINKS_PER_DAY} в сутки на всех; с 26.10 по слову владельца — только "
+        f"когда человек сам просит ссылку; плюс на последнем бесплатном ответе. Бесплатных ответов человеку в сутки — "
+        f"{a.FREE_PER_DAY} (при расходе бюджета больше {int(a.TIGHT_SPEND * 100)}% — {a.TIGHT_PER_DAY}). Ответы пишет "
+        f"Haiku, дневной потолок расходов на ответы REPLY_BUDGET_USD (обычно $1). Постов ≈6–8 в сутки, не чаще раза "
+        f"в {int(MIN_GAP.total_seconds() // 60)} мин. Лимиты снижены после отказов Threads 403/80016 (28.10), чтобы "
+        f"не приближаться к ограничениям. Текстовый режим, кроме матрицы «Угадай число». Ответы с матом и тяжёлыми "
+        f"темами фильтруются. Команды: /costs, /performance, /safety, /threads, /reviews, /cleanup."
+    )
+
+
+async def answer_owner(question: str, db: Storage, generator: Generator) -> str:
+    system = ("Ты — контент-завод Нумериты в Threads и отвечаешь своему владельцу. Он не программист: по-русски, "
+              "2–5 строк, без жаргона и английских ключей. Отвечай только по фактам ниже; чего нет в фактах — честно "
+              "скажи, что не знаешь. Если он хочет что-то изменить (например, увеличить лимит) — скажи, что изменение "
+              "делается в коде (через Claude), назови риск и предложи безопасный вариант. Не выдумывай цифр.")
+    try:
+        text = await generator.improve(system, f"Факты:\n{owner_facts()}\n\nВопрос владельца: {question}",
+                                       max_tokens=500, kind="owner")
+    except GenerationError:
+        text = owner_facts()
+    return text.strip() + "\n\n(Нужен пост на эту тему — начни сообщение с «пост:».)"
+
+
 HELP = (
     "Я контент-завод Numerita для Threads.\n\n"
     "Просто напишите тему, и я пришлю готовый пост с кнопками:\n"
@@ -655,7 +692,15 @@ def create_router(cfg: Config, plan: ContentPlan) -> Router:
 
     @router.message(F.text & ~F.text.startswith("/"))
     async def on_topic(message: Message, db: Storage, generator: Generator) -> None:
-        await new_post(message, message.text.strip(), db, generator)
+        text = message.text.strip()
+        forced = POST_PREFIX.match(text)
+        if forced:
+            await new_post(message, text[forced.end():].strip(), db, generator)
+            return
+        if is_owner_question(text):  # вопрос владельца о заводе — ответ, а не пост (замечание 29.10.2026)
+            await message.answer(await answer_owner(text, db, generator))
+            return
+        await new_post(message, text, db, generator)
 
     @router.callback_query(PostAction.filter())
     async def on_action(
