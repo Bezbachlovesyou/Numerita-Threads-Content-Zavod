@@ -22,7 +22,7 @@ from .autopost import BOT_LINK, OWN_HANDLES
 log = logging.getLogger(__name__)
 
 # Включается, когда бот Нумериты принимает ссылки ad_th_gift… (иначе подарок нерабочий).
-ENABLED = False
+ENABLED = True  # бот Нумериты принимает ad_th_gift (квитанция 644422d, 29.10.2026)
 EVERY = timedelta(days=2)
 HOUR = 20
 DATE_RE = re.compile(r"\b\d{1,2}[./\-\s]\d{1,2}(?:[./\-\s]\d{2,4})?\b|\b\d{1,2}\s+[а-яё]{3,}|\b\d{1,2}\b")
@@ -73,7 +73,12 @@ async def surprise(db, threads, now: datetime) -> str | None:
     if not post or not post.threads_id or post.threads_id == "published":
         await db.kv_set("giveaway:state", json.dumps(st))
         return None
-    code = gift_code(funnel.KEY, secrets.token_hex(3))
+    used = set(st.get("nonces", []))
+    nonce = secrets.token_hex(3)
+    while nonce in used:  # nonce уникален на каждый подарок
+        nonce = secrets.token_hex(3)
+    st["nonces"] = sorted(used | {nonce})[-2000:]
+    code = gift_code(funnel.KEY, nonce)
     text = ("А теперь сюрприз 🎁 Сегодня именно твоя дата попалась мне на глаза — дарю полный разбор и совместимость "
             f"пары. Ссылка личная и работает один раз:\n{BOT_LINK}{code}")
     await threads.reply(post.threads_id, winner["comment_id"], text)
