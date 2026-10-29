@@ -95,7 +95,8 @@ def _lux(size: int, weight: str = "SemiBold", face: str = "CormorantGaramond.ttf
     key = (face, size, weight)
     if key not in _FONTS:
         f = ImageFont.truetype(str(FONTS_DIR / face), size)
-        f.set_variation_by_name(weight)
+        if weight:
+            f.set_variation_by_name(weight)
         _FONTS[key] = f
     return _FONTS[key]
 
@@ -106,7 +107,7 @@ def _gold_numeral(ch: str, size: int) -> Image.Image:
     key = (ch, size)
     if key in _GOLD:
         return _GOLD[key].copy()
-    font = _lux(size, "Bold", "BodoniModa.ttf")
+    font = _lux(size, None, "ShareTechMono.ttf")
     w, h = int(size * 0.9 * max(1, len(ch))), int(size * 1.4)
     mask = Image.new("L", (w, h), 0)
     ImageDraw.Draw(mask).text((w / 2, h / 2), ch, font=font, fill=255, anchor="mm")
@@ -140,7 +141,7 @@ def _digit(ch: str, size: int, color: tuple, alpha: int) -> Image.Image:
     key = (ch, size, color, alpha)
     if key not in _TILES:
         t = Image.new("RGBA", (size * 2, size * 2), (0, 0, 0, 0))
-        ImageDraw.Draw(t).text((size, size), ch, font=_lux(size, "Bold", "BodoniModa.ttf"), fill=color + (alpha,),
+        ImageDraw.Draw(t).text((size, size), ch, font=_lux(size, None, "ShareTechMono.ttf"), fill=color + (alpha,),
                                anchor="mm")
         _TILES[key] = t
     return _TILES[key]
@@ -152,7 +153,7 @@ _FONTS: dict = {}
 def _bold(size: int):
     size = max(10, size - size % 2)
     if size not in _FONTS:
-        _FONTS[size] = _lux(size, "SemiBold", "BodoniModa.ttf")
+        _FONTS[size] = _lux(size, None, "ShareTechMono.ttf")
     return _FONTS[size]
 
 
@@ -193,7 +194,9 @@ def frames(a: int = 6, b: int = 8, seconds: float = 15.0, seed: str = "pairstar3
     union = d1 + d2 if s > 9 else s
     while union > 9:
         union = sum(int(c) for c in str(union))
-    bg = _gradient((5, 4, 18), (30, 10, 44)).convert("RGBA")
+    bg = _gradient((1, 8, 4), (10, 14, 26)).convert("RGBA")
+    from .matrixrain import Rain
+    rain = Rain(W, H, seed)
     neb = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     nd = ImageDraw.Draw(neb)
     for _ in range(12):
@@ -212,13 +215,13 @@ def frames(a: int = 6, b: int = 8, seconds: float = 15.0, seed: str = "pairstar3
     lens_pts = [(rng.random(), rng.random(), rng.uniform(0.4, 1.0), rng.uniform(0, 6.3)) for _ in range(420)]
     sparks = [(rng.uniform(0, 2 * math.pi), rng.uniform(-1, 1), rng.uniform(0.5, 1.0), rng.random(),
                rng.choice([GOLD, AZURE, WHITE])) for _ in range(160)]
-    f_hook = _lux(72, "SemiBold")
-    f_sub = _lux(38, "Medium")
+    f_hook = _lux(60, "Bold", "JetBrainsMono.ttf")
+    f_sub = _lux(30, "Regular", "JetBrainsMono.ttf")
     f_big = _lux(200, "Bold", "BodoniModa.ttf")
     f_mid = _font("PlayfairDisplay.ttf", 150, "Bold")
-    f_cap = _lux(44, "SemiBold")
-    f_line = _lux(50, "SemiBold")
-    f_tag = _lux(32, "Medium")
+    f_cap = _lux(36, "Medium", "JetBrainsMono.ttf")
+    f_line = _lux(40, "Bold", "JetBrainsMono.ttf")
+    f_tag = _lux(26, "Regular", "JetBrainsMono.ttf")
     total = int(seconds * FPS)
     for k in range(total):
         t = k / FPS
@@ -236,6 +239,7 @@ def frames(a: int = 6, b: int = 8, seconds: float = 15.0, seed: str = "pairstar3
                 sd.line((sx - 9, sy, sx + 9, sy), fill=(255, 255, 255, int(120 * tw)))
                 sd.line((sx, sy - 9, sx, sy + 9), fill=(255, 255, 255, int(120 * tw)))
         img = Image.alpha_composite(img, sky)
+        img = Image.alpha_composite(img, rain.layer(t, 0.75 - 0.35 * _ease((t - 10.0) / 1.0)))  # цифровой дождь
         for sprite, gx, gy, spin_g, sp, ph in galaxies:  # далёкие галактики медленно вращаются и мерцают
             g = sprite.rotate(spin_g * t, resample=Image.BICUBIC)
             tw = 0.7 + 0.3 * math.sin(2 * math.pi * sp * t + ph)
