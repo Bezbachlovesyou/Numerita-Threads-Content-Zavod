@@ -523,6 +523,64 @@ async def seed_en_hits(db: Storage, generator: Generator) -> int:
     return added
 
 
+CINEMA_URL = "https://www.numerita.ru/m/cinema_stories_{lang}.mp4"
+CINEMA_TEXT = {
+    "ru": ("Говорят, ангелы не слушают сплетни. Правильно — мы их считаем 😌\n"
+           "Пришлите свою историю из жизни — смешную, нелепую, «ну как так» — с датами рождения участников. "
+           "Расскажу её здесь без имён и посчитаю, кто с кем на самом деле спорил.\n"
+           "Как: 1) открыть Нумериту в Telegram 2) написать «история» 3) рассказать и указать даты.\n"
+           "t.me/Numeritabot?start=ad_th_story"),
+    "en": ("They say angels don't listen to gossip. Correct — we count it 😌\n"
+           "Send me a real story from your life — funny, absurd, \"how did that even happen\" — with the birthdays "
+           "of everyone involved. I'll retell it here, no names, and do the math on who was really arguing with whom.\n"
+           "How: 1) open Numerita on Telegram 2) type \"story\" 3) tell it and add the dates.\n"
+           "t.me/Numeritabot?start=ad_en_th_story"),
+}
+
+
+async def cinema_stories(db: Storage, threads: ThreadsClient, bot: Bot, cfg: Config, now: datetime) -> bool:
+    """Однократно 30.10 около 19:19 МСК (слово владельца): кино-ролик «Истории подписчиц» — RU в русский Threads и
+    Instagram, EN — в английский Threads. Ролик собирает сервер бота Нумериты; пока файла нет — ждём (False)."""
+    import httpx
+    code = "en" if lang.is_en() else "ru"
+    async with httpx.AsyncClient(timeout=120, follow_redirects=True) as http:
+        r = await http.get(CINEMA_URL.format(lang=code))
+    if r.status_code != 200 or len(r.content) < 100_000:
+        return False
+    url = await threads.upload_image(r.content, f"numerita_stories_{code}.mp4", "video/mp4")
+    text = CINEMA_TEXT[code]
+    post_id = await db.add_draft(f"Истории подписчиц — кино ({code})", text, "text_story_call")
+    remote = await threads.publish_text(text, topic_tag_for("text_story_call"), None, None, url, media_kind="story_video")
+    await db.set_threads_id(post_id, remote or "published")
+    await db.mark_published(post_id)
+    lines = []
+    status, link, error = ("unknown", None, None)
+    for _ in range(12):
+        await asyncio.sleep(30)
+        status, link, error = await threads.post_status(remote) if remote else ("unknown", None, None)
+        if status in ("published", "failed", "partial"):
+            break
+    lines.append(f"🎬 Кино «Истории подписчиц» в Threads: {link}" if status == "published"
+                 else f"⚠️ Кино в Threads: Threads ответил «{status}» {error or ''}")
+    if not lang.is_en():
+        try:
+            account = await instagram.account_id(db, threads)
+            if account:
+                _, payload = await threads._request("POST", "/posts", json={
+                    "content": text.replace("t.me/Numeritabot?start=ad_th_story", "Ссылка — в шапке профиля ✨"),
+                    "mediaItems": [{"type": "video", "url": url}],
+                    "platforms": [{"platform": "instagram", "accountId": account}], "publishNow": True})
+                st = (payload.get("post") or {}).get("status")
+                lines.append(f"🎬 Instagram принял ролик (статус Zernio: {st or 'нет'}); ссылку дам по квитанции."
+                             if st != "failed" else "⚠️ Instagram отклонил ролик.")
+            else:
+                lines.append("⚠️ Instagram не подключён в Zernio — ролик туда не ушёл.")
+        except Exception as e:
+            lines.append(f"⚠️ Instagram: {e}")
+    await notify_admins(bot, cfg, "\n".join(lines))
+    return True
+
+
 async def grid_tonight(db: Storage, threads: ThreadsClient, bot: Bot, cfg: Config) -> None:
     """Однократно: выпуск 1 серии «Угадай число» — живая спираль. Владельцу — только квитанция Threads
     (confirm_grid_videos; не принял видео — спираль перевыходит картинкой)."""
@@ -2004,6 +2062,16 @@ async def run_scheduler(
                     await notify_admins(bot, cfg, await en_connect_text(threads))
                 except Exception:
                     log.exception("Ссылка подключения английского Threads не отправлена")
+            if (threads is not None and now >= datetime(2026, 10, 30, 19, 19, tzinfo=now.tzinfo)
+                    and now < datetime(2026, 10, 31, 12, 0, tzinfo=now.tzinfo) and not await db.kv_get("cinema:done")
+                    and await db.claim_slot(f"cinema try {now:%Y-%m-%d %H:%M}"[:-1])):  # раз в 10 мин, пока файла нет
+                try:
+                    if await cinema_stories(db, threads, bot, cfg, now):
+                        await db.kv_set("cinema:done", "1")
+                except Exception:
+                    await db.kv_set("cinema:done", "error")  # публикация могла пройти — вслепую не повторяем
+                    log.exception("Кино «Истории подписчиц» не вышло")
+                    await notify_admins(bot, cfg, "⚠️ Кино «Истории подписчиц» не вышло — проверю вручную.")
             if (not EN and now >= datetime(2026, 10, 30, 8, 30, tzinfo=now.tzinfo)
                     and await db.claim_slot("principles digest 2026-10-30")):  # владелец просил утром выжимку принципов
                 try:
