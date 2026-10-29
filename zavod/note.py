@@ -99,11 +99,11 @@ def _crumple(rng: random.Random) -> Image.Image:
     small = Image.new("L", (27, 34), 128)
     for x in range(27):
         for y in range(34):
-            small.putpixel((x, y), rng.randint(112, 150))
+            small.putpixel((x, y), rng.randint(122, 136))
     shade = small.resize((W, H), Image.BICUBIC).filter(ImageFilter.GaussianBlur(26))
     folds = Image.new("L", (W, H), 128)
     d = ImageDraw.Draw(folds)
-    for _ in range(2):  # складки: мягкая светлая грань и тень рядом
+    for _ in range(1):  # одна мягкая складка: светлая грань и тень рядом
         x0, y0 = rng.randrange(-100, W), rng.choice((rng.randrange(0, 300), rng.randrange(H - 300, H)))
         x1, y1 = x0 + rng.randrange(500, 1300), y0 + rng.randrange(-250, 250)
         d.line((x0, y0, x1, y1), fill=168, width=10)
@@ -160,7 +160,7 @@ def render(genre: str, sender: str, body: str, seed: str = "note", digit: int | 
     base = 308.0
     spots = []  # где перо остановилось — там и клякса
     words_all = [(i, w) for i, line in enumerate(lines) for w in line.split()]
-    fix = rng.choice([w for w in words_all if len(w[1]) >= 5]) if any(len(w[1]) >= 5 for w in words_all) else None
+    fix = None  # без описок: пишет грамотный человек (слово владельца 29.10.2026)
     for i, line in enumerate(lines):
         x = 124 + rng.uniform(-3, 5)
         for word in line.split():
@@ -191,7 +191,7 @@ def render(genre: str, sender: str, body: str, seed: str = "note", digit: int | 
     from PIL import ImageChops
     ink.putalpha(ImageChops.multiply(ink.getchannel("A"), grain))
     blots = ImageDraw.Draw(ink)
-    for _ in range(1 + (rng.random() < 0.3)):  # клякса пасты (одна, изредка две)
+    for _ in range(1):  # одна клякса пасты
         bx, by = rng.choice(spots) if spots else (W / 2, H / 2)
         bx, by = bx + rng.uniform(4, 12), by - rng.uniform(1, 6)
         r = rng.uniform(5, 8)
