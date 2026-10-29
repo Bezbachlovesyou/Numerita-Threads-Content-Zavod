@@ -332,6 +332,11 @@ class Storage:
                                 (comment_id, "local-reply:" + comment_id))
         return rows[0]["target_id"] if rows else None
 
+    async def comments_for_post(self, post_id: int) -> list[dict]:
+        return await self._rows(
+            "SELECT * FROM comment_replies WHERE post_id = ? ORDER BY created_at", (post_id,)
+        )
+
     async def recent_comments(self, limit: int) -> list[dict]:
         return await self._rows(
             "SELECT * FROM comment_replies ORDER BY created_at DESC LIMIT ?", (limit,)
