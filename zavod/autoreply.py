@@ -15,6 +15,7 @@ from datetime import datetime, timedelta, timezone
 from .autopost import BOT_LINK, strip_credits
 from .cards import grid_hint
 from .textguard import reply_problem
+from .lang import is_en
 from .codereply import find_birth, find_pair, pair_reply, reply as code_reply
 from .constraint import focus
 from .dialogue import archive_comments, conversation_context, fair_queue, walk_comments
@@ -349,6 +350,12 @@ async def answer_comments(
         )
         if links_ok and asks_link(comment["message"]):
             mode = "link"
+        elif (links_ok and is_en() and re.search(r"\d", comment["message"] or "")
+              and not await db.link_replies(now - timedelta(days=30), author)):
+            # Английский аккаунт (слово владельца 30.10.2026): в начале чаще даём ссылку — человек прислал дату/число,
+            # отвечаем по сути и одной фразой зовём за полным разбором. Общие лимиты ссылок и стоп-кран прежние,
+            # одному человеку — раз в 30 дней.
+            mode = "offer"
         given = await db.replies_to_author(author, now - timedelta(days=1))
         if given > free_per_day:  # бесплатные ответы на сегодня закончились
             await db.record_comment(comment["id"], post_id, author, comment["message"], "skip:paywall", "skipped")
@@ -414,8 +421,9 @@ async def answer_comments(
         if len(text) < 25 and not re.search(r"[.!?…)»✨🌙💫🔥🤍😊🙂]\s*$", text):  # обрывок вроде «5 — это» — не отправляем
             log.warning("Слишком короткий ответ на %s: %r — не отправляю", comment["id"], text)
             continue
-        if mode in ("link", "paywall"):
-            text = (f"{text[: MAX_REPLY_LENGTH - 45]}\n{BOT_LINK}r{post_id or 0}_{'a' if mode == 'link' else 'w'}"
+        if mode in ("link", "paywall", "offer"):
+            text = (f"{text[: MAX_REPLY_LENGTH - 45]}\n{BOT_LINK}r{post_id or 0}_"
+                    f"{ {'link': 'a', 'paywall': 'w', 'offer': 'o'}[mode] }"
                     + (arm[0] if arm else ""))  # метка ветки A/B: …_pc — ответ кодом, …_pi — ответ нейросети
         if sent:
             await asyncio.sleep(random.uniform(*PAUSE))
@@ -429,7 +437,7 @@ async def answer_comments(
             if is_gone(e):  # комментарий удалили или скрыли — просто пропускаем
                 await db.record_comment(comment["id"], post_id, author, comment["message"], "skip:gone", "skipped")
                 continue
-            if mode in ("link", "paywall"):  # стоп-кран: Threads не принял ответ со ссылкой
+            if mode in ("link", "paywall", "offer"):  # стоп-кран: Threads не принял ответ со ссылкой
                 await db.kv_set("reply_links_paused_until", (now + LINK_PAUSE).isoformat())
                 e = ThreadsError(f"{e} — ссылки в ответах выключил на 7 дней")
             await db.kv_set("autoreply_error", f"{now:%d.%m %H:%M} ответ: {e}")
