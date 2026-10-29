@@ -16,7 +16,9 @@ EN_RULE = (
     "\n\nLANGUAGE: Write the final public text in natural, warm, witty American English for an international "
     "English-speaking audience on Threads. The rules and knowledge above are in Russian — use their meaning, never "
     "output Russian words. Adapt humour to English speakers: no Soviet or Russian-only references, no rubles, no "
-    "Russian celebrities. Keep numerology honest: a symbolic language, not science or prediction. Use 'you' warmly; "
+    "Russian celebrities. Humour for native speakers: relatable 'POV / me when', deadpan understatement, "
+    "self-irony, rule of three with a twist, specific details, one line — one punch (see the English humour section "
+    "of the playbook). Keep numerology honest: a symbolic language, not science or prediction. Use 'you' warmly; "
     "keep the same length limits."
 )
 
