@@ -535,7 +535,19 @@ class PgStorage(Storage):
         return parts[0] + "".join(f"${i}{part}" for i, part in enumerate(parts[1:], start=1))
 
     async def init(self) -> None:
-        self.pool = await asyncpg.create_pool(self.dsn, min_size=1, max_size=5)
+        import os
+        import re as _re
+        schema = os.getenv("DB_SCHEMA", "").strip()  # английский аккаунт живёт в той же базе, в своей схеме
+        if schema and _re.fullmatch(r"[a-z_][a-z0-9_]{0,30}", schema):
+            conn = await asyncpg.connect(self.dsn)
+            try:
+                await conn.execute(f"CREATE SCHEMA IF NOT EXISTS {schema}")
+            finally:
+                await conn.close()
+            self.pool = await asyncpg.create_pool(self.dsn, min_size=1, max_size=5,
+                                                  server_settings={"search_path": schema})
+        else:
+            self.pool = await asyncpg.create_pool(self.dsn, min_size=1, max_size=5)
         await self.pool.execute(PG_SCHEMA + MEMORY_SCHEMA)
         await self.pool.execute("ALTER TABLE posts ADD COLUMN IF NOT EXISTS tg_message_id TEXT")
         await self.pool.execute("ALTER TABLE posts ADD COLUMN IF NOT EXISTS rubric TEXT")

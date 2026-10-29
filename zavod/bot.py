@@ -1,4 +1,5 @@
 import asyncio
+import os
 import hashlib
 from pathlib import Path
 import json
@@ -966,6 +967,9 @@ def report_chunks(text: str, limit: int = 3500) -> list[str]:
 
 
 async def notify_admins(bot: Bot, cfg: Config, text: str, post: Post | None = None) -> None:
+    label = os.getenv("INSTANCE_LABEL", "")
+    if label:  # английский экземпляр: отчёт помечен, кнопок нет (их обработал бы русский завод с другой базой)
+        text, post = f"[{label}] {text}", None
     chunks = report_chunks(text)
     for admin_id in cfg.admin_ids:
         try:

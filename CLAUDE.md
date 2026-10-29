@@ -481,9 +481,11 @@ zavod/note.py + bot.note_post: раз в день (13–19 ч) нейросет�
 оплата Нумериты. Внесено в обход constraint.SYSTEM (в отчёте к каждой оказии — строка «Виктория: …»), playbook.md
 и reply_voice.md. Работая над заводом, к каждому сбою и замечанию владельца предлагать свою «викторию».
 
-## Английский аккаунт Threads (слово владельца 29.10.2026)
-Тот же код — второй сервис Railway с FACTORY_LANG=en (zavod/lang.py): свой ZERNIO_ACCOUNT_ID, своя база DATABASE_URL,
-свой Telegram-бот (TELEGRAM_BOT_TOKEN) для отчётов, OWN_HANDLE — ник английского аккаунта. Публичные тексты (посты,
+## Английский аккаунт Threads (слово владельца 29.10.2026: один сервис — два аккаунта)
+Один сервис Railway: если задан ZERNIO_EN_ACCOUNT_ID, русский завод (__main__.english_child) запускает рядом
+английский экземпляр отдельным процессом — тот же код с FACTORY_LANG=en (zavod/lang.py), ZERNIO_ACCOUNT_ID =
+ZERNIO_EN_ACCOUNT_ID, OWN_HANDLE = EN_OWN_HANDLE, своя схема Postgres «en» в той же базе (DB_SCHEMA), без опроса
+Telegram (бот общий: английский только шлёт отчёты с пометкой [EN], без кнопок); упал — перезапуск с паузой. Публичные тексты (посты,
 ответы, редакторские переписки) — на английском (lang.EN_RULE в Generator._complete), отчёты владельцу — по-русски.
 Ссылки — t.me/Numeritabot?start=ad_en_th_… (бот сразу на английском, канал «Threads EN» в /threads.json), оплата —
 английский товар Lava $5.99. В английском экземпляре не запускаются: русские разовые задания (EN_PRECLAIM), готовые

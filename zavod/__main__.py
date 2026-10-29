@@ -75,6 +75,9 @@ async def main() -> None:
     dp.include_router(create_router(cfg, plan))
 
     scheduler = asyncio.create_task(run_scheduler(bot, cfg, storage, threads, generator, plan))
+    if os.getenv("ZAVOD_NO_POLLING") == "1":  # английский экземпляр внутри общего сервиса: бот общий, только отчёты
+        await scheduler
+        return
     try:
         await bot.set_my_commands([BotCommand(command=c, description=d) for c, d in COMMANDS])
         await dp.start_polling(bot)
@@ -82,5 +85,34 @@ async def main() -> None:
         scheduler.cancel()
 
 
+async def english_child() -> None:
+    """Слово владельца 29.10.2026: один сервис — два аккаунта Threads. Если задан ZERNIO_EN_ACCOUNT_ID, русский
+    завод запускает рядом английский экземпляр отдельным процессом: тот же код, FACTORY_LANG=en, свой аккаунт Zernio,
+    своя схема «en» в той же базе (или свой файл SQLite), без опроса Telegram (бот общий — отчёты он только шлёт).
+    Упал — перезапускаем с паузой."""
+    import sys
+    account = os.getenv("ZERNIO_EN_ACCOUNT_ID", "").strip()
+    if not account or os.getenv("FACTORY_LANG", "ru").strip().lower() == "en":
+        return
+    env = {k: v for k, v in os.environ.items() if k not in ("TELEGRAM_CHANNEL", "ZERNIO_INSTAGRAM_ACCOUNT_ID")}
+    env.update(FACTORY_LANG="en", ZERNIO_ACCOUNT_ID=account, OWN_HANDLE=os.getenv("EN_OWN_HANDLE", ""),
+               DB_SCHEMA="en", DB_PATH="zavod_en.db", ZAVOD_NO_POLLING="1", INSTANCE_LABEL="EN")
+    pause = 10
+    while True:
+        proc = await asyncio.create_subprocess_exec(sys.executable, "-m", "zavod", env=env)
+        code = await proc.wait()
+        logging.error("Английский завод остановился (код %s), перезапуск через %s с", code, pause)
+        await asyncio.sleep(pause)
+        pause = min(600, pause * 2)
+
+
+async def run_all() -> None:
+    child = asyncio.create_task(english_child())
+    try:
+        await main()
+    finally:
+        child.cancel()
+
+
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(run_all())
