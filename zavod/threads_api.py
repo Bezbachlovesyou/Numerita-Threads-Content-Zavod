@@ -91,7 +91,7 @@ class ThreadsClient:
             platform["platformSpecificData"] = extra
         body: dict = {"content": text, "platforms": [platform], "publishNow": True}
         if text_mode.enabled():
-            grid_ok = (text_mode.grid_enabled() and media_kind == 'number_grid'
+            grid_ok = (text_mode.grid_enabled() and media_kind in ('number_grid', 'note_image')
                        and image_urls and len(image_urls)==1 and not video_url)
             # Живая матрица (слово владельца 28.10.2026): одно видео формы с цифрами вместо картинки.
             grid_video_ok = (text_mode.grid_enabled() and media_kind in ('number_grid_video', 'sky_video', 'pair_video')

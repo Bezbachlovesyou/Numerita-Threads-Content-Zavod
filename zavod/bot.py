@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 from pathlib import Path
 import json
 import logging
@@ -392,6 +393,31 @@ async def run_stories(db: Storage, threads: ThreadsClient, generator: Generator,
         text, _ = split_card_hook(await generator.write_post(stories.CALL_RULES + "\n\n" + text_mode.STYLE))
         if await out("Присылайте истории", text, "text_story_call"):
             await db.kv_set("stories:last_call", now.isoformat())
+
+
+async def note_post(db: Storage, threads: ThreadsClient, generator: Generator, bot: Bot, cfg: Config,
+                    now: datetime) -> None:
+    """Рукописная записка от лица числа (zavod/note.py): числа по кругу, один пост в день."""
+    from . import note
+    from .cards import birth_days
+    digit = int(await db.kv_get("note:last_digit") or 0) % 9 + 1
+    await db.kv_set("note:last_digit", str(digit))
+    raw = await generator.improve("Ты — Нумерита, остроумный нумеролог; пишешь по базе Нумериты.",
+                                  await generator._with_knowledge(
+                                      note.RULES.format(digit=digit, group=birth_days(digit)), str(digit)),
+                                  max_tokens=700, kind="note")
+    data = note.parse(raw)
+    if not data:
+        return
+    caption = await antidupe_gate(db, generator, data["post"].strip(), now)
+    if not caption:
+        return
+    image = await asyncio.to_thread(note.render, data["genre"], data["from"], data["body"], f"{now:%Y%m%d}{digit}")
+    url = await threads.upload_image(image, "numerita_note.jpg", "image/jpeg")
+    post_id = await db.add_draft(f"Записка от числа {digit}", caption, "text_note")
+    remote = await threads.publish_text(caption, topic_tag_for("text_note"), None, [url], media_kind="note_image")
+    await db.set_threads_id(post_id, remote or "published")
+    await db.mark_published(post_id)
 
 
 async def grid_tonight(db: Storage, threads: ThreadsClient, bot: Bot, cfg: Config) -> None:
@@ -1826,6 +1852,12 @@ async def run_scheduler(
                         await run_stories(db, threads, generator, bot, cfg, now, batch)
             except Exception:
                 log.exception("Истории подписчиц не сработали")
+            note_hour = 13 + int(hashlib.md5(f"{now:%Y-%m-%d}".encode()).hexdigest(), 16) % 7
+            if now.hour == note_hour and await db.claim_slot(f"note {now:%Y-%m-%d}"):
+                try:  # рукописная записка от лица числа — раз в день (формат «Жалоба от отца ученика»)
+                    await note_post(db, threads, generator, bot, cfg, now)
+                except Exception:
+                    log.exception("Записка от числа не вышла")
             if await db.claim_slot("baza6 2026-10-29"):  # слово владельца: «подтверждаю, делай огонь»
                 try:
                     await baza6_post(db, threads, generator, bot, cfg)
