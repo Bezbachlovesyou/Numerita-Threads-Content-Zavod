@@ -364,6 +364,36 @@ async def baza6_post(db: Storage, threads: ThreadsClient, generator: Generator, 
                         else f"⚠️ Золотые правила 6, 15, 24: Threads ответил «{status}» {error or ''}")
 
 
+async def run_stories(db: Storage, threads: ThreadsClient, generator: Generator, bot: Bot, cfg: Config,
+                      now: datetime, batch: list[dict]) -> None:
+    """Одна история в день (если есть) и приглашение присылать истории раз в 2 дня."""
+    from . import stories
+    async def out(topic: str, text: str, rubric: str) -> Post | None:
+        text = await antidupe_gate(db, generator, await hook_gate(generator, text), now)
+        if not text:
+            return None
+        post = await publish(await db.get(await db.add_draft(topic, text, rubric)), db, threads, bot, "", False)
+        return post if post.status != "failed" else None
+    if batch and not await db.kv_get(f"stories:day:{now:%Y-%m-%d}"):
+        story = batch[0]
+        text, _ = split_card_hook(await generator.write_post(
+            stories.STORY_RULES.format(text=story.get("text", "")[:2500], numbers=stories.numbers_line(story))
+            + "\n\n" + text_mode.STYLE))
+        post = await out("История подписчицы", text, "text_story")
+        await db.kv_set(f"stories:day:{now:%Y-%m-%d}", "1")
+        status, link = ("unknown", None)
+        if post and post.threads_id and post.threads_id != "published":
+            await asyncio.sleep(60)
+            status, link, _ = await threads.post_status(post.threads_id)
+        await stories.mark(story.get("id"), "used" if post else "rejected", link if status == "published" else None)
+        if post:
+            await notify_admins(bot, cfg, f"📖 История подписчицы в Threads: {link or 'ждём квитанцию'}")
+    elif await stories.due_call(db, now):
+        text, _ = split_card_hook(await generator.write_post(stories.CALL_RULES + "\n\n" + text_mode.STYLE))
+        if await out("Присылайте истории", text, "text_story_call"):
+            await db.kv_set("stories:last_call", now.isoformat())
+
+
 async def grid_tonight(db: Storage, threads: ThreadsClient, bot: Bot, cfg: Config) -> None:
     """Однократно: выпуск 1 серии «Угадай число» — живая спираль. Владельцу — только квитанция Threads
     (confirm_grid_videos; не принял видео — спираль перевыходит картинкой)."""
@@ -1788,6 +1818,14 @@ async def run_scheduler(
                         await notify_admins(bot, cfg, report)
             except Exception:
                 log.exception("Сюрприз-подарок не сработал")
+            try:  # истории подписчиц: включаются, когда бот Нумериты принимает их (/stories.json отвечает 200)
+                from . import stories
+                if 12 <= now.hour < 21 and await db.claim_slot(f"stories {now:%Y-%m-%d %H}"):
+                    batch = await stories.fetch()
+                    if batch is not None:
+                        await run_stories(db, threads, generator, bot, cfg, now, batch)
+            except Exception:
+                log.exception("Истории подписчиц не сработали")
             if await db.claim_slot("baza6 2026-10-29"):  # слово владельца: «подтверждаю, делай огонь»
                 try:
                     await baza6_post(db, threads, generator, bot, cfg)
