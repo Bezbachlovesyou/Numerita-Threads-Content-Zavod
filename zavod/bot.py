@@ -1599,6 +1599,14 @@ async def run_scheduler(
                     await heart_now(db, threads, bot, cfg)
                 except Exception:
                     log.exception("Пост с живым сердцем не вышел")
+            if funnel.KEY and await db.claim_slot("funnel key check 2026-10-29"):  # владелец вставил ключ — квитанция
+                try:
+                    data = await funnel.fetch(1)
+                    await notify_admins(bot, cfg, ("🔑 Ключ статистики работает. Из Threads за сутки:\n"
+                                                   + "\n".join(funnel.lines(data))) if data
+                                        else f"⚠️ Ключ статистики не сработал: {funnel.STATUS or 'нет ответа'}")
+                except Exception:
+                    log.exception("Проверка ключа статистики не удалась")
             if await db.claim_slot("day review 2026-10-28"):  # разовый обход дня по просьбе владельца
                 try:
                     await notify_admins(bot, cfg, await day_review(db, now))
