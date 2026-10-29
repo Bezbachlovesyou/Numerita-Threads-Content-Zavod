@@ -86,6 +86,51 @@ def _galaxy(rng, size: int, tint: tuple) -> Image.Image:
     return out
 
 
+FONTS_DIR = _P(__file__).resolve().parent.parent / "assets" / "fonts"
+_GOLD: dict = {}
+
+
+def _lux(size: int, weight: str = "SemiBold", face: str = "CormorantGaramond.ttf"):
+    from PIL import ImageFont
+    key = (face, size, weight)
+    if key not in _FONTS:
+        f = ImageFont.truetype(str(FONTS_DIR / face), size)
+        f.set_variation_by_name(weight)
+        _FONTS[key] = f
+    return _FONTS[key]
+
+
+def _gold_numeral(ch: str, size: int) -> Image.Image:
+    """Число из «литого золота»: Bodoni Moda, вертикальный градиент светлое золото → тёплое → бронза, тонкий
+    тёмный кант и блик сверху. Рисуется кодом один раз и кэшируется."""
+    key = (ch, size)
+    if key in _GOLD:
+        return _GOLD[key].copy()
+    font = _lux(size, "Bold", "BodoniModa.ttf")
+    w, h = int(size * 0.9 * max(1, len(ch))), int(size * 1.4)
+    mask = Image.new("L", (w, h), 0)
+    ImageDraw.Draw(mask).text((w / 2, h / 2), ch, font=font, fill=255, anchor="mm")
+    grad = Image.new("RGB", (1, h))
+    stops = [(0.0, (255, 250, 225)), (0.38, (247, 214, 140)), (0.55, (214, 158, 70)), (0.75, (255, 222, 150)),
+             (1.0, (150, 96, 38))]
+    for y in range(h):
+        u = y / (h - 1)
+        for (u0, c0), (u1, c1) in zip(stops, stops[1:]):
+            if u0 <= u <= u1:
+                k = (u - u0) / (u1 - u0)
+                grad.putpixel((0, y), tuple(int(c0[i] + (c1[i] - c0[i]) * k) for i in range(3)))
+                break
+    grad = grad.resize((w, h))
+    edge = mask.filter(ImageFilter.MaxFilter(5))
+    out = Image.new("RGBA", (w, h), (70, 40, 12, 0))
+    out.putalpha(edge)
+    gold = grad.convert("RGBA")
+    gold.putalpha(mask)
+    out = Image.alpha_composite(out, gold)
+    _GOLD[key] = out
+    return out.copy()
+
+
 _TILES: dict = {}
 
 
@@ -95,7 +140,7 @@ def _digit(ch: str, size: int, color: tuple, alpha: int) -> Image.Image:
     key = (ch, size, color, alpha)
     if key not in _TILES:
         t = Image.new("RGBA", (size * 2, size * 2), (0, 0, 0, 0))
-        ImageDraw.Draw(t).text((size, size), ch, font=_font("Montserrat.ttf", size, "Bold"), fill=color + (alpha,),
+        ImageDraw.Draw(t).text((size, size), ch, font=_lux(size, "Bold", "BodoniModa.ttf"), fill=color + (alpha,),
                                anchor="mm")
         _TILES[key] = t
     return _TILES[key]
@@ -107,7 +152,7 @@ _FONTS: dict = {}
 def _bold(size: int):
     size = max(10, size - size % 2)
     if size not in _FONTS:
-        _FONTS[size] = _font("Montserrat.ttf", size, "Bold")
+        _FONTS[size] = _lux(size, "SemiBold", "BodoniModa.ttf")
     return _FONTS[size]
 
 
@@ -141,7 +186,7 @@ def _text(draw, xy, text, font, fill, alpha):
         draw.text(xy, text, font=font, fill=fill + (int(alpha),), anchor="mm")
 
 
-def frames(a: int = 6, b: int = 8, seconds: float = 15.0, seed: str = "pairstar3d"):
+def frames(a: int = 6, b: int = 8, seconds: float = 15.0, seed: str = "pairstar3d", art: Image.Image | None = None):
     rng = random.Random(seed)
     s = a + b
     d1, d2 = (s // 10, s % 10) if s > 9 else (s, 0)
@@ -167,13 +212,13 @@ def frames(a: int = 6, b: int = 8, seconds: float = 15.0, seed: str = "pairstar3
     lens_pts = [(rng.random(), rng.random(), rng.uniform(0.4, 1.0), rng.uniform(0, 6.3)) for _ in range(420)]
     sparks = [(rng.uniform(0, 2 * math.pi), rng.uniform(-1, 1), rng.uniform(0.5, 1.0), rng.random(),
                rng.choice([GOLD, AZURE, WHITE])) for _ in range(160)]
-    f_hook = _font("PlayfairDisplay.ttf", 62, "SemiBold")
-    f_sub = _font("Montserrat.ttf", 32, "Medium")
-    f_big = _font("PlayfairDisplay.ttf", 190, "Bold")
+    f_hook = _lux(72, "SemiBold")
+    f_sub = _lux(38, "Medium")
+    f_big = _lux(200, "Bold", "BodoniModa.ttf")
     f_mid = _font("PlayfairDisplay.ttf", 150, "Bold")
-    f_cap = _font("Montserrat.ttf", 38, "SemiBold")
-    f_line = _font("PlayfairDisplay.ttf", 44, "SemiBold")
-    f_tag = _font("Montserrat.ttf", 28, "Medium")
+    f_cap = _lux(44, "SemiBold")
+    f_line = _lux(50, "SemiBold")
+    f_tag = _lux(32, "Medium")
     total = int(seconds * FPS)
     for k in range(total):
         t = k / FPS
@@ -261,7 +306,9 @@ def frames(a: int = 6, b: int = 8, seconds: float = 15.0, seed: str = "pairstar3
             ImageDraw.Draw(halo).ellipse((CX - 210, CY - 210, CX + 210, CY + 210),
                                          fill=(255, 200, 130, int(120 * p14 * (1 - split))))
             img = Image.alpha_composite(img, halo.filter(ImageFilter.GaussianBlur(80)))
-            _text(td, (CX, CY), str(s), f_big, WHITE, 255 * p14 * (1 - split))
+            n14 = _gold_numeral(str(s), 200)
+            n14.putalpha(n14.getchannel("A").point(lambda v, k=p14 * (1 - split): int(v * k)))
+            txt.alpha_composite(n14, (int(CX - n14.width / 2), int(CY - n14.height / 2)))
             _text(td, (CX, CY + 190), f"{a} + {b} = {s}", f_cap, (255, 228, 190), 255 * p14 * (1 - split))
 
         # --- 7,4–10,2 с: 14 распадается на 1 и 4, они кружат по объёмной орбите и сливаются
@@ -296,16 +343,22 @@ def frames(a: int = 6, b: int = 8, seconds: float = 15.0, seed: str = "pairstar3
             halo = Image.new("RGBA", (W, H), (0, 0, 0, 0))
             ImageDraw.Draw(halo).ellipse((CX - 250, CY - 250, CX + 250, CY + 250), fill=(255, 205, 140, int(140 * born)))
             img = Image.alpha_composite(img, halo.filter(ImageFilter.GaussianBlur(90)))
-            pulse = 1 + 0.05 * math.sin(2 * math.pi * 1.2 * t)
-            turn = 0.25 * t
-            for j in range(24):  # лучи
-                aj = turn + math.pi * j / 12
-                L = (300 + 70 * math.sin(2 * math.pi * (0.6 * t + j / 7))) * born
-                fd.line((CX, CY, CX + L * math.cos(aj), CY + L * math.sin(aj)), fill=WHITE + (int(60 * born),), width=3)
-            fd.polygon(_star(CX, CY, 175 * born * pulse, 62 * born, 8, turn), fill=WHITE + (int(235 * born),))
-            fd.polygon(_star(CX, CY, 128 * born * pulse, 56 * born, 8, turn + math.pi / 8), fill=GOLD + (int(255 * born),))
-            fd.ellipse((CX - 82 * born, CY - 82 * born, CX + 82 * born, CY + 82 * born), fill=(255, 240, 210, int(255 * born)))
-            _text(td, (CX, CY + 6), str(union), f_mid, (60, 22, 70), 255 * born)
+            pulse = 1 + 0.04 * math.sin(2 * math.pi * 1.2 * t)
+            # анаморфная вспышка: длинный горизонтальный луч, короткий вертикальный, тонкие диагональные блики
+            flare = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+            fl = ImageDraw.Draw(flare)
+            for (dx, dy, length, width, al) in ((1, 0, 540, 7, 210), (0, 1, 250, 5, 150),
+                                                 (0.707, 0.707, 150, 3, 90), (0.707, -0.707, 150, 3, 90)):
+                L = length * born * pulse
+                fl.line((CX - dx * L, CY - dy * L, CX + dx * L, CY + dy * L), fill=(255, 236, 200, int(al * born)),
+                        width=width)
+            img = Image.alpha_composite(img, flare.filter(ImageFilter.GaussianBlur(5)))
+            img = Image.alpha_composite(img, flare.filter(ImageFilter.GaussianBlur(14)))
+            fd.ellipse((CX - 120 * born, CY - 120 * born, CX + 120 * born, CY + 120 * born),
+                       fill=(255, 226, 170, int(120 * born)))
+            num = _gold_numeral(str(union), 230)
+            num.putalpha(num.getchannel("A").point(lambda v, k=born: int(v * k)))
+            txt.alpha_composite(num, (int(CX - num.width / 2), int(CY - num.height / 2)))
             for ang0, h, sp, ph, col in sparks:  # блёстки вокруг звезды
                 rr = (200 + 260 * ((t * sp * 0.35 + ph) % 1)) * born
                 x, y = CX + rr * math.cos(ang0 + 0.2 * t), CY + rr * math.sin(ang0 + 0.2 * t) * 0.85 + h * 30
@@ -321,6 +374,23 @@ def frames(a: int = 6, b: int = 8, seconds: float = 15.0, seed: str = "pairstar3
         glow_txt.paste(txt.convert("RGB"), mask=txt)
         img = _bloom(img, glow_txt)
         img = Image.alpha_composite(img, txt)
+
+        if art is not None and t >= 10.0:  # кульминация — кадр, нарисованный нейросетью, медленно приближается
+            z = 1.0 + 0.06 * (t - 10.0) / max(0.1, seconds - 10.0)
+            aw, ah = int(W * z), int(H * z)
+            frame_art = art.resize((aw, ah), Image.LANCZOS).crop(((aw - W) // 2, (ah - H) // 2, (aw - W) // 2 + W,
+                                                                    (ah - H) // 2 + H)).convert("RGBA")
+            frame_art.putalpha(int(255 * _ease((t - 10.0) / 0.8)))
+            img = Image.alpha_composite(img, frame_art)
+            spark = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+            spd = ImageDraw.Draw(spark)
+            for ang0, h, sp, ph, col in sparks[:90]:  # живые искры поверх картины
+                rr = 220 + 300 * ((t * sp * 0.3 + ph) % 1)
+                x, y = CX + rr * math.cos(ang0 + 0.15 * t), CY + rr * math.sin(ang0 + 0.15 * t) * 0.85
+                tw = 0.5 + 0.5 * math.sin(2 * math.pi * (sp * 1.6 * t + ph))
+                spd.ellipse((x - 1.5 - 2 * tw, y - 1.5 - 2 * tw, x + 1.5 + 2 * tw, y + 1.5 + 2 * tw),
+                            fill=col + (int(200 * tw),))
+            img = Image.alpha_composite(img, spark)
 
         # --- надписи: хук → интрига → панчлайн
         ov = Image.new("RGBA", (W, H), (0, 0, 0, 0))
@@ -342,7 +412,7 @@ def frames(a: int = 6, b: int = 8, seconds: float = 15.0, seed: str = "pairstar3
         yield img.convert("RGB")
 
 
-def render_video(a: int = 6, b: int = 8, seconds: float = 15.0) -> bytes:
+def render_video(a: int = 6, b: int = 8, seconds: float = 15.0, art: Image.Image | None = None) -> bytes:
     import subprocess
     import tempfile
     from pathlib import Path
@@ -357,7 +427,7 @@ def render_video(a: int = 6, b: int = 8, seconds: float = 15.0) -> bytes:
                  "-movflags", "+faststart", str(out)]
         proc = subprocess.Popen(args, stdin=subprocess.PIPE)
         try:
-            for frame in frames(a, b, seconds):
+            for frame in frames(a, b, seconds, art=art):
                 proc.stdin.write(frame.tobytes())
         finally:
             proc.stdin.close()

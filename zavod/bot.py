@@ -1676,6 +1676,12 @@ async def run_scheduler(
         for admin_id in cfg.admin_ids:
             await bot.send_photo(admin_id, BufferedInputFile(data, "numerita_sketch.jpg"), caption=caption[:1024])
     sketch_task = asyncio.create_task(sketch.run_trial(db, generator, send_sketch))
+    async def send_pairstar(data, caption):  # «Звезда пары» с кадром нейросети — владельцу на одобрение (29.10.2026)
+        for admin_id in cfg.admin_ids:
+            await bot.send_video(admin_id, BufferedInputFile(data, "numerita_pair_star.mp4"), caption=caption[:1024],
+                                 supports_streaming=True)
+    from . import pairstar_ai
+    pairstar_task = asyncio.create_task(pairstar_ai.run_once(db, generator.api_key, send_pairstar))
     react_task = asyncio.create_task(tgchannel.run_backfill(db, bot, cfg.telegram_channel))  # реакции на все посты канала
     if await db.claim_slot("owner names kindness 2026-10-28"):  # владелец попросил 1000 названий в Telegram
         await send_long(bot, cfg, (Path(__file__).parent.parent / "docs/drafts/kindness-names-2026-10-28.md").read_text())
