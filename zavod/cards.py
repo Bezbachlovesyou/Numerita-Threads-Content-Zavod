@@ -312,6 +312,17 @@ SHAPES = {
     "drift": ("Кольца будто плывут? Какое число видишь первым?",
               "Иллюзия Китаоки «вращающиеся змеи» из цифр: неподвижные кольца кажутся вращающимися"),
 }
+# Английский аккаунт (30.10.2026): те же формы, надписи на английском.
+SHAPES_EN = {
+    "spiral": "Which number jumps out of the spiral first?",
+    "rings": "Which number on the rings caught your eye?",
+    "heart": "Which number do you see first in the heart?",
+    "wave": "Which number did the wave bring you?",
+    "galaxy": "Which number is shining at you from the galaxy?",
+    "dna": "Which number is encoded in your DNA?",
+    "fraser": "Circles or a spiral? And which number did you see first?",
+    "drift": "Are the rings moving? Which number do you see first?",
+}
 # Цветовая лестница «змей» Китаоки: тёмный → синий → белый → жёлтый.
 DRIFT_COLORS = [(18, 18, 30), (50, 100, 230), (250, 250, 250), (250, 205, 40)]
 GRID_STYLES = ["classic", *SHAPES]
@@ -508,7 +519,8 @@ def shape_parts(grid: dict, title: str, palette: int, seed: str) -> dict:
     for line in lines:
         draw.text((W // 2, y), line, font=font, fill=(255, 255, 255, 255), anchor="ma")
         y += 68
-    cta = "Напиши в ответах — расскажу, что они значат"
+    from .lang import is_en
+    cta = "Reply with yours — I'll tell you what it means" if is_en() else "Напиши в ответах — расскажу, что они значат"
     font = _font("Montserrat.ttf", 32, "SemiBold")
     tw = draw.textlength(cta, font=font)
     bx0, by0, bx1, by1 = W / 2 - tw / 2 - 36, H - 175, W / 2 + tw / 2 + 36, H - 109
@@ -593,7 +605,8 @@ def render_grid(grid: dict, title: str, palette: int, seed: str) -> bytes:
             color = hint + (255,) if (r, c) in marks else (236, 232, 245, 225)
             draw.text((cx, cy), ch, font=font, fill=color, anchor="mm")
 
-    cta = "Напиши в ответах — расскажу, что они значат"
+    from .lang import is_en
+    cta = "Reply with yours — I'll tell you what it means" if is_en() else "Напиши в ответах — расскажу, что они значат"
     font = _font("Montserrat.ttf", 32, "SemiBold")
     tw = draw.textlength(cta, font=font)
     bx0, by0, bx1, by1 = W / 2 - tw / 2 - 36, H - 190, W / 2 + tw / 2 + 36, H - 124

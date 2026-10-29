@@ -487,6 +487,42 @@ async def en_connect_text(threads: ThreadsClient | None) -> str:
             "3. Всё. Завод сам найдёт аккаунт и запустит английские посты в течение 10 минут.\n\n" + url)
 
 
+EN_HITS_RULES = (
+    "Перескажи этот русский пост, который собрал много лайков и комментариев, для англоязычной аудитории Threads. "
+    "Сохрани механику, числа, дни рождения, хук и концовку-вопрос; юмор переделай под носителей английского "
+    "(узнавание, deadpan, правило трёх), русские реалии замени понятными. Не переводи дословно — сделай так, чтобы "
+    "смешно было именно по-английски. Без ссылок, до 450 знаков. Верни только текст поста.\n\nПост:\n{text}"
+)
+
+
+async def seed_en_hits(db: Storage, generator: Generator) -> int:
+    """Английский аккаунт (слово владельца 30.10.2026): самые активные русские посты — первыми, на английском.
+    Берём их из схемы русского завода (public) в той же базе Postgres, ставим в очередь как приоритетные."""
+    if not isinstance(db, PgStorage):
+        return 0
+    rows = await db.pool.fetch(
+        "SELECT p.id, p.text, COALESCE(m.likes, 0) AS likes, "
+        "(SELECT COUNT(*) FROM public.comment_replies c WHERE c.post_id = p.id) AS comments "
+        "FROM public.posts p LEFT JOIN public.post_metrics m ON m.post_id = p.id "
+        "WHERE p.status = 'published' AND COALESCE(p.rubric, '') NOT IN ('grid', 'text_note', 'jackpot', 'video', "
+        "'carousel', 'news', 'text_hype', 'text_story') "
+        "ORDER BY COALESCE(m.likes, 0) + 3 * (SELECT COUNT(*) FROM public.comment_replies c WHERE c.post_id = p.id) "
+        "DESC LIMIT 8")
+    added = 0
+    for i, row in enumerate(rows):
+        if (row["likes"] or 0) + 3 * (row["comments"] or 0) < 5:
+            continue
+        try:
+            text = (await generator.write_post(EN_HITS_RULES.format(text=row["text"]))).strip()
+        except GenerationError:
+            continue
+        text, _ = split_card_hook(text)
+        if text and re.search(r"\d", text) and len(text) <= MAX_LENGTH:
+            await db.queue_post(await db.add_draft(f"priority:en-hit-{i:02d}-{row['id']}", text, "text_seed"))
+            added += 1
+    return added
+
+
 async def grid_tonight(db: Storage, threads: ThreadsClient, bot: Bot, cfg: Config) -> None:
     """Однократно: выпуск 1 серии «Угадай число» — живая спираль. Владельцу — только квитанция Threads
     (confirm_grid_videos; не принял видео — спираль перевыходит картинкой)."""
@@ -1278,12 +1314,18 @@ async def post_next(
     """
     recent = await db.recent_rubrics(6)
     queued = await text_mode.next_seed(db) if text_mode.enabled() else await db.next_queued()
+    en_grid_first = lang.is_en() and not await db.kv_get("en:first_grid")  # слово владельца: спираль — первой
+    if en_grid_first:
+        queued = None
     if queued and (not recent or recent[0] not in ('script','text_seed')):
         if queued.rubric != 'text_seed' and (queued.rubric == "script" or text_mode.enabled()):
             queued = await sharpen_script(db, generator, queued)
         post = await publish(queued, db, threads, bot, "", cfg.cards)
     else:
         rubric = plan.choose(recent, rng)
+        if en_grid_first:
+            rubric = next((r for r in plan.all_rubrics() if r.key == "grid"), rubric)
+            await db.kv_set("en:first_grid", "1")
         news_pause = await db.kv_get("news_pause_until")
         for _ in range(5):  # новости — только когда есть свежий добрый повод
             hype_done = rubric.key == "text_hype" and await db.kv_get(f"hype:{now.date().isoformat()}")
@@ -1348,18 +1390,25 @@ async def post_next(
             # Формы чередуются по кругу, чтобы матрица не приедалась (слово владельца 28.10.2026).
             last = await db.kv_get("grid:last_style") or "classic"
             shape = GRID_STYLES[(GRID_STYLES.index(last) + 1) % len(GRID_STYLES)] if last in GRID_STYLES else "spiral"
+            if lang.is_en() and shape == "classic":  # классическая сетка с русскими надписями — не для английского
+                shape = "spiral"
             await db.kv_set("grid:last_style", shape)
             # Пасхалка выпуска по очереди: дата выпуска или 611 (Нумеритм приходит в 6:11) — слово владельца 28.10.2026.
             egg, egg_note = ((f"{now:%d%m}", f"дата этого выпуска, {now:%d.%m}") if rng.random() < 0.5
                              else ("611", "6:11 — время, когда приходит утренний Нумеритм"))
             grid = make_grid(rng, style=shape, egg=egg)
             grid_title = SHAPES[shape][0] if shape in SHAPES else rng.choice(GRID_TITLES)
+            if lang.is_en():
+                from .cards import SHAPES_EN
+                grid_title = SHAPES_EN.get(shape, grid_title)
             issue = int(await db.kv_get("grid:issue") or 1) + 1  # серия «Угадай число»; выпуск 1 — спираль 28.10
             await db.kv_set("grid:issue", str(issue))
             # Модели — какие числа спрятаны, чтобы пост мог намекнуть, но не выдать их все.
             slot = replace(slot, topic=slot.topic + "\nНа картинке спрятаны: " + ", ".join(grid["hidden"])
                            + ". Не перечисляй их в тексте."
-                           + f"\nЭто серия «Угадай число» — первая строка поста: «Угадай число · выпуск {issue}»."
+                           + (f"\nЭто серия Guess the Number — первая строка поста: «Guess the number · issue {issue}»."
+                              if lang.is_en() else
+                              f"\nЭто серия «Угадай число» — первая строка поста: «Угадай число · выпуск {issue}».")
                            + (f"\nЕщё в картинке спрятана пасхалка без подсветки: {egg} — {egg_note}. Скажи, что здесь "
                               "спрятана пасхалка, намекни загадкой, но не называй её; нашедшего похвалю в ответах."
                               if grid.get("egg") else "")
@@ -1823,6 +1872,13 @@ async def run_scheduler(
     if EN:  # английский экземпляр: разовые русские задания помечаем выполненными заранее
         for slot in EN_PRECLAIM:
             await db.claim_slot(slot)
+        if await db.claim_slot("en hits v1"):  # лучшие русские посты — первыми, на английском
+            try:
+                added = await seed_en_hits(db, generator)
+                await notify_admins(bot, cfg, f"🔥 Лучшие посты русского аккаунта переписаны на английский: {added} "
+                                              "встали в очередь первыми, следом — серия Guess the Number.")
+            except Exception:
+                log.exception("Перенос лучших постов на английский не удался")
     if await db.claim_slot("owner note margarita"):  # владелец попросил прислать в Telegram (25.10.2026)
         await notify_admins(bot, cfg, "👤 Маргарита — @Ruma7775\n\nТвоя личная клиентка продюсера (стримерша, мама двоих "
                                       "детей). В боте Нумериты за 7 дней на неё ушло $2,3 нейросети, оплат 0 ⭐ — "
