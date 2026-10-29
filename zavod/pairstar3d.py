@@ -14,7 +14,11 @@ import random
 from PIL import Image, ImageDraw, ImageFilter
 
 from .cards import H, W, _font, _gradient
-from .gridvideo import FPS, MUSIC, ffmpeg
+from pathlib import Path as _P
+
+from .gridvideo import FPS, ffmpeg
+
+MUSIC = _P(__file__).resolve().parent.parent / "assets" / "channel" / "pairstar_score.m4a"
 
 GOLD = (255, 205, 120)
 AZURE = (120, 200, 255)
@@ -44,6 +48,42 @@ def _project(p):
     x, y, z = p
     k = FOCAL / (FOCAL + z)
     return CX + x * k, CY + y * k, k
+
+
+SR_ = 225        # радиус сфер
+SPHERE_N = 300   # цифр на сфере
+
+
+def _fib_sphere(n: int):
+    pts = []
+    for i in range(n):
+        y = 1 - 2 * (i + 0.5) / n
+        r = math.sqrt(1 - y * y)
+        th = math.pi * (3 - math.sqrt(5)) * i
+        pts.append((r * math.cos(th), y, r * math.sin(th)))
+    return pts
+
+
+def _galaxy(rng, size: int, tint: tuple) -> Image.Image:
+    """Спиральная галактика: два рукава из звёздной пыли, яркое ядро, лёгкий наклон."""
+    img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    c = size / 2
+    for arm in (0, math.pi):
+        for _ in range(int(size * 7)):
+            u = rng.random() ** 0.8
+            ang = arm + u * 3.6 * math.pi / 1.4
+            rad = u * c * 0.92
+            x = c + rad * math.cos(ang) + rng.gauss(0, size * 0.025)
+            y = c + 0.55 * (rad * math.sin(ang) + rng.gauss(0, size * 0.025))
+            a = int(200 * (1 - u) + 55)
+            d.point((x, y), fill=tint + (a,))
+    d.ellipse((c - size * 0.035, c - size * 0.024, c + size * 0.035, c + size * 0.024), fill=(255, 245, 225, 210))
+    soft = img.filter(ImageFilter.GaussianBlur(size * 0.006))
+    glow = img.filter(ImageFilter.GaussianBlur(size * 0.035))
+    out = Image.alpha_composite(glow, soft)
+    out.putalpha(out.getchannel("A").point(lambda v: int(min(255, v * 1.1))))
+    return out
 
 
 _TILES: dict = {}
@@ -118,8 +158,13 @@ def frames(a: int = 6, b: int = 8, seconds: float = 15.0, seed: str = "pairstar3
     bg = Image.alpha_composite(bg, neb.filter(ImageFilter.GaussianBlur(140)))
     stars = [(rng.uniform(-1, 1), rng.uniform(-1, 1), rng.uniform(0.2, 1.0), rng.uniform(0.3, 1.0), rng.uniform(0, 6.3))
              for _ in range(260)]  # (x, y, глубина, скорость мерцания, фаза)
-    digits = {0: [str(a) if i % 12 == 0 else str(rng.randrange(10)) for i in range(N)],
-              1: [str(b) if i % 12 == 0 else str(rng.randrange(10)) for i in range(N)]}
+    sphere = _fib_sphere(SPHERE_N)
+    digits = {0: [str(a) if i % 9 == 0 else str(rng.randrange(10)) for i in range(SPHERE_N)],
+              1: [str(b) if i % 9 == 0 else str(rng.randrange(10)) for i in range(SPHERE_N)]}
+    galaxies = [(_galaxy(rng, size, tint), x, y, rng.uniform(-4, 4), rng.uniform(0.15, 0.4), rng.uniform(0, 6.3))
+                for size, tint, x, y in [(360, (255, 220, 190), 170, 330), (260, (190, 210, 255), 920, 260),
+                                         (230, (230, 190, 255), 900, 1120), (190, (255, 235, 200), 140, 1080)]]
+    lens_pts = [(rng.random(), rng.random(), rng.uniform(0.4, 1.0), rng.uniform(0, 6.3)) for _ in range(420)]
     sparks = [(rng.uniform(0, 2 * math.pi), rng.uniform(-1, 1), rng.uniform(0.5, 1.0), rng.random(),
                rng.choice([GOLD, AZURE, WHITE])) for _ in range(160)]
     f_hook = _font("PlayfairDisplay.ttf", 62, "SemiBold")
@@ -146,43 +191,55 @@ def frames(a: int = 6, b: int = 8, seconds: float = 15.0, seed: str = "pairstar3
                 sd.line((sx - 9, sy, sx + 9, sy), fill=(255, 255, 255, int(120 * tw)))
                 sd.line((sx, sy - 9, sx, sy + 9), fill=(255, 255, 255, int(120 * tw)))
         img = Image.alpha_composite(img, sky)
+        for sprite, gx, gy, spin_g, sp, ph in galaxies:  # далёкие галактики медленно вращаются и мерцают
+            g = sprite.rotate(spin_g * t, resample=Image.BICUBIC)
+            tw = 0.7 + 0.3 * math.sin(2 * math.pi * sp * t + ph)
+            g.putalpha(g.getchannel("A").point(lambda v, k=tw: int(v * k)))
+            img.alpha_composite(g, (int(gx - g.width / 2), int(gy - g.height / 2)))
 
-        # --- кольца в 3D: золотое в плоскости XY, лазурное в плоскости XZ, сцеплены как звенья
-        fly = _ease((t - 0.2) / 2.8)
-        link_fade = 1 - _ease((t - 7.4) / 1.0)  # кольца отступают в тень, когда рождается число
-        spin = 0.55 * t + 0.4
-        tilt = math.radians(-18 + 8 * math.sin(0.4 * t))
+        # --- две сферы из цифр: золотая (a) и лазурная (b) сходятся и пересекаются
+        fly = _ease((t - 0.2) / 3.0)
+        link_fade = 1 - _ease((t - 7.4) / 1.0)  # сферы отступают в тень, когда рождается число
+        tilt = math.radians(-14 + 6 * math.sin(0.4 * t))
         pts = []
+        centers2d = []
         for ring in (0, 1):
-            off = (-1 if ring == 0 else 1) * (R / 2 + (1 - fly) * 620)
-            for i in range(N):
-                th = 2 * math.pi * i / N + (0.25 * t if ring == 0 else -0.25 * t)
-                if ring == 0:
-                    p = (off + R * math.cos(th), R * math.sin(th), 0.0)
-                else:
-                    p = (off + R * math.cos(th), 0.0, R * math.sin(th))
-                p = _rot_x(_rot_y(p, spin), tilt)
+            side = -1 if ring == 0 else 1
+            off = side * (SR_ * 0.62 + (1 - fly) * 560)
+            spin = side * (0.45 * t + 0.3)
+            for i, (ux, uy, uz) in enumerate(sphere):
+                p = _rot_y((ux * SR_, uy * SR_, uz * SR_), spin)
+                p = _rot_x((p[0] + off, p[1], p[2]), tilt)
                 pts.append((p[2], ring, i, *_project(p)))
+            centers2d.append(_project(_rot_x((off, 0.0, 0.0), tilt)))
         appear = _ease((t - 0.1) / 0.9) * (0.3 + 0.7 * link_fade)
         light = Image.new("RGB", (W, H), (0, 0, 0))
         ld = ImageDraw.Draw(light)
-        by_ring = {0: sorted((q for q in pts if q[1] == 0), key=lambda q: q[2]),
-                   1: sorted((q for q in pts if q[1] == 1), key=lambda q: q[2])}
-        for ring, ring_pts in by_ring.items():  # нить кольца — свет, ближе к зрителю ярче и толще
+        for ring, (px, py, pk) in enumerate(centers2d):  # мягкая атмосфера каждой сферы
             color = GOLD if ring == 0 else AZURE
-            for q0, q1 in zip(ring_pts, ring_pts[1:] + ring_pts[:1]):
-                near = max(0.0, min(1.0, 0.5 - q0[0] / (2 * R)))
-                br = appear * (0.18 + 0.5 * near)
-                ld.line((q0[3], q0[4], q1[3], q1[4]), fill=_scale(color, br), width=max(2, int(5 * q0[5])))
+            rr = SR_ * pk
+            ld.ellipse((px - rr, py - rr, px + rr, py + rr), fill=_scale(color, 0.10 * appear))
+        meet = _ease((t - 2.6) / 1.4) * (1 - _ease((t - 7.6) / 0.8))
+        if meet > 0:  # энергия в пересечении сфер — вихрь искр в «линзе»
+            (lx, ly, lk), (rx, ry, rk) = centers2d
+            rl, rr_ = SR_ * lk, SR_ * rk
+            for u, v, br, ph in lens_pts:
+                x = lx + (rx - lx) * (0.5 + (u - 0.5) * 0.9) + 40 * math.sin(2 * math.pi * (0.5 * t + ph))
+                y = ly + (v - 0.5) * 2 * rl * 0.9
+                if (x - lx) ** 2 + (y - ly) ** 2 > rl ** 2 or (x - rx) ** 2 + (y - ry) ** 2 > rr_ ** 2:
+                    continue
+                tw = 0.5 + 0.5 * math.sin(2 * math.pi * (1.3 * t * br + ph))
+                r = 1.2 + 2.2 * tw
+                ld.ellipse((x - r, y - r, x + r, y + r), fill=_scale(WHITE, meet * br * tw))
         for z, ring, i, x, y, kk in sorted(pts, key=lambda q: -q[0]):
-            near = max(0.0, min(1.0, 0.5 - z / (2 * R)))
+            near = max(0.0, min(1.0, 0.5 - z / (2 * SR_)))
             color = GOLD if ring == 0 else AZURE
-            hero = i % 12 == 0
+            hero = i % 9 == 0
             wave = 0.55 + 0.45 * math.sin(2 * math.pi * (0.7 * t - i / 16))
-            br = appear * (0.2 + 0.8 * near) * (1.0 if hero else wave)
+            br = appear * (0.12 + 0.88 * near ** 1.5) * (1.0 if hero else wave)
             if br < 0.04:
                 continue
-            size = max(10, int((62 if hero else 34) * kk))
+            size = max(10, int((40 if hero else 24) * kk))
             core = tuple(min(255, c + 60) for c in color) if hero else color
             ld.text((x, y), digits[ring][i], font=_bold(size), fill=_scale(core, br), anchor="mm")
         img = _bloom(img, light)
@@ -275,9 +332,10 @@ def frames(a: int = 6, b: int = 8, seconds: float = 15.0, seed: str = "pairstar3
         _text(od, (CX, 92), "Звезда вашей пары", f_hook, WHITE, 255 * end)
         _text(od, (CX, 168), f"{a} + {b} = {s} → {d1} + {d2} = {union}" if s > 9 else f"{a} + {b} = {union}",
               f_sub, (255, 226, 180), 240 * end)
-        lines = [(f"{a} сажает сад.", 11.0), (f"{b} строит забор.", 11.9), ("Вместе — «поехали на море».", 12.8)]
+        lines = [(f"{a} хотела уют.", 11.0), (f"{b} — надёжность.", 11.8), (f"Родилась {union}:", 12.6),
+                 ("«а давайте всё бросим и на море»", 12.9)]
         for n, (line, start) in enumerate(lines):
-            _text(od, (CX, H - 250 + n * 56), line, f_line, WHITE if n < 2 else (255, 214, 140),
+            _text(od, (CX, H - 290 + n * 54), line, f_line, WHITE if n < 2 else (255, 214, 140),
                   255 * _ease((t - start) / 0.5))
         _text(od, (CX, H - 64), "Telegram @Numeritabot", f_tag, (210, 196, 232), 200)
         img = Image.alpha_composite(img, ov)
