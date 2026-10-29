@@ -123,7 +123,7 @@ class Generator:
         return await self._complete(system, prompt, max_tokens=max_tokens, kind=kind, model=model)
 
     async def write_reply(self, post: str, comment: str, author: str, mode: str = "plain",
-                          model: str | None = None) -> str:
+                          model: str | None = None, careful: bool = False) -> str:
         """Ответ на комментарий под постом. «SKIP» — отвечать не нужно.
 
         mode: plain — польза и разговор без приглашения; старые profile/question/offer также plain;
@@ -153,6 +153,10 @@ class Generator:
             + f"Наш пост:\n{post}\n\nКомментарий от @{author}:\n{comment}\n\n"
             + "Сам не пиши никаких ссылок, адресов и @упоминаний. " + endings[mode]
         )
+        if careful:  # прошлый вариант задел фильтр Threads (самоповреждение, РПП, мат)
+            prompt += ("\n\nПерепиши бережно: не повторяй мат и ругательства собеседника даже с многоточием, не пиши "
+                       "о нехватке сил, смерти, вреде себе, еде и весе, не используй «держись». Тепло, по существу, "
+                       "о шаге или ясности.")
         prompt = await self._with_knowledge(prompt, comment, REPLY_KB_CHARS)
         model = model or self.reply_model
         try:

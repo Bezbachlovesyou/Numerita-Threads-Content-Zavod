@@ -121,6 +121,25 @@ def gave_number(message: str) -> bool:
 LINK_RE = re.compile(r"(https?://\S+|t\.me/\S+|@Numeritabot\b)", re.I)
 
 
+# Threads скрывает от младших и считает нарушением ответы с отсылками к самоповреждению, РПП, мату (урок 29.10.2026:
+# поддерживающий ответ «извиняться за «зае…» не нужно … сил почти не остаётся?» скрыли). Такие слова в наш ответ не пускаем.
+RISKY_REPLY = re.compile(
+    r"зае(?:\.\.\.|…|б)|за[её]б|\b(?:вы|у|от|на|по)?[её]б(?:а|у|ну|л)|ху[йёи]|пизд|\bбля|\bсук[аи]\b|"
+    r"суицид|самоуб|покончить|умереть|\bсмерт|не\s+хочу\s+жить|порез|"
+    r"резать\s+себ|навредить\s+себ|сил[ауы]?\s+(?:\S+\s+){0,4}(?:почти\s+)?не\s+оста|нет\s+сил|держись|выматыва|"
+    r"голода|не\s+есть|рвот|анорекс|булими|похуде|весить|таблетк", re.IGNORECASE)
+# Комментарий о желании умереть или навредить себе: не разбираем публично, а коротко и бережно даём опору.
+CRISIS_COMMENT = re.compile(
+    r"суицид|самоуб|покончить\s+с\s+собой|не\s+хочу\s+жить|не\s+хочется\s+жить|убить\s+себя|"
+    r"навредить\s+себе|порезать\s+себя|резать\s+себя|лучше\s+бы\s+меня\s+не\s+было", re.IGNORECASE)
+CRISIS_REPLY = ("Слышу тебя 🤍 Если сейчас очень тяжело, позвони близкому человеку или на бесплатную линию "
+                "8-800-2000-122 — там выслушают и помогут.")
+
+
+def risky_reply(text: str) -> bool:
+    return bool(RISKY_REPLY.search(text or ""))
+
+
 def finish_reply(text: str) -> str:
     """Обрезает слишком длинный ответ и вычищает любые ссылки — в ответах их быть не должно."""
     body = re.sub(r"[ \t]{2,}", " ", LINK_RE.sub("", strip_credits(text.replace("{LINK}", "")))).strip()
@@ -340,6 +359,9 @@ async def answer_comments(
             if arm == "code" and mode in ("plain", "profile") else None
         if text:
             await db.kv_set("code_replies", str(int(await db.kv_get("code_replies") or 0) + 1))
+        if not text and CRISIS_COMMENT.search(comment["message"] or ""):
+            text = CRISIS_REPLY
+            mode = "plain"
         try:
             if not text:
                 generated += 1
@@ -353,6 +375,18 @@ async def answer_comments(
             await db.record_comment(comment["id"], post_id, author, comment["message"], "skip:model", "skipped")
             continue
         text = finish_reply(text)
+        if text != CRISIS_REPLY and risky_reply(text):  # одна переписка без опасных слов, иначе молчим
+            if generated >= MAX_GENERATIONS_PER_RUN:
+                break
+            try:
+                generated += 1
+                text = finish_reply(await generator.write_reply(
+                    post_text, comment["message"], author, mode, model, careful=True))
+            except GenerationError:
+                continue
+            if risky_reply(text):
+                await db.record_comment(comment["id"], post_id, author, comment["message"], "skip:sensitive", "skipped")
+                continue
         # Одинаковые ответы Threads считает спамом: похожий на недавний — переписываем или пропускаем.
         recent = {(r.get("reply") or "")[:60] for r in await db.recent_comments(50)}
         if text[:60] in recent:
