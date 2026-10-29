@@ -109,7 +109,7 @@ class OperationsTests(unittest.IsolatedAsyncioTestCase):
     async def test_cleanup_preserves_unknown_stale_reacting_and_foreign_posts(self):
         ident=await self.candidate()
         for payload in (None, self.metrics(likes=1),self.metrics(likes=.2),
-                        self.metrics(lastUpdated=(self.now-timedelta(hours=2)).isoformat())):
+                        self.metrics(lastUpdated=(self.now-timedelta(hours=7)).isoformat())):
             await self.db.kv_set('zero_cleanup:last_scan','')
             c=self.client();c.post_stats.return_value=payload
             await zero_cleanup.tick(self.db,c,self.now)
@@ -127,6 +127,6 @@ class OperationsTests(unittest.IsolatedAsyncioTestCase):
         await zero_cleanup.tick(self.db,c,self.now)
         c.unpublish.assert_not_awaited()
         await self.db.kv_set('zero_cleanup:last_scan','')
-        await self.db.kv_set('zero_cleanup:day:2026-10-29','3')
+        await self.db.kv_set('zero_cleanup:day:2026-10-29',str(zero_cleanup.DAILY_CAP))
         c=self.client();await zero_cleanup.tick(self.db,c,self.now)
         c._request.assert_not_awaited()

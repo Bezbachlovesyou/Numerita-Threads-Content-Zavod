@@ -8,6 +8,12 @@ from .threads_api import ThreadsError
 
 # Слово владельца 29.10.2026: пост без лайков и комментариев через 6 ч — «мертвечина», снимаем (было 24 ч).
 MIN_AGE = timedelta(hours=6)
+# Слово владельца 29.10.2026: «старые посты без лайков и комментариев — мертвечина, удали». Смотрим 60 дней назад,
+# до 10 удалений в сутки, не чаще раза в 20 минут; аналитика Zernio по старым постам обновляется реже — свежесть 6 ч.
+LOOKBACK = timedelta(days=60)
+DAILY_CAP = 10
+SCAN_EVERY = timedelta(minutes=20)
+FRESH = timedelta(hours=6)
 
 log = logging.getLogger(__name__)
 
@@ -43,7 +49,7 @@ def fresh_zero(payload, now):
         age = now - performance.stamp(metrics['lastUpdated'])
     except (ValueError, TypeError, KeyError):
         return False
-    return -timedelta(minutes=1) <= age <= timedelta(minutes=15)
+    return -timedelta(minutes=1) <= age <= FRESH
 
 
 async def tick(db, client, now):
@@ -55,12 +61,12 @@ async def tick(db, client, now):
     if await reply_cooldown.blocked(db, now):
         return
     last = await db.kv_get('zero_cleanup:last_scan')
-    if last and now - performance.stamp(last) < timedelta(hours=1):
+    if last and now - performance.stamp(last) < SCAN_EVERY:
         return
     day_key = 'zero_cleanup:day:' + now.date().isoformat()
-    if int(await db.kv_get(day_key) or 0) >= 3:
+    if int(await db.kv_get(day_key) or 0) >= DAILY_CAP:
         return
-    posts = await db.recent_published(now-timedelta(days=7))
+    posts = await db.recent_published(now-LOOKBACK)
     candidates = []
     for post in posts:
         scanned = await db.kv_get(f'zero_cleanup:checked:{post.id}') or ''
