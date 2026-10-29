@@ -306,6 +306,37 @@ async def venus_post(db: Storage, threads: ThreadsClient, bot: Bot, cfg: Config)
                         else f"⚠️ Роза Венеры: Threads ответил «{status}» {error or ''}")
 
 
+PAIR_STAR_TEXT = (
+    "Звезда вашей пары ✨\n"
+    "Две окружности встречаются — и в пересечении рождается третья энергия, общая на двоих. Нумерология считает её "
+    "просто: число души одного + число души другого, сведённые к одной цифре.\n"
+    "6 + 8 = 14 → 5. Шестёрка сажает сад, восьмёрка строит забор. А вместе — Меркурий: лёгкость, свобода и внезапное "
+    "«поехали на море».\n"
+    "Сложи свой день рождения и день рождения любимого человека — какая звезда родилась у вас? Напиши — расскажу, "
+    "что она светит вам двоим 🤍")
+
+
+async def pair_star_post(db: Storage, threads: ThreadsClient, bot: Bot, cfg: Config) -> None:
+    """Однократно 29.10 (слово владельца): «Звезда пары» — два кольца цифр, в пересечении рождается звезда союза
+    (pairstar.py), пост под музыку. Владельцу — только квитанция Threads со ссылкой."""
+    from .pairstar import render_video
+    data = await asyncio.to_thread(render_video, 6, 8)
+    url = await threads.upload_image(data, "numerita_pair_star.mp4", "video/mp4")
+    post_id = await db.add_draft("pair-star-2026-10-29", PAIR_STAR_TEXT, "text_heaven_pairs")
+    remote = await threads.publish_text(PAIR_STAR_TEXT, topic_tag_for("text_heaven_pairs"), None, None, url,
+                                        media_kind="pair_video")
+    await db.set_threads_id(post_id, remote or "published")
+    await db.mark_published(post_id)
+    status, link, error = ("unknown", None, None)
+    for _ in range(12):
+        await asyncio.sleep(30)
+        status, link, error = await threads.post_status(remote) if remote else ("unknown", None, None)
+        if status in ("published", "failed", "partial"):
+            break
+    await notify_admins(bot, cfg, f"✨ Звезда пары в Threads: {link}" if status == "published"
+                        else f"⚠️ Звезда пары: Threads ответил «{status}» {error or ''}")
+
+
 async def grid_tonight(db: Storage, threads: ThreadsClient, bot: Bot, cfg: Config) -> None:
     """Однократно: выпуск 1 серии «Угадай число» — живая спираль. Владельцу — только квитанция Threads
     (confirm_grid_videos; не принял видео — спираль перевыходит картинкой)."""
@@ -1685,6 +1716,11 @@ async def run_scheduler(
                     await venus_post(db, threads, bot, cfg)
                 except Exception:
                     log.exception("Роза Венеры не вышла")
+            if await db.claim_slot("pair star 2026-10-29"):  # слово владельца: «сделай пост сейчас»
+                try:
+                    await pair_star_post(db, threads, bot, cfg)
+                except Exception:
+                    log.exception("Звезда пары не вышла")
             if await db.claim_slot("grid tonight 2026-10-28"):  # слово владельца: «сегодня перед сном — один пост»
                 try:
                     await grid_tonight(db, threads, bot, cfg)
