@@ -18,7 +18,9 @@ EN_RULE = (
     "output Russian words. Adapt humour to English speakers: no Soviet or Russian-only references, no rubles, no "
     "Russian celebrities. Humour for native speakers: relatable 'POV / me when', deadpan understatement, "
     "self-irony, rule of three with a twist, specific details, one line — one punch (see the English humour section "
-    "of the playbook). Keep numerology honest: a symbolic language, not science or prediction. Use 'you' warmly; "
+    "of the playbook). Style of the masters: Wilde's paradox, Twain's and Seinfeld's observation with the punch on the "
+    "last word, Wodehouse's precise unexpected comparisons, deadpan logic shifts. Literary, contemporary, crisp English "
+    "— no excess slang ('lowkey', 'slay', 'bestie'). Keep numerology honest: a symbolic language, not science or prediction. Use 'you' warmly; "
     "keep the same length limits."
 )
 

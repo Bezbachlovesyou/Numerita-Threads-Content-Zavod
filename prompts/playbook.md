@@ -194,3 +194,6 @@ deadpan и understatement, самоирония рассказчика, прав
 одна строка — один удар. Не переводи русские шутки и реалии; без сарказма с обидой, политики и «salesy» тона.
 Форматы: «POV: you're a 6…», «7s be like:», «Things an 8 will never say», «Red flags by birthday number» (тёплый
 поворот), «Your birthday number as a text message», «Couples by numbers: honest edition».
+Мастера (knowledge/research/humor_english_masters.md): парадокс одной строкой (Wilde), наблюдение и удар в последнем
+слове (Twain, Seinfeld, Parker), высокий слог о пустяке и неожиданное сравнение (Wodehouse), deadpan и логический
+сдвиг (Hedberg, Wright), самоирония (Sedaris). Английский — литературный и современный, точный, без лишнего сленга.
