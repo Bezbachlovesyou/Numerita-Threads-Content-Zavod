@@ -60,7 +60,9 @@ def when_phrase(day: date) -> str:
     part = "начало" if day.day <= 10 else "середина" if day.day <= 20 else "конец"
     return f"{part} {MONTHS_GEN[day.month - 1]}"
 CTAS = ("link", "reply", "profile", "none")
-BOT_LINK = "t.me/Numeritabot?start=ad_th_"
+from .lang import is_en as _is_en
+
+BOT_LINK = "t.me/Numeritabot?start=ad_en_th_" if _is_en() else "t.me/Numeritabot?start=ad_th_"
 
 # Безопасный ритм для Threads: никогда не чаще раза в час (лимит API — 250 постов в сутки,
 # но частые посты нового аккаунта выглядят как спам), никогда не реже раза в 4 часа.
@@ -75,7 +77,8 @@ TOPIC_TAGS = {"love": "Отношения", "pair": "Отношения", "ex": 
 DEFAULT_TOPIC_TAG = "Нумерология"
 
 
-OWN_HANDLES = {"numerita.ai", "numeritabot", "numeritalovesyou"}
+OWN_HANDLES = {"numerita.ai", "numeritabot", "numeritalovesyou"} | (
+    {h.strip().lower().lstrip("@") for h in __import__("os").getenv("OWN_HANDLE", "").split(",") if h.strip()})
 CREDIT_RE = re.compile(r"(?i)\b(по мотивам|идея|источник|автор|вдохновил[аио]?сь|спасибо)\b[^\n]*@[\w.]+[^\n]*")
 MENTION_RE = re.compile(r"(?:\s*,|\s+и)?\s*(?<![\w/])@([A-Za-z0-9_.]*[A-Za-z0-9_])")
 
@@ -182,6 +185,9 @@ class ContentPlan:
         by_key = {r.key: r for r in self.all_rubrics()}
         recent_ctas = [by_key[k].cta for k in recent[:5] if k in by_key]
         pool = [r for r in self.all_rubrics() if not recent or r.key != recent[0]]
+        if _is_en():  # английский аккаунт: без русских лент новостей/хайпа, картинок с русским текстом
+            from .lang import EN_SKIP_RUBRICS
+            pool = [r for r in pool if r.key not in EN_SKIP_RUBRICS] or pool
         if text_mode.enabled():
             pool = [r for r in pool if text_mode.allowed(r)] or [r for r in self.all_rubrics() if text_mode.allowed(r)]
             fresh_text = [r for r in pool if r.key.startswith('text_') or r.key == 'number_mirror'

@@ -23,6 +23,7 @@ from .cards import (
 from .autoreply import answer_comments, finish_reply
 from . import autoreply
 from . import text_mode
+from . import lang
 from .optimizer import optimize
 from . import costs, constraint, funnel, performance, approved_post, zero_research, api_budget, tgchannel, brandvideo, instagram, sketch, zero_cleanup
 from .config import Config
@@ -95,6 +96,12 @@ async def answer_owner(question: str, db: Storage, generator: Generator) -> str:
     except GenerationError:
         text = owner_facts()
     return text.strip() + "\n\n(Нужен пост на эту тему — начни сообщение с «пост:».)"
+
+
+EN_PRECLAIM = ["owner note margarita", "owner names kindness 2026-10-28", "toc summary", "cost report 2026-10-24",
+               "venus rose 2026-10-29", "note8 2026-10-29", "baza6 2026-10-29", "pair star 2026-10-29",
+               "grid tonight 2026-10-28", "heart grid now 2026-10-28", "day review 2026-10-28", "ig first post",
+               "priority:neural-back-2026-10-28", "grid dna first 2026-10-28", "grid new shapes first 2026-10-28"]
 
 
 HELP = (
@@ -1771,6 +1778,10 @@ async def run_scheduler(
         log.exception("Owner zero research report was not confirmed; no blind resend")
     rng = random.Random()
     next_replies = datetime.now()
+    EN = lang.is_en()
+    if EN:  # английский экземпляр: разовые русские задания помечаем выполненными заранее
+        for slot in EN_PRECLAIM:
+            await db.claim_slot(slot)
     if await db.claim_slot("owner note margarita"):  # владелец попросил прислать в Telegram (25.10.2026)
         await notify_admins(bot, cfg, "👤 Маргарита — @Ruma7775\n\nТвоя личная клиентка продюсера (стримерша, мама двоих "
                                       "детей). В боте Нумериты за 7 дней на неё ушло $2,3 нейросети, оплат 0 ⭐ — "
@@ -1781,17 +1792,17 @@ async def run_scheduler(
             sent = await bot.send_video(admin_id, FSInputFile(path), caption=caption, width=1080, height=1080,
                                         supports_streaming=True, request_timeout=180)
             await db.kv_set("brandvideo:file_id", sent.video.file_id)  # чтобы потом выложить без пересылки
-    brand_task = asyncio.create_task(brandvideo.run_once(db, generator.api_key, send_brand_video))
+    brand_task = None if EN else asyncio.create_task(brandvideo.run_once(db, generator.api_key, send_brand_video))
     async def send_sketch(data, caption):  # проба рисованных картинок — владельцу (28.10.2026)
         for admin_id in cfg.admin_ids:
             await bot.send_photo(admin_id, BufferedInputFile(data, "numerita_sketch.jpg"), caption=caption[:1024])
-    sketch_task = asyncio.create_task(sketch.run_trial(db, generator, send_sketch))
+    sketch_task = None if EN else asyncio.create_task(sketch.run_trial(db, generator, send_sketch))
     async def send_pairstar(data, caption):  # «Звезда пары» с кадром нейросети — владельцу на одобрение (29.10.2026)
         for admin_id in cfg.admin_ids:
             await bot.send_video(admin_id, BufferedInputFile(data, "numerita_pair_star.mp4"), caption=caption[:1024],
                                  supports_streaming=True)
     from . import pairstar_ai
-    pairstar_task = asyncio.create_task(pairstar_ai.run_once(db, generator.api_key, send_pairstar))
+    pairstar_task = None if EN else asyncio.create_task(pairstar_ai.run_once(db, generator.api_key, send_pairstar))
     react_task = asyncio.create_task(tgchannel.run_backfill(db, bot, cfg.telegram_channel))  # реакции на все посты канала
     if await db.claim_slot("owner names kindness 2026-10-28"):  # владелец попросил 1000 названий в Telegram
         await send_long(bot, cfg, (Path(__file__).parent.parent / "docs/drafts/kindness-names-2026-10-28.md").read_text())
@@ -1863,9 +1874,9 @@ async def run_scheduler(
                     await venus_post(db, threads, bot, cfg)
                 except Exception:
                     log.exception("Роза Венеры не вышла")
-            try:  # сюрприз-подарок раз в 2 дня (без объявленного розыгрыша — его Threads не рекомендует)
+            try:  # сюрприз-подарок раз в 2 дня (только русский аккаунт) (без объявленного розыгрыша — его Threads не рекомендует)
                 from . import giveaway
-                if await db.claim_slot(f"gift surprise {now:%Y-%m-%d %H}"):
+                if not EN and await db.claim_slot(f"gift surprise {now:%Y-%m-%d %H}"):
                     report = await giveaway.surprise(db, threads, now)
                     if report:
                         await notify_admins(bot, cfg, report)
@@ -1873,7 +1884,7 @@ async def run_scheduler(
                 log.exception("Сюрприз-подарок не сработал")
             try:  # истории подписчиц: включаются, когда бот Нумериты принимает их (/stories.json отвечает 200)
                 from . import stories
-                if 12 <= now.hour < 21 and await db.claim_slot(f"stories {now:%Y-%m-%d %H}"):
+                if not EN and 12 <= now.hour < 21 and await db.claim_slot(f"stories {now:%Y-%m-%d %H}"):
                     batch = await stories.fetch()
                     if batch is not None:
                         await run_stories(db, threads, generator, bot, cfg, now, batch)
@@ -1886,7 +1897,7 @@ async def run_scheduler(
                 except Exception:
                     log.exception("Объяснительная от восьмёрки не вышла")
             note_hour = 13 + int(hashlib.md5(f"{now:%Y-%m-%d}".encode()).hexdigest(), 16) % 7
-            if now.hour == note_hour and await db.claim_slot(f"note {now:%Y-%m-%d}"):
+            if not EN and now.hour == note_hour and await db.claim_slot(f"note {now:%Y-%m-%d}"):
                 try:  # рукописная записка от лица числа — раз в день (формат «Жалоба от отца ученика»)
                     await note_post(db, threads, generator, bot, cfg, now)
                 except Exception:
@@ -1921,7 +1932,8 @@ async def run_scheduler(
                 except Exception:
                     log.exception("Day review failed")
             try:
-                await instagram.tick(db, threads, cfg.timezone, lambda text: notify_admins(bot, cfg, text))
+                if not EN:
+                    await instagram.tick(db, threads, cfg.timezone, lambda text: notify_admins(bot, cfg, text))
             except Exception:
                 log.exception("Instagram tick failed")
         if plan.enabled and now.time() >= OPTIMIZE_AT and await db.claim_slot(f"optimize {now.date().isoformat()}"):

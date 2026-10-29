@@ -247,7 +247,8 @@ class Generator:
     async def _complete(self, system: str, prompt: str, max_tokens: int | None = None, _retry: bool = False,
                         kind: str = "other", model: str | None = None) -> str:
         from .honesty import apply
-        system = apply(system)
+        from .lang import public_rule
+        system = apply(system) + public_rule(kind)
         model = model or self.model
         try:
             async with httpx.AsyncClient(timeout=180) as http:

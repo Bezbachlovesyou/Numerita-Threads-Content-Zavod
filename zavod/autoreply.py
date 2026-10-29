@@ -135,6 +135,11 @@ CRISIS_COMMENT = re.compile(
     r"навредить\s+себе|порезать\s+себя|резать\s+себя|лучше\s+бы\s+меня\s+не\s+было", re.IGNORECASE)
 CRISIS_REPLY = ("Слышу тебя 🤍 Если сейчас очень тяжело, позвони близкому человеку или на бесплатную линию "
                 "8-800-2000-122 — там выслушают и помогут.")
+if __import__("zavod.lang", fromlist=["is_en"]).is_en():
+    CRISIS_REPLY = ("I hear you 🤍 If things feel very heavy right now, please reach out to someone close or a local "
+                    "crisis line — in the US you can call or text 988, they listen and help.")
+    CRISIS_COMMENT = re.compile(CRISIS_COMMENT.pattern + r"|suicid|kill myself|end my life|don'?t want to live|"
+                                r"hurt myself|self[- ]harm", re.IGNORECASE)
 
 
 def risky_reply(text: str) -> bool:
