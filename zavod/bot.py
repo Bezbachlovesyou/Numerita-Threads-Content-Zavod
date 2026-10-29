@@ -1521,7 +1521,8 @@ ADDON_HELP = (
 # Неудачные посты, которые владелец попросил снять (24.10.2026: «позорит красоту системы выкладки»).
 UNPUBLISH = ["Колесо крутится, пока ты раздумываешь",
              "Признаюсь: последние дни я отвечала вам как автоответчик ЖЭКа",  # 28.10: извинение не нужно
-             "Протокол проверки бизнес-идеи"]  # 28.10: «тематика мимо» — без нумерологии
+             "Протокол проверки бизнес-идеи",  # 28.10: «тематика мимо» — без нумерологии
+             "Две окружности встречаются — и в пересечении рождается третья энергия"]  # 29.10: «дешёвое видео»
 
 
 async def unpublish_matching(db: Storage, threads: ThreadsClient, fragments: list[str]) -> list[str]:
@@ -1716,11 +1717,7 @@ async def run_scheduler(
                     await venus_post(db, threads, bot, cfg)
                 except Exception:
                     log.exception("Роза Венеры не вышла")
-            if await db.claim_slot("pair star 2026-10-29"):  # слово владельца: «сделай пост сейчас»
-                try:
-                    await pair_star_post(db, threads, bot, cfg)
-                except Exception:
-                    log.exception("Звезда пары не вышла")
+            await db.claim_slot("pair star 2026-10-29")  # 29.10: владелец отклонил видео — не публиковать (новое — по одобрению)
             if await db.claim_slot("grid tonight 2026-10-28"):  # слово владельца: «сегодня перед сном — один пост»
                 try:
                     await grid_tonight(db, threads, bot, cfg)
