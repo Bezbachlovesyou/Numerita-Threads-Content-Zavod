@@ -7,7 +7,7 @@ from . import performance, reply_cooldown
 from .threads_api import ThreadsError
 
 # Слово владельца 29.10.2026: пост без лайков и комментариев через 6 ч — «мертвечина», снимаем (было 24 ч).
-MIN_AGE = timedelta(hours=6)
+MIN_AGE = timedelta(hours=4 if __import__('zavod.lang', fromlist=['is_en']).is_en() else 6)  # EN: 4 ч (слово владельца 30.10.2026)
 # Слово владельца 29.10.2026: «старые посты без лайков и комментариев — мертвечина, удали». Смотрим 60 дней назад,
 # до 10 удалений в сутки, не чаще раза в 20 минут; аналитика Zernio по старым постам обновляется реже — свежесть 6 ч.
 LOOKBACK = timedelta(days=60)

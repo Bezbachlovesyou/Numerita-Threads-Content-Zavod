@@ -79,8 +79,11 @@ async def surprise(db, threads, now: datetime) -> str | None:
         nonce = secrets.token_hex(3)
     st["nonces"] = sorted(used | {nonce})[-2000:]
     code = gift_code(funnel.KEY, nonce)
-    text = ("А теперь сюрприз 🎁 Сегодня именно твоя дата попалась мне на глаза — дарю полный разбор и совместимость "
-            f"пары. Ссылка личная и работает один раз:\n{BOT_LINK}{code}")
+    from .lang import is_en
+    text = (("A little surprise 🎁 Your birthday caught my eye today — the full reading and couple compatibility are "
+             f"on me. The link is personal and works once:\n{BOT_LINK}{code}") if is_en() else
+            ("А теперь сюрприз 🎁 Сегодня именно твоя дата попалась мне на глаза — дарю полный разбор и совместимость "
+             f"пары. Ссылка личная и работает один раз:\n{BOT_LINK}{code}"))
     await threads.reply(post.threads_id, winner["comment_id"], text)
     st["winners"] = sorted(winners | {(winner.get("author") or "").lower()})[-500:]
     await db.kv_set("giveaway:state", json.dumps(st))

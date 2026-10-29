@@ -1973,7 +1973,7 @@ async def run_scheduler(
                     log.exception("Роза Венеры не вышла")
             try:  # сюрприз-подарок раз в 2 дня (только русский аккаунт) (без объявленного розыгрыша — его Threads не рекомендует)
                 from . import giveaway
-                if not EN and await db.claim_slot(f"gift surprise {now:%Y-%m-%d %H}"):
+                if await db.claim_slot(f"gift surprise {now:%Y-%m-%d %H}"):
                     report = await giveaway.surprise(db, threads, now)
                     if report:
                         await notify_admins(bot, cfg, report)
@@ -2004,6 +2004,12 @@ async def run_scheduler(
                     await notify_admins(bot, cfg, await en_connect_text(threads))
                 except Exception:
                     log.exception("Ссылка подключения английского Threads не отправлена")
+            if (not EN and now >= datetime(2026, 10, 30, 8, 30, tzinfo=now.tzinfo)
+                    and await db.claim_slot("principles digest 2026-10-30")):  # владелец просил утром выжимку принципов
+                try:
+                    await send_long(bot, cfg, (Path(__file__).parent.parent / "docs/principles-2026-10-30.md").read_text())
+                except Exception:
+                    log.exception("Выжимка принципов не отправлена")
             if await db.claim_slot("baza6 2026-10-29"):  # слово владельца: «подтверждаю, делай огонь»
                 try:
                     await baza6_post(db, threads, generator, bot, cfg)
