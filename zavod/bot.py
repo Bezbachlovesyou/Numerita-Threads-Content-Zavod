@@ -102,7 +102,8 @@ async def answer_owner(question: str, db: Storage, generator: Generator) -> str:
 EN_PRECLAIM = ["owner note margarita", "owner names kindness 2026-10-28", "toc summary", "cost report 2026-10-24",
                "venus rose 2026-10-29", "note8 2026-10-29", "baza6 2026-10-29", "pair star 2026-10-29",
                "grid tonight 2026-10-28", "heart grid now 2026-10-28", "day review 2026-10-28", "ig first post",
-               "priority:neural-back-2026-10-28", "grid dna first 2026-10-28", "grid new shapes first 2026-10-28"]
+               "priority:neural-back-2026-10-28", "grid dna first 2026-10-28", "grid new shapes first 2026-10-28",
+               "funnel key check 2026-10-29", "en connect link 2026-10-30"]
 
 
 HELP = (
@@ -1812,7 +1813,8 @@ async def run_scheduler(
 ) -> None:
     """Раз в 30 секунд: посты по кнопкам «через час», автопостинг; раз в 5 минут — ответы на комментарии."""
     try:
-        await zero_research.send_admin_report(bot, cfg, db)
+        if not lang.is_en():  # разовый русский отчёт — только русскому заводу
+            await zero_research.send_admin_report(bot, cfg, db)
     except Exception:
         log.exception("Owner zero research report was not confirmed; no blind resend")
     rng = random.Random()
