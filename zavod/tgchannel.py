@@ -110,6 +110,24 @@ async def send(bot, channel: str, post, text: str):
     return msg
 
 
+async def drop(db, bot, channel: str, post_id: int) -> None:
+    """Однократно убирает из канала пост вместе с опросом под ним (опрос уходит следующим сообщением)."""
+    key = f"tgch:dropped:{post_id}"
+    if not channel or await db.kv_get(key):
+        return
+    await db.kv_set(key, "done")
+    post = await db.get(post_id)
+    if not post or not str(post.tg_message_id or "").isdigit():
+        return
+    from aiogram.exceptions import TelegramAPIError
+    ids = [int(post.tg_message_id)] + ([int(post.tg_message_id) + 1] if poll_options(post.text) else [])
+    for message_id in ids:
+        try:
+            await bot.delete_message(channel, message_id)
+        except TelegramAPIError as e:
+            log.warning("Сообщение %s поста #%s из канала не удалено: %s", message_id, post_id, e)
+
+
 async def restyle(db, bot, channel: str, post_id: int) -> None:
     """Однократно: пост, вышедший голым текстом с длинной ссылкой, — заново в новом виде."""
     key = f"tgch:restyled:{post_id}"
@@ -206,9 +224,14 @@ async def pick(db, now: datetime):
     return best
 
 
+# Слово владельца 29.10.2026: «в канале 15 человек — пока такие посты туда не нужно». Переносы из Threads на паузе,
+# пока владелец не попросит вернуть (или пока не появится формат, который цепляет именно в Telegram).
+REPOSTS_PAUSED = True
+
+
 async def tick(db, bot, channel: str, tz, rng: random.Random | None = None) -> str | None:
     """Раз в проход планировщика: если пора — переносит в канал лучший пост. Возвращает ошибку для владельца."""
-    if not channel:
+    if not channel or REPOSTS_PAUSED:
         return None
     now = datetime.now(tz)
     if now.hour not in HOURS:

@@ -1595,6 +1595,7 @@ async def run_scheduler(
                 await tgchannel.publish_sent_jokes(db, bot, cfg.telegram_channel, cfg.admin_ids)
                 await tgchannel.fix_grid_post(db, bot, cfg.telegram_channel, 64)  # матрица без картинки, 28.10
                 await tgchannel.restyle(db, bot, cfg.telegram_channel, 92)  # «убого выглядит», 29.10 — в новом виде
+                await tgchannel.drop(db, bot, cfg.telegram_channel, 92)  # «скучный, не цепляет — удали», 29.10
                 problem = await tgchannel.tick(db, bot, cfg.telegram_channel, cfg.timezone)
                 if problem and await db.claim_slot(f"tgch error {now.date().isoformat()}"):
                     await notify_admins(bot, cfg, "⚠️ " + problem)

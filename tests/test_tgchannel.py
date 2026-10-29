@@ -16,6 +16,9 @@ TZ = ZoneInfo("Europe/Moscow")
 
 class ChannelTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
+        patcher = patch.object(tgchannel, 'REPOSTS_PAUSED', False)  # механику переносов проверяем и на паузе
+        patcher.start()
+        self.addCleanup(patcher.stop)
         self.temp = tempfile.TemporaryDirectory()
         dsn = os.getenv('DELIVERY_TEST_DSN')
         self.db = PgStorage(dsn) if dsn else Storage(self.temp.name + '/t.sqlite')
@@ -176,3 +179,20 @@ class ChannelPoll(unittest.TestCase):
         text = "Зачем Вселенная свела?\n\n2, 11, 20, 29: чтобы научиться «нет».\n8, 17, 26: скучаю.\n9, 18, 27: помогать."
         self.assertEqual(tgchannel.poll_options(text), ["2, 11, 20, 29", "8, 17, 26", "9, 18, 27"])
         self.assertEqual(tgchannel.poll_options("Один абзац без групп. 6, 15, 24 — шестёрки."), [])
+
+
+class ChannelDrop(unittest.IsolatedAsyncioTestCase):
+    async def test_drop_removes_post_and_poll_once_and_paused_tick_is_silent(self):
+        import tempfile
+        from zavod.storage import Storage
+        with tempfile.TemporaryDirectory() as d:
+            db = Storage(d + "/t.db")
+            await db.init()
+            pid = await db.add_draft("x", "Зачем?\n2, 11, 20: а\n8, 17, 26: б\n9, 18, 27: в", "text_why_met")
+            await db.set_tg_message_id(pid, "120")
+            bot = SimpleNamespace(delete_message=AsyncMock(), send_photo=AsyncMock(), send_message=AsyncMock())
+            await tgchannel.drop(db, bot, "@ch", pid)
+            await tgchannel.drop(db, bot, "@ch", pid)
+            self.assertEqual([c.args[1] for c in bot.delete_message.await_args_list], [120, 121])
+            self.assertIsNone(await tgchannel.tick(db, bot, "@ch", TZ))
+            bot.send_photo.assert_not_awaited()
