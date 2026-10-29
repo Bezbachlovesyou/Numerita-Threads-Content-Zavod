@@ -47,6 +47,19 @@ async def main() -> None:
     threads = ThreadsClient(cfg.zernio_api_key, cfg.zernio_account_id, storage) if cfg.threads_enabled else None
     if threads is None:
         logging.warning("Zernio не настроен (ZERNIO_API_KEY, ZERNIO_ACCOUNT_ID): посты будут только сохраняться.")
+    if threads is not None and is_en():  # защита: английский завод не должен писать в русский аккаунт
+        own = {h.strip().lower().lstrip("@") for h in os.getenv("OWN_HANDLE", "").split(",") if h.strip()}
+        try:
+            _, payload = await threads._request("GET", "/accounts")
+            acc = next((a for a in payload.get("accounts", []) if a.get("_id") == cfg.zernio_account_id), {})
+            user = (acc.get("username") or "").lower().lstrip("@")
+        except Exception as e:  # не смогли проверить — не публикуем вслепую
+            user = ""
+            logging.warning("Не удалось проверить аккаунт Zernio: %s", e)
+        if not user or user == "numerita.ai" or not own or user not in own:
+            logging.error("FACTORY_LANG=en, но ZERNIO_ACCOUNT_ID ведёт на «%s» (OWN_HANDLE=%s) — Threads отключён, "
+                          "чтобы английские посты не ушли в русский аккаунт.", user or "?", ",".join(own) or "не задан")
+            threads = None
 
     bot = Bot(cfg.bot_token)
     dp = Dispatcher()
@@ -54,9 +67,9 @@ async def main() -> None:
     dp["generator"] = generator
     dp["threads"] = threads
     plan = ContentPlan(load_rubrics(PROMPTS / "content_plan.md"), enabled=cfg.autopost)
-    plan.bank = load_bank(PROMPTS / "jackpot.md")
+    plan.bank = [] if is_en() else load_bank(PROMPTS / "jackpot.md")
     await apply_state(storage, plan, datetime.now(cfg.timezone))
-    added = await import_script(storage, load_script(PROMPTS / "threads_script.md"))
+    added = 0 if is_en() else await import_script(storage, load_script(PROMPTS / "threads_script.md"))
     if added:
         logging.info("Готовых текстов поставлено в очередь: %s", added)
     dp.include_router(create_router(cfg, plan))
