@@ -57,6 +57,12 @@ async def account_id(db, client, handle: str | None = None) -> str | None:
             if ident:
                 await db.kv_set(f"ig:acc:{handle}", ident)
                 return ident
+    insta = [a for a in accounts if (a.get("platform") or "").lower() == "instagram"]
+    if len(insta) == 1 and not (insta[0].get("username") or insta[0].get("name")):  # ник не пришёл, аккаунт один
+        ident = insta[0].get("_id") or insta[0].get("id") or insta[0].get("accountId")
+        if ident:
+            await db.kv_set(f"ig:acc:{handle}", ident)
+            return ident
     return None
 
 
