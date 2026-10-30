@@ -1906,8 +1906,30 @@ async def autopost_tick(
         await db.kv_set("next_post_at", (last + gap).isoformat())
         return
     ok = await post_next(bot, cfg, db, threads, generator, plan, now, rng)
+    if ok and now.hour in autopost.PRIME_HOURS:  # 30.10 владелец не видел активности — квитанция каждого поста одной строкой
+        asyncio.create_task(post_receipt(bot, cfg, db, threads, now))
     delay = plan.next_gap(now, rng) if ok else RETRY_AFTER_ERROR
     await db.kv_set("next_post_at", (now + delay).isoformat())
+
+
+async def post_receipt(bot: Bot, cfg: Config, db: Storage, threads: ThreadsClient, since: datetime) -> None:
+    """Одна строка владельцу: пост вышел (ссылка Threads) или что ответил Threads."""
+    try:
+        posts = await db.recent_published(since - timedelta(minutes=2))
+        if not posts:
+            return
+        post = posts[0]
+        status, link, error = "unknown", None, None
+        for _ in range(10):
+            await asyncio.sleep(30)
+            status, link, error = await threads.post_status(post.threads_id)
+            if status in ("published", "failed", "partial"):
+                break
+        tag = "[EN] " if lang.is_en() else ""
+        await notify_admins(bot, cfg, f"{tag}✅ {datetime.now(cfg.timezone):%H:%M} пост: {link}" if status == "published"
+                            else f"{tag}⚠️ Пост #{post.id}: Threads ответил «{status}» {error or ''}")
+    except Exception:
+        log.exception("Квитанция поста не получена")
 
 
 async def import_script(db: Storage, script: list[ScriptedPost]) -> int:
@@ -2299,6 +2321,15 @@ async def run_scheduler(
                     await notify_admins(bot, cfg, await en_connect_text(threads))
                 except Exception:
                     log.exception("Ссылка подключения английского Threads не отправлена")
+            if await db.claim_slot("post now 2026-10-30 19:30"):  # владелец: «19:25, а постов не вижу» — пост сразу
+                await db.kv_set("next_post_at", datetime.now(cfg.timezone).isoformat())
+            if now.hour in autopost.PRIME_HOURS and threads is not None:  # самопроверка: посты не стоят
+                last = await db.last_published_at()
+                if (last is None or now - last > timedelta(minutes=100)) and await db.claim_slot(f"stall {now:%Y-%m-%d %H}"):
+                    nxt = await db.kv_get("next_post_at") or "?"
+                    await notify_admins(bot, cfg, f"{'[EN] ' if EN else ''}⚠️ Посты стоят: последний "
+                                                  f"{last.astimezone(cfg.timezone):%H:%M}, следующий по плану {nxt[11:16]}"
+                                        if last else "⚠️ Посты стоят: опубликованных нет")
             if funnel.KEY and await db.claim_slot("funnel fixed report 2026-10-30"):  # счёт меток починен — настоящие цифры
                 with contextlib.suppress(Exception):
                     await notify_admins(bot, cfg, "🔧 Нашла, почему обход видел «0 переходов»: метки считались не в том виде. "
