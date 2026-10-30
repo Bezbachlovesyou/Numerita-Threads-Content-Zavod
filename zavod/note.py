@@ -132,15 +132,55 @@ def _bend(img: Image.Image, rng: random.Random) -> Image.Image:
     return img.transform((W, H), Image.MESH, mesh, Image.BICUBIC, fillcolor=(40, 38, 46))
 
 
-def render(genre: str, sender: str, body: str, seed: str = "note", digit: int | None = None) -> bytes:
+def _on_desk(page: Image.Image, rng: random.Random) -> Image.Image:
+    """Лист лежит на тёмном столе и снят телефоном сверху под углом: перспектива, мягкая тень, свет из окна."""
+    desk = Image.new("RGB", (W, H), (34, 30, 30))
+    dd = ImageDraw.Draw(desk)
+    for y in range(H):  # древесина: тёмные продольные волокна
+        c = 30 + int(8 * math.sin(y / 23.0 + rng.random()) + rng.randint(-3, 3))
+        dd.line((0, y, W, y), fill=(c + 6, c, c - 2))
+    desk = desk.filter(ImageFilter.GaussianBlur(1.2))
+    sw, sh = int(W * 0.92), int(H * 0.92)
+    small = page.resize((sw, sh), Image.LANCZOS).convert("RGBA")
+    # перспектива: верх листа дальше от камеры и чуть повёрнут
+    dx = rng.uniform(-20, 20)
+    corners = [(170 + dx, 230), (W - 70, 120 + dx), (W + 60, H - 70), (40, H + 40)]  # лист повёрнут, низ уходит за кадр
+    from PIL import Image as _I
+    def coeffs(src, dst):
+        import numpy as np
+        m = []
+        for (x, y), (u, v) in zip(dst, src):
+            m.append([x, y, 1, 0, 0, 0, -u * x, -u * y])
+            m.append([0, 0, 0, x, y, 1, -v * x, -v * y])
+        a = np.array(m, dtype=float)
+        b = np.array([c for p in src for c in p], dtype=float)
+        return np.linalg.solve(a, b).tolist()
+    src = [(0, 0), (sw, 0), (sw, sh), (0, sh)]
+    warped = small.transform((W, H), _I.PERSPECTIVE, coeffs(src, corners), _I.BICUBIC)
+    shadow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    ImageDraw.Draw(shadow).polygon([(x + 18, y + 22) for x, y in corners], fill=(0, 0, 0, 150))
+    shadow = shadow.filter(ImageFilter.GaussianBlur(26))
+    out = Image.alpha_composite(Image.alpha_composite(desk.convert("RGBA"), shadow), warped)
+    light = Image.new("L", (W, H), 0)  # свет из окна слева сверху
+    ImageDraw.Draw(light).ellipse((-W * 0.6, -H * 0.5, W * 0.9, H * 0.9), fill=60)
+    glow = Image.new("RGBA", (W, H), (255, 250, 240, 0))
+    glow.putalpha(light.filter(ImageFilter.GaussianBlur(160)))
+    return Image.alpha_composite(out, glow).convert("RGB")
+
+
+def render(genre: str, sender: str, body: str, seed: str = "note", digit: int | None = None,
+           style: str = "notebook") -> bytes:
+    """style: notebook — тетрадный лист в клетку; photo — белый лист, сфотографированный на столе (по образцу владельца
+    30.10.2026: «как человек реально пишет» — синяя ручка, лист под углом, тень, тёмный стол)."""
     rng = random.Random(seed)
-    paper = Image.new("RGB", (W, H), (246, 245, 240))
+    paper = Image.new("RGB", (W, H), (246, 245, 240) if style != "photo" else (247, 247, 249))
     d = ImageDraw.Draw(paper)
-    for x in range(0, W, 44):  # клетка тетради
-        d.line((x, 0, x, H), fill=(200, 212, 232), width=1)
-    for y in range(0, H, 44):
-        d.line((0, y, W, y), fill=(200, 212, 232), width=1)
-    d.line((96, 0, 96, H), fill=(228, 118, 118), width=2)  # поля
+    if style != "photo":
+        for x in range(0, W, 44):  # клетка тетради
+            d.line((x, 0, x, H), fill=(200, 212, 232), width=1)
+        for y in range(0, H, 44):
+            d.line((0, y, W, y), fill=(200, 212, 232), width=1)
+        d.line((96, 0, 96, H), fill=(228, 118, 118), width=2)  # поля
     for _ in range(9000):  # фактура бумаги
         x, y = rng.randrange(W), rng.randrange(H)
         c = rng.randint(222, 240)
@@ -204,6 +244,8 @@ def render(genre: str, sender: str, body: str, seed: str = "note", digit: int | 
     ink = ink.filter(ImageFilter.GaussianBlur(0.55))
     page = Image.alpha_composite(paper.convert("RGBA"), ink).convert("RGB")
     shade = _crumple(rng)  # мятость: умножаем свет/тень на лист
+    if style == "photo":  # белый лист со стола почти гладкий — мятость едва заметна
+        shade = shade.point(lambda v: int(128 + (v - 128) * 0.35))
     light = Image.merge("RGB", [shade.point(lambda v: min(255, int(v * 1.95)))] * 3)
     from PIL import ImageChops
     page = ImageChops.multiply(page, light)
@@ -214,6 +256,8 @@ def render(genre: str, sender: str, body: str, seed: str = "note", digit: int | 
     vignette = Image.new("RGBA", (W, H), (50, 48, 60, 0))
     vignette.putalpha(vig.filter(ImageFilter.GaussianBlur(170)).point(lambda v: int((255 - v) * 0.45)))
     out = Image.alpha_composite(page.convert("RGBA"), vignette).convert("RGB")
+    if style == "photo":
+        out = _on_desk(out, rng)
     buf = io.BytesIO()
     out.save(buf, "JPEG", quality=90)
     return buf.getvalue()

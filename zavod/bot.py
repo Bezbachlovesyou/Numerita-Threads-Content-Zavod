@@ -427,8 +427,10 @@ async def note_post(db: Storage, threads: ThreadsClient, generator: Generator, b
     caption = await antidupe_gate(db, generator, data["post"].strip(), now)
     if not caption:
         return
+    style = "notebook" if await db.kv_get("note:style") == "photo" else "photo"  # через раз — тетрадь и фото листа
+    await db.kv_set("note:style", style)
     image = await asyncio.to_thread(note.render, data["genre"], data["from"], data["body"], f"{now:%Y%m%d}{digit}",
-                                    digit)
+                                    digit, style)
     url = await threads.upload_image(image, "numerita_note.jpg", "image/jpeg")
     post_id = await db.add_draft(f"Записка от числа {digit}", caption, "text_note")
     remote = await threads.publish_text(caption, topic_tag_for("text_note"), None, [url], media_kind="note_image")
