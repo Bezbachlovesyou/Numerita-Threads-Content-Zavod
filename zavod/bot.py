@@ -1884,8 +1884,10 @@ UNPUBLISH = ["Колесо крутится, пока ты раздумывае�
              "Признаюсь: последние дни я отвечала вам как автоответчик ЖЭКа",  # 28.10: извинение не нужно
              "Протокол проверки бизнес-идеи",  # 28.10: «тематика мимо» — без нумерологии
              "Две окружности встречаются — и в пересечении рождается третья энергия",  # 29.10: «дешёвое видео»
-             "Тогда зачем протокол на 14 страниц"]  # 29.10: «Нумерологическая сценка» — 0 реакций за 7 ч
-UNPUBLISH_EN = ["number · issue 2"]  # 30.10: Zernio ответил «снят» в 12:23, а пост висел в 12:53 — снимаем снова  # 30.10: первый «Guess the number» вышел ночью — снять и повторить днём (см. post_next)
+             "Тогда зачем протокол на 14 страниц",
+             # 30.10: приветственные ролики вышли приплюснутыми — снять, пока не исправлены («никуда не выкладывай»)
+             "Кто охраняет твою судьбу?\n\nЯ — Нумерита", "Твой день рождения — не случайность. Это код."]  # 29.10: «Нумерологическая сценка» — 0 реакций за 7 ч
+UNPUBLISH_EN = ["number · issue 2", "Who guards your fate?\n\nI'm Numerita", "Your birthday isn't random. It's a code."]  # 30.10: Zernio ответил «снят» в 12:23, а пост висел в 12:53 — снимаем снова  # 30.10: первый «Guess the number» вышел ночью — снять и повторить днём (см. post_next)
 
 
 async def unpublish_matching(db: Storage, threads: ThreadsClient, fragments: list[str]) -> list[str]:
@@ -1925,7 +1927,7 @@ async def unpublish_matching(db: Storage, threads: ThreadsClient, fragments: lis
             report.append(f"🗑 Снят из Threads: «{fragment}»")
         elif local or remote_ids:
             report.append(f"⚠️ Не получилось снять «{fragment}» — попробую снова через 10 минут.")
-        elif fragment in UNPUBLISH_EN:
+        elif fragment == UNPUBLISH_EN[0]:
             report.append(f"⚠️ Не нашла пост «{fragment}» ни в базе, ни в Zernio — ищу снова через 10 минут.")
     return report
 

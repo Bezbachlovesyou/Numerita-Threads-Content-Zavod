@@ -405,8 +405,13 @@ async def _public_kv(db, key: str) -> str | None:
         return await db.kv_get(key)
 
 
+PUBLISH = False  # слово владельца 30.10.2026: «никуда не выкладываешь», пока ролики не станут правильными — включает он
+
+
 async def publish_due(db, threads, now, lang: str, publish, notify) -> None:
     """Выкладывает следующую готовую версию своего языка: publish(key, url) -> строка-квитанция."""
+    if not PUBLISH:
+        return
     urls = json.loads((await (_public_kv(db, "welcome:urls") if lang == "en" else db.kv_get("welcome:urls"))) or "{}")
     last = await db.kv_get("welcome:last_post")
     if last and (now - datetime.fromisoformat(last)).total_seconds() < GAP_HOURS * 3600:

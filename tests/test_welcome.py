@@ -76,6 +76,7 @@ class WelcomeBudget(unittest.TestCase):
 
             async def note(t):
                 pass
+            welcome.PUBLISH = True
             await welcome.publish_due(self.db, None, now, "ru", pub, note)
             await welcome.publish_due(self.db, None, now + timedelta(hours=1), "ru", pub, note)
             await welcome.publish_due(self.db, None, now + timedelta(hours=3), "ru", pub, note)
