@@ -1,1 +1,16 @@
-[]
+[
+ {
+  "id": "secrets-ru-2026-10-30",
+  "account": "ru",
+  "action": "post",
+  "rubric": "text_secrets",
+  "text": "Что скрывают ваши любимки 🤫\n\n1, 10, 19, 28 — ревнуют молча. Но гордо.\n2, 11, 20, 29 — обиделись вчера. Узнаете через неделю.\n3, 12, 21, 30 — флиртуют со всеми. Любят вас (наверное).\n4, 13, 22, 31 — у них план на вашу жизнь. В таблице.\n5, 14, 23 — купили билеты. Сказать забыли.\n6, 15, 24 — тайно копят на общий дом. И на свечи.\n7, 16, 25 — знают о вас всё. Молчат.\n8, 17, 26 — за вас порвут любого. Потом выставят счёт.\n9, 18, 27 — спасают мир. Но сначала вас.\n\nЧто совпало? Пишите дату любимого 👇"
+ },
+ {
+  "id": "secrets-en-2026-10-30",
+  "account": "en",
+  "action": "post",
+  "rubric": "text_secrets",
+  "text": "What your crush is hiding 🤫\n\n1, 10, 19, 28 — jealous. Silently.\n2, 11, 20, 29 — hurt since Tuesday. News next week.\n3, 12, 21, 30 — flirt with all. Love only you (probably).\n4, 13, 22, 31 — planned your life. In a spreadsheet.\n5, 14, 23 — booked the trip. Forgot to tell you.\n6, 15, 24 — saving for your future home. And candles.\n7, 16, 25 — know everything. Say nothing.\n8, 17, 26 — will fight for you. Then invoice you.\n9, 18, 27 — saving the world. You first.\n\nWhat fits? Drop their birthday 👇"
+ }
+]
