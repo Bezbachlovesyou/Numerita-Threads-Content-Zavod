@@ -88,6 +88,7 @@ CLIPS = {
         # Слово владельца 30.10.2026: улыбка в конце ролика «не ангельская» — берём только первые 6 с и растягиваем
         # плавным замедлением на всю длину (без новой генерации).
         "keep": 6.0,
+        "shimmer": True,
         "lines": {
             "ru": [(0, 3, "Кто охраняет твою судьбу?"), (3, 7, "Нумерита — ангел-хранитель чисел и звёзд."),
                    (7, 10, "У каждого есть число, которое ведёт. Узнаешь своё?")],
@@ -353,7 +354,7 @@ def check(rows, durations) -> None:
 
 
 def assemble(video: bytes, lines: list, voices: list[bytes], seconds: int, workdir: Path, name: str,
-             keep: float | None = None) -> Path:
+             keep: float | None = None, shimmer: bool = False) -> Path:
     src = workdir / f"{name}_src.mp4"
     src.write_bytes(video)
     durations = [len(v) / (RATE * 2) for v in voices]
@@ -363,7 +364,15 @@ def assemble(video: bytes, lines: list, voices: list[bytes], seconds: int, workd
     # плавно замедляется на всю длину ролика (движение до последней секунды).
     clip_len = keep or seconds
     vf = [f"[0:v]trim=0:{clip_len},setpts=(PTS-STARTPTS)*{(total + 0.3) / clip_len:.4f},"
-          f"scale={W}:{H}:flags=lanczos:force_original_aspect_ratio=increase,crop={W}:{H},setsar=1,fps=24[b0]"]
+          f"scale={W}:{H}:flags=lanczos:force_original_aspect_ratio=increase,crop={W}:{H},setsar=1,fps=24"
+          + ("[raw]" if shimmer else "[b0]")]
+    if shimmer:  # узнаваемый образ Нумериты: по золотым цифрам нимба, крыльев и платья бегут волны света (30.10, $0)
+        mask = "gt(r(X,Y),185)*gt(g(X,Y),135)*lt(b(X,Y),175)"
+        band = "exp(-pow(mod(X+0.6*Y-T*300,560)-280,2)/1600)"
+        vf.append(f"[raw]split[base][hi];[hi]scale={W // 2}:{H // 2},format=gbrp,"
+                  f"geq=r='if({mask},255*{band},0)':g='if({mask},228*{band},0)':b='if({mask},160*{band},0)',"
+                  f"gblur=sigma=1.5,scale={W}:{H},format=gbrp[glow];[base]format=gbrp[bb];"
+                  f"[bb][glow]blend=all_mode=screen,format=yuv420p[b0]")
     af = []
     n = 2
     for i, ((_, _, text), (a, b, _)) in enumerate(zip(lines, rows)):
@@ -441,7 +450,7 @@ async def build(db, api_key: str, first_frame_url: str = "") -> dict[str, Path]:
                     await db.kv_set(f"welcome:voice3:{key}:{lang}:{hashlib.sha1(text.encode()).hexdigest()[:10]}", base64.b64encode(pcm).decode())
                     voices.append(pcm)
                 path = await asyncio.to_thread(
-                    assemble, video, spec["lines"][lang], voices, spec["seconds"], workdir, f"{key}_{lang}", spec.get("keep"))
+                    assemble, video, spec["lines"][lang], voices, spec["seconds"], workdir, f"{key}_{lang}", spec.get("keep"), spec.get("shimmer", False))
                 problem = await asyncio.to_thread(hear, path, lang, spec["say"][lang])
                 if problem:  # проверка слухом не прошла — фразы этой версии переозвучим при следующей попытке
                     for text in spec["say"][lang]:
@@ -489,7 +498,7 @@ async def publish_due(db, threads, now, lang: str, publish, notify) -> None:
 async def run_build(db, api_key: str, threads, send_video, notify) -> None:
     """Русский завод: один раз снять и собрать, загрузить 4 версии в Zernio, отправить владельцу."""
     global BUSY
-    if await db.kv_get("welcome:build") == "done13" or BUSY:
+    if await db.kv_get("welcome:build") == "done14" or BUSY:
         return
     BUSY = True
     try:
@@ -505,7 +514,7 @@ async def run_build(db, api_key: str, threads, send_video, notify) -> None:
         urls[name] = await threads.upload_image(data, f"numerita_{name}.mp4", "video/mp4")
         await send_video(data, name)
     await db.kv_set("welcome:urls", json.dumps(urls))
-    await db.kv_set("welcome:build", "done13")
+    await db.kv_set("welcome:build", "done14")
     missing = [k for k in CLIPS if f"{k}_ru" not in paths]
     if await db.kv_get("welcome:job:angel"):  # первая версия ангела без нашего лица — не используется
         missing.append("(первый «Ангел» без лица Нумериты оплачен, но не используется)")
