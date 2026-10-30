@@ -764,11 +764,8 @@ async def confirm_grid_videos(db: Storage, threads: ThreadsClient, bot: Bot, cfg
             await db.kv_set("gridvideo:fails", str(fails))
             if fails >= 2:
                 await db.kv_set("gridvideo:broken", error or status)
-            card["anim"] = False
-            retry = await db.add_draft(post.topic + ":image", post.text, "grid", None, json.dumps(card, ensure_ascii=False))
-            await publish(await db.get(retry), db, threads, bot, "", True)
-            await notify_admins(bot, cfg, f"⚠️ Threads не принял живую матрицу ({error or status}) — "
-                                          "выкладываю её картинкой, ссылку пришлю после подтверждения.")
+            await notify_admins(bot, cfg, f"⚠️ Threads не принял живую матрицу ({error or status}). Картинкой не "
+                                          "выкладываю (слово владельца 30.10) — разберусь с форматом видео.")
 
 
 async def ensure_grid_video(post: Post, db: Storage, threads: ThreadsClient) -> str | None:
@@ -843,6 +840,8 @@ async def publish(
             video_url = grid_video or video_url
             image_urls = await ensure_images(post, db, threads) if not video_url and (
                 (cards and not text_mode.enabled()) or grid_exception) else []
+            if grid_exception and not grid_video and post.rubric == "grid" and (json.loads(post.card or "{}") or {}).get("anim"):
+                raise ThreadsError("Живая матрица не собралась — картинкой не выпускаю (слово владельца 30.10).")
             if grid_exception and not grid_video and len(image_urls)!=1:
                 raise ThreadsError('Матрица не загружена; головоломка без изображения не публикуется.')
             text, first_comment = (
@@ -1532,10 +1531,11 @@ async def post_next(
     en_grid_first = lang.is_en() and not await db.kv_get("en:first_grid")  # слово владельца: спираль — первой
     # Слово владельца 30.10.2026: «Guess the number · issue 2» (вышел ночью, без реакций) снять и повторить днём —
     # только после подтверждённого снятия и в 16–22 по Москве (утро США, день Британии); номер выпуска — заново 1.
-    if (lang.is_en() and not en_grid_first and 16 <= now.hour < 22 and not await db.kv_get("en:regrid")
-            and await db.kv_get(f"unpub:{UNPUBLISH_EN[0][:40]}") == "done"):
+    # 30.10, 18:00: выпуск 1 вышел картинкой — владелец: «только видео». Снимаем его и перевыпускаем живым видео.
+    if (lang.is_en() and not en_grid_first and 16 <= now.hour < 23 and not await db.kv_get("en:regrid2")
+            and await db.kv_get(f"unpub:{UNPUBLISH_EN[3][:40]}") == "done"):
         en_grid_first = True
-        await db.kv_set("en:regrid", "1")
+        await db.kv_set("en:regrid2", "1")
         await db.kv_set("grid:issue", "0")
         await db.kv_set("grid:last_style", GRID_STYLES[GRID_STYLES.index("spiral") - 1])
     if en_grid_first:
@@ -1613,8 +1613,8 @@ async def post_next(
             # Формы чередуются по кругу, чтобы матрица не приедалась (слово владельца 28.10.2026).
             last = await db.kv_get("grid:last_style") or "classic"
             shape = GRID_STYLES[(GRID_STYLES.index(last) + 1) % len(GRID_STYLES)] if last in GRID_STYLES else "spiral"
-            if lang.is_en() and shape == "classic":  # классическая сетка с русскими надписями — не для английского
-                shape = "spiral"
+            if shape == "classic":  # 30.10 владелец: головоломки — только живым видео; сетка 12×14 не анимируется
+                shape = GRID_STYLES[(GRID_STYLES.index("classic") + 1) % len(GRID_STYLES)]
             await db.kv_set("grid:last_style", shape)
             # Пасхалка выпуска по очереди: дата выпуска или 611 (Нумеритм приходит в 6:11) — слово владельца 28.10.2026.
             egg, egg_note = ((f"{now:%d%m}", f"дата этого выпуска, {now:%d.%m}") if rng.random() < 0.5
@@ -1664,10 +1664,8 @@ async def post_next(
             card_json = grid_json(grid, grid_title, palette)
             if grid.get("egg"):
                 card_json = json.dumps({**json.loads(card_json), "egg_note": egg_note}, ensure_ascii=False)
-            if shape in SHAPES:  # через раз — живое видео с музыкой, через раз — картинка: сравниваем отклик
-                anim = (await db.kv_get("grid:last_anim")) != "1"
-                await db.kv_set("grid:last_anim", "1" if anim else "0")
-                card_json = json.dumps({**json.loads(card_json), "anim": anim}, ensure_ascii=False)
+            if shape in SHAPES:  # 30.10 слово владельца: «только видео, с мерцанием, блесками и звуком»
+                card_json = json.dumps({**json.loads(card_json), "anim": True}, ensure_ascii=False)
         elif text_mode.enabled():
             card_json = None
         elif portrait_deck is not None:
@@ -2007,7 +2005,8 @@ UNPUBLISH = ["Колесо крутится, пока ты раздумывае�
              "Тогда зачем протокол на 14 страниц",
              # 30.10: приветственные ролики вышли приплюснутыми — снять, пока не исправлены («никуда не выкладывай»)
              "Кто охраняет твою судьбу?\n\nЯ — Нумерита", "Твой день рождения — не случайность. Это код."]  # 29.10: «Нумерологическая сценка» — 0 реакций за 7 ч
-UNPUBLISH_EN = ["number · issue 2", "Who guards your fate?\n\nI'm Numerita", "Your birthday isn't random. It's a code."]  # 30.10: Zernio ответил «снят» в 12:23, а пост висел в 12:53 — снимаем снова  # 30.10: первый «Guess the number» вышел ночью — снять и повторить днём (см. post_next)
+UNPUBLISH_EN = ["number · issue 2", "Who guards your fate?\n\nI'm Numerita", "Your birthday isn't random. It's a code.",
+                "This matrix is a spiral: start at the centre"]  # 30.10 18:00: вышел картинкой — «только видео»  # 30.10: Zernio ответил «снят» в 12:23, а пост висел в 12:53 — снимаем снова  # 30.10: первый «Guess the number» вышел ночью — снять и повторить днём (см. post_next)
 
 
 async def unpublish_matching(db: Storage, threads: ThreadsClient, fragments: list[str]) -> list[str]:
@@ -2260,6 +2259,9 @@ async def run_scheduler(
                     await notify_admins(bot, cfg, await en_connect_text(threads))
                 except Exception:
                     log.exception("Ссылка подключения английского Threads не отправлена")
+            if await db.claim_slot("gridvideo unbroken 2026-10-30"):  # «только видео»: прежний запрет видео снят
+                await db.kv_set("gridvideo:broken", "")
+                await db.kv_set("gridvideo:fails", "0")
             if not EN and await db.claim_slot("angel3 owner ok 2026-10-30"):  # «да, Angel OK» — владелец в чате с Claude
                 from . import welcome
                 await db.kv_set("angel3:approved", "yes")
