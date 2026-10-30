@@ -182,6 +182,10 @@ def _star(cx, cy, r_out, r_in, rays, turn):
     return pts
 
 
+LOGO = Image.open(_P(__file__).resolve().parent.parent / "assets" / "telegram_logo.png").convert("RGBA").resize(
+    (34, 34), Image.LANCZOS)
+
+
 def _text(draw, xy, text, font, fill, alpha):
     if alpha > 0:
         draw.text(xy, text, font=font, fill=fill + (int(alpha),), anchor="mm")
@@ -411,7 +415,10 @@ def frames(a: int = 6, b: int = 8, seconds: float = 15.0, seed: str = "pairstar3
         for n, (line, start) in enumerate(lines):
             _text(od, (CX, H - 290 + n * 54), line, f_line, WHITE if n < 2 else (255, 214, 140),
                   255 * _ease((t - start) / 0.5))
-        _text(od, (CX, H - 64), "Telegram @Numeritabot", f_tag, (210, 196, 232), 200)
+        tw = od.textlength("@Numeritabot", font=f_tag)  # 30.10 владелец: значок Telegram, без слова «Telegram»
+        x0 = CX - (tw + LOGO.width + 12) / 2
+        ov.paste(LOGO, (int(x0), int(H - 64 - LOGO.height / 2)), LOGO)
+        od.text((x0 + LOGO.width + 12, H - 64), "@Numeritabot", font=f_tag, fill=(210, 196, 232, 200), anchor="lm")
         img = Image.alpha_composite(img, ov)
         yield img.convert("RGB")
 
