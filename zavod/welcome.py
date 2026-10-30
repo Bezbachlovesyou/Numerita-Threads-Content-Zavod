@@ -289,11 +289,9 @@ def badge_png(path: Path) -> None:
     d.rounded_rectangle((x0, y0, x0 + w, y0 + 64 * k), radius=int(32 * k), fill=(4, 8, 18, 200),
                         outline=GOLD + (140,), width=int(2 * k))
     cx, cy = x0 + 22 * k + r, y0 + 32 * k
-    d.ellipse((cx - r, cy - r, cx + r, cy + r), fill=(42, 171, 238, 255))
-    q = k
-    d.polygon([(cx - 11 * q, cy - 1 * q), (cx + 11 * q, cy - 9 * q), (cx + 6 * q, cy + 10 * q), (cx + 1 * q, cy + 3 * q)],
-              fill=(255, 255, 255, 255))
-    d.polygon([(cx - 11 * q, cy - 1 * q), (cx + 1 * q, cy + 3 * q), (cx - 2 * q, cy + 9 * q)], fill=(210, 230, 245, 255))
+    # официальный логотип Telegram (assets/telegram_logo.png, по образцу telegram.org) — не самодельный (30.10)
+    logo = Image.open(ASSETS / "telegram_logo.png").convert("RGBA").resize((int(2 * r), int(2 * r)), Image.LANCZOS)
+    img.alpha_composite(logo, (int(cx - r), int(cy - r)))
     d.text((cx + r + gap, cy), BADGE, font=font, fill=GOLD + (255,), anchor="lm")
     _save(img, path)
 
@@ -491,7 +489,7 @@ async def publish_due(db, threads, now, lang: str, publish, notify) -> None:
 async def run_build(db, api_key: str, threads, send_video, notify) -> None:
     """Русский завод: один раз снять и собрать, загрузить 4 версии в Zernio, отправить владельцу."""
     global BUSY
-    if await db.kv_get("welcome:build") == "done12" or BUSY:
+    if await db.kv_get("welcome:build") == "done13" or BUSY:
         return
     BUSY = True
     try:
@@ -507,7 +505,7 @@ async def run_build(db, api_key: str, threads, send_video, notify) -> None:
         urls[name] = await threads.upload_image(data, f"numerita_{name}.mp4", "video/mp4")
         await send_video(data, name)
     await db.kv_set("welcome:urls", json.dumps(urls))
-    await db.kv_set("welcome:build", "done12")
+    await db.kv_set("welcome:build", "done13")
     missing = [k for k in CLIPS if f"{k}_ru" not in paths]
     if await db.kv_get("welcome:job:angel"):  # первая версия ангела без нашего лица — не используется
         missing.append("(первый «Ангел» без лица Нумериты оплачен, но не используется)")
