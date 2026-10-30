@@ -1937,6 +1937,36 @@ async def autopost_tick(
     await db.kv_set("next_post_at", (now + delay).isoformat())
 
 
+async def run_op(cmd: dict, db: Storage, threads: ThreadsClient | None, bot: Bot, cfg: Config) -> None:
+    """Одна команда пульта владельца (zavod/ops.py) — и одна строка-квитанция."""
+    tag = "[EN] " if lang.is_en() else ""
+    action, text = cmd.get("action"), (cmd.get("text") or "").strip()
+    if action == "_error":
+        await notify_admins(bot, cfg, f"{tag}⚠️ Команда {cmd['id']} не выполнена: {cmd.get('error')}")
+    elif action == "post" and cmd.get("account") == "tg":
+        if not cfg.telegram_channel or not text:
+            return
+        msg = await bot.send_message(cfg.telegram_channel, text, parse_mode="HTML")
+        await tgchannel.react(bot, cfg.telegram_channel, msg.message_id)
+        ch = str(cfg.telegram_channel).lstrip("@")
+        await notify_admins(bot, cfg, f"✅ Канал: t.me/{ch}/{msg.message_id}" if not ch.startswith("-") else "✅ Канал: вышло")
+    elif action == "post" and threads is not None and text:
+        post_id = await db.add_draft(f"ops:{cmd['id']}", text, cmd.get("rubric") or "text_seed")
+        post = await publish(await db.get(post_id), db, threads, bot, "", False)
+        if post.status == "failed":
+            await notify_admins(bot, cfg, f"{tag}⚠️ Пост не вышел: {post.error}")
+        else:
+            asyncio.create_task(post_receipt(bot, cfg, db, threads, datetime.now(cfg.timezone)))
+    elif action == "grid" and cmd.get("shape") in GRID_STYLES:
+        forced = json.loads(await db.kv_get("grid:force") or "[]")
+        await db.kv_set("grid:force", json.dumps([cmd["shape"]] + forced))
+        await db.kv_set("next_post_at", datetime.now(cfg.timezone).isoformat())
+        await notify_admins(bot, cfg, f"{tag}🌀 Матрица «{cmd['shape']}» — следующим постом, ссылку пришлю.")
+    elif action == "unpublish" and threads is not None and cmd.get("fragment"):
+        for line in await unpublish_matching(db, threads, [cmd["fragment"]]) or ["⚠️ Пост не найден"]:
+            await notify_admins(bot, cfg, tag + line)
+
+
 async def post_receipt(bot: Bot, cfg: Config, db: Storage, threads: ThreadsClient, since: datetime) -> None:
     """Одна строка владельцу: пост вышел (ссылка Threads) или что ответил Threads."""
     try:
@@ -2346,6 +2376,11 @@ async def run_scheduler(
                     await notify_admins(bot, cfg, await en_connect_text(threads))
                 except Exception:
                     log.exception("Ссылка подключения английского Threads не отправлена")
+            try:  # пульт владельца: команды из ops/commands.json (без перезапуска)
+                from . import ops
+                await ops.tick(db, "en" if EN else "ru", lambda c: run_op(c, db, threads, bot, cfg))
+            except Exception:
+                log.exception("Пульт")
             if await db.claim_slot("post now 2026-10-30 19:30"):  # владелец: «19:25, а постов не вижу» — пост сразу
                 await db.kv_set("next_post_at", datetime.now(cfg.timezone).isoformat())
             if now.hour in autopost.PRIME_HOURS and threads is not None:  # самопроверка: посты не стоят
