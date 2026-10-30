@@ -181,12 +181,20 @@ async def digest(db: Storage, now: datetime) -> str | None:
     log_ = json.loads(await db.kv_get(f"toc_log:{now.date().isoformat()}") or "[]")
     if not log_:
         return None
-    parts = []
+    # 30.10.2026, слово владельца: «простыни не закидывай — урезать в 10 раз, только суть». Одна строка на обход:
+    # узкое звено первой фразой, без шагов и подсказок (они работают сами).
+    import re
+    seen, parts = set(), []
     for text in log_:
-        head = text.splitlines()[0].split(", ")[-1]
-        keep = [ln for ln in text.splitlines() if ln.startswith(("Узкое звено", "Шаг", "•"))]
-        parts.append(f"⏱ {head}\n" + "\n".join(keep))
-    return f"📒 Сводка обходов за {now:%d.%m} — что я нашла и включила сама\n\n" + "\n\n".join(parts)
+        head = text.splitlines()[0].split(", ")[-1].split()[-1]
+        link = next((ln for ln in text.splitlines() if ln.startswith("Узкое звено")), "")
+        link = re.split(r"(?<=[.!?:])\s", link.split(":", 1)[-1].strip())[0].rstrip(".:")
+        if len(link) > 90:
+            link = link[:87].rsplit(" ", 1)[0] + "…"
+        if link and link not in seen:
+            seen.add(link)
+            parts.append(f"{head} — {link}")
+    return f"📒 Обходы {now:%d.%m}:\n" + "\n".join(parts) if parts else None
 
 
 async def run_due(db: Storage, generator: Generator, now: datetime, tz) -> list[str]:
