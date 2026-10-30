@@ -2141,10 +2141,10 @@ async def run_scheduler(
             if threads is not None and now.minute % 10 == 0 and await db.claim_slot(f"welcome tick {now:%Y-%m-%d %H:%M}"):
                 try:  # приветственные ролики (слово владельца 30.10.2026, потолок $1,50)
                     from . import welcome
-                    tries = int(await db.kv_get("welcome:tries8") or 0)  # 3: пересборка — голос не налезает
+                    tries = int(await db.kv_get("welcome:tries9") or 0)  # 3: пересборка — голос не налезает
                     if (not EN and generator.api_key and not welcome.BUSY and tries < 3
-                            and await db.kv_get("welcome:build") != "done8"):
-                        await db.kv_set("welcome:tries8", str(tries + 1))  # оплаченное берётся по номерам заданий
+                            and await db.kv_get("welcome:build") != "done9"):
+                        await db.kv_set("welcome:tries9", str(tries + 1))  # оплаченное берётся по номерам заданий
                         async def _send(data, name):
                             for admin_id in cfg.admin_ids:
                                 await bot.send_video(admin_id, BufferedInputFile(data, f"numerita_{name}.mp4"),

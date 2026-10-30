@@ -310,11 +310,12 @@ def assemble(video: bytes, lines: list, voices: list[bytes], seconds: int, workd
     src.write_bytes(video)
     durations = [len(v) / (RATE * 2) for v in voices]
     rows, total = timeline(lines, durations, seconds)
-    pad = max(0.0, total - seconds)
     args = [ffmpeg(), "-v", "error", "-y", "-i", str(src), "-stream_loop", "-1", "-i", str(MUSIC)]
-    slow = f"trim=0:{keep},setpts=(PTS-STARTPTS)*{seconds / keep:.4f}," if keep else ""
-    vf = [f"[0:v]{slow}scale={W}:{H}:flags=lanczos:force_original_aspect_ratio=increase,crop={W}:{H},setsar=1,fps=24,"
-          f"trim=0:{seconds},setpts=PTS-STARTPTS,tpad=stop_mode=clone:stop_duration={pad + 0.5:.2f}[b0]"]
+    # Слово владельца 30.10.2026: «видео зависает» — стоп-кадр больше не держим. Если голос длиннее клипа, весь клип
+    # плавно замедляется на всю длину ролика (движение до последней секунды).
+    clip_len = keep or seconds
+    vf = [f"[0:v]trim=0:{clip_len},setpts=(PTS-STARTPTS)*{(total + 0.3) / clip_len:.4f},"
+          f"scale={W}:{H}:flags=lanczos:force_original_aspect_ratio=increase,crop={W}:{H},setsar=1,fps=24[b0]"]
     af = []
     n = 2
     for i, ((_, _, text), (a, b, _)) in enumerate(zip(lines, rows)):
@@ -424,7 +425,7 @@ async def publish_due(db, threads, now, lang: str, publish, notify) -> None:
 async def run_build(db, api_key: str, threads, send_video, notify) -> None:
     """Русский завод: один раз снять и собрать, загрузить 4 версии в Zernio, отправить владельцу."""
     global BUSY
-    if await db.kv_get("welcome:build") == "done8" or BUSY:
+    if await db.kv_get("welcome:build") == "done9" or BUSY:
         return
     BUSY = True
     try:
@@ -440,7 +441,7 @@ async def run_build(db, api_key: str, threads, send_video, notify) -> None:
         urls[name] = await threads.upload_image(data, f"numerita_{name}.mp4", "video/mp4")
         await send_video(data, name)
     await db.kv_set("welcome:urls", json.dumps(urls))
-    await db.kv_set("welcome:build", "done8")
+    await db.kv_set("welcome:build", "done9")
     missing = [k for k in CLIPS if f"{k}_ru" not in paths]
     if await db.kv_get("welcome:job:angel"):  # первая версия ангела без нашего лица — не используется
         missing.append("(первый «Ангел» без лица Нумериты оплачен, но не используется)")
