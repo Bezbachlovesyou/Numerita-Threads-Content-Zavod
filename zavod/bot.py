@@ -538,6 +538,9 @@ CINEMA_TEXT = {
 }
 
 
+CINEMA_BAD = {"10206d9515b1794781bb9c544a339d2193bdcc271c9b6ec3cb9498e5e33394fc"}  # EN с русской первой репликой
+
+
 async def cinema_stories(db: Storage, threads: ThreadsClient, bot: Bot, cfg: Config, now: datetime) -> bool:
     """Однократно 30.10 около 19:19 МСК (слово владельца): кино-ролик «Истории подписчиц» — RU в русский Threads и
     Instagram, EN — в английский Threads. Ролик собирает сервер бота Нумериты; пока файла нет — ждём (False)."""
@@ -547,6 +550,10 @@ async def cinema_stories(db: Storage, threads: ThreadsClient, bot: Bot, cfg: Con
         r = await http.get(CINEMA_URL.format(lang=code))
     if r.status_code != 200 or len(r.content) < 100_000:
         return False
+    if lang.is_en():  # 30.10: старая английская озвучка начиналась по-русски — этот файл не публикуем, ждём пересборку
+        import hashlib
+        if hashlib.sha256(r.content).hexdigest() in CINEMA_BAD:
+            return False
     url = await threads.upload_image(r.content, f"numerita_stories_{code}.mp4", "video/mp4")
     text = CINEMA_TEXT[code]
     post_id = await db.add_draft(f"Истории подписчиц — кино ({code})", text, "text_story_call")
