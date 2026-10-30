@@ -381,11 +381,15 @@ async def run_stories(db: Storage, threads: ThreadsClient, generator: Generator,
     """Одна история в день (если есть) и приглашение присылать истории раз в 2 дня."""
     from . import stories
     async def out(topic: str, text: str, rubric: str) -> Post | None:
-        text = await antidupe_gate(db, generator, await hook_gate(generator, text), now)
+        text = await antidupe_gate(db, generator, await hook_gate(generator, await coherence_gate(generator, text)), now)
         if not text:
             return None
         post = await publish(await db.get(await db.add_draft(topic, text, rubric)), db, threads, bot, "", False)
         return post if post.status != "failed" else None
+    # 30.10.2026, слово владельца: «непонятно, выдумка — такое больше не выпускай». История идёт в Threads только
+    # с числами хотя бы двух участников (иначе нумерологии нет и пост превращается в пересказ чужой драмы) и проходит
+    # редактора цельности; без чисел — отклоняем, без «реальная история» в тексте.
+    batch = [s for s in batch if sum(1 for p in s.get("people", []) if p.get("soul") or p.get("destiny")) >= 2]
     if batch and not await db.kv_get(f"stories:day:{now:%Y-%m-%d}"):
         story = batch[0]
         text, _ = split_card_hook(await generator.write_post(
