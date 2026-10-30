@@ -176,6 +176,31 @@ async def speak(http: httpx.AsyncClient, api_key: str, text: str, lang: str) -> 
     return b"".join(chunks)[:limit], float(cost)
 
 
+BADGE = "Telegram · @Numeritabot"  # слово владельца 30.10.2026: видно, что это Telegram, а не непонятный аккаунт
+
+
+def badge_png(path: Path) -> None:
+    """Плашка внизу на весь ролик: голубой знак Telegram (бумажный самолётик) и адрес бота."""
+    img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    font = ImageFont.truetype(str(ASSETS / "fonts" / "Montserrat.ttf"), 32)
+    try:
+        font.set_variation_by_axes([600])
+    except Exception:
+        pass
+    tw = d.textlength(BADGE, font=font)
+    r, gap = 22, 14
+    w = int(tw + 2 * r + gap + 44)
+    x0, y0 = (W - w) // 2, H - 128
+    d.rounded_rectangle((x0, y0, x0 + w, y0 + 64), radius=32, fill=(4, 8, 18, 200), outline=GOLD + (140,), width=2)
+    cx, cy = x0 + 22 + r, y0 + 32
+    d.ellipse((cx - r, cy - r, cx + r, cy + r), fill=(42, 171, 238, 255))
+    d.polygon([(cx - 11, cy - 1), (cx + 11, cy - 9), (cx + 6, cy + 10), (cx + 1, cy + 3)], fill=(255, 255, 255, 255))
+    d.polygon([(cx - 11, cy - 1), (cx + 1, cy + 3), (cx - 2, cy + 9)], fill=(210, 230, 245, 255))
+    d.text((cx + r + gap, cy), BADGE, font=font, fill=GOLD + (255,), anchor="lm")
+    img.save(path)
+
+
 def caption_png(text: str, path: Path) -> None:
     """Надпись в нижней трети: золото на тёмной полупрозрачной плашке, переносы по ширине."""
     img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
@@ -253,6 +278,11 @@ def assemble(video: bytes, lines: list, voices: list[bytes], seconds: int, workd
                   f"fade=t=out:st={b - fade:.2f}:d={fade:.2f}:alpha=1[t{i}]")
         vf.append(f"[b{i}][t{i}]overlay=0:0:enable='between(t,{a:.2f},{b - 0.01:.2f})'[b{i + 1}]")
         n += 1
+    badge = workdir / f"{name}_badge.png"
+    badge_png(badge)
+    args += ["-loop", "1", "-t", f"{total:.2f}", "-framerate", "24", "-i", str(badge)]
+    vf.append(f"[b{len(lines)}][{n}:v]overlay=0:0[out]")
+    n += 1
     af.append(f"[1:a]atrim=0:{total:.2f},asetpts=N/SR/TB,volume=0.22,afade=t=in:d=1,"
               f"afade=t=out:st={total - 1.5:.2f}:d=1.5[m]")
     for i, ((_, _, start), pcm) in enumerate(zip(rows, voices)):
@@ -269,7 +299,7 @@ def assemble(video: bytes, lines: list, voices: list[bytes], seconds: int, workd
     af.append("".join(f"[v{i}]" for i in range(len(voices))) + f"amix=inputs={len(voices)}:normalize=0[vv]")
     af.append("[m][vv]amix=inputs=2:normalize=0:duration=first,alimiter=limit=0.95[a]")
     out = workdir / f"{name}.mp4"
-    args += ["-filter_complex", ";".join(vf + af), "-map", f"[b{len(lines)}]", "-map", "[a]",
+    args += ["-filter_complex", ";".join(vf + af), "-map", "[out]", "-map", "[a]",
              "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "medium", "-crf", "20", "-c:a", "aac", "-b:a", "160k",
              "-t", f"{total:.2f}", "-movflags", "+faststart", str(out)]
     subprocess.run(args, check=True, capture_output=True, timeout=600)
@@ -339,7 +369,7 @@ async def publish_due(db, threads, now, lang: str, publish, notify) -> None:
 async def run_build(db, api_key: str, threads, send_video, notify) -> None:
     """Русский завод: один раз снять и собрать, загрузить 4 версии в Zernio, отправить владельцу."""
     global BUSY
-    if await db.kv_get("welcome:build") == "done4" or BUSY:
+    if await db.kv_get("welcome:build") == "done5" or BUSY:
         return
     BUSY = True
     try:
@@ -355,7 +385,7 @@ async def run_build(db, api_key: str, threads, send_video, notify) -> None:
         urls[name] = await threads.upload_image(data, f"numerita_{name}.mp4", "video/mp4")
         await send_video(data, name)
     await db.kv_set("welcome:urls", json.dumps(urls))
-    await db.kv_set("welcome:build", "done4")
+    await db.kv_set("welcome:build", "done5")
     missing = [k for k in CLIPS if f"{k}_ru" not in paths]
     if await db.kv_get("welcome:job:angel"):  # первая версия ангела без нашего лица — не используется
         missing.append("(первый «Ангел» без лица Нумериты оплачен, но не используется)")
