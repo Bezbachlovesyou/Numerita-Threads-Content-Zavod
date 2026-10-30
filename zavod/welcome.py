@@ -71,7 +71,12 @@ CLIPS = {
                    "Gentle living motion only: golden digits on her wings and halo shimmer and slowly flow, stars and "
                    "galaxies twinkle, a warm light glows at her heart; she blinks softly, smiles a little warmer and "
                    "slowly raises her open palm toward the viewer, a small bright star rises from her palm toward the "
-                   "camera. Slow cinematic push-in. Keep her identity identical in every frame."),
+                   "camera. Slow cinematic push-in. Keep her identity identical in every frame. Her expression stays "
+                   "serene, pure and angelic like an icon: lips closed or barely parted, no seductive or flirtatious "
+                   "look, no wide smile."),
+        # Слово владельца 30.10.2026: улыбка в конце ролика «не ангельская» — берём только первые 6 с и растягиваем
+        # плавным замедлением на всю длину (без новой генерации).
+        "keep": 6.0,
         "lines": {
             "ru": [(0, 3, "Кто охраняет твою судьбу?"), (3, 7, "Нумерита — ангел-хранитель чисел и звёзд."),
                    (7, 10, "У каждого есть число, которое ведёт. Узнаешь своё?")],
@@ -226,14 +231,16 @@ def check(rows, durations) -> None:
             raise RuntimeError(f"фразы {i} и {i + 1} накладываются")
 
 
-def assemble(video: bytes, lines: list, voices: list[bytes], seconds: int, workdir: Path, name: str) -> Path:
+def assemble(video: bytes, lines: list, voices: list[bytes], seconds: int, workdir: Path, name: str,
+             keep: float | None = None) -> Path:
     src = workdir / f"{name}_src.mp4"
     src.write_bytes(video)
     durations = [len(v) / (RATE * 2) for v in voices]
     rows, total = timeline(lines, durations, seconds)
     pad = max(0.0, total - seconds)
     args = [ffmpeg(), "-v", "error", "-y", "-i", str(src), "-stream_loop", "-1", "-i", str(MUSIC)]
-    vf = [f"[0:v]scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},setsar=1,fps=24,"
+    slow = f"trim=0:{keep},setpts=(PTS-STARTPTS)*{seconds / keep:.4f}," if keep else ""
+    vf = [f"[0:v]{slow}scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},setsar=1,fps=24,"
           f"trim=0:{seconds},setpts=PTS-STARTPTS,tpad=stop_mode=clone:stop_duration={pad + 0.5:.2f}[b0]"]
     af = []
     n = 2
@@ -295,7 +302,7 @@ async def build(db, api_key: str, first_frame_url: str = "") -> dict[str, Path]:
                     await db.kv_set(f"welcome:voice:{key}:{lang}:{i}", base64.b64encode(pcm).decode())
                     voices.append(pcm)
                 out[f"{key}_{lang}"] = await asyncio.to_thread(
-                    assemble, video, spec["lines"][lang], voices, spec["seconds"], workdir, f"{key}_{lang}")
+                    assemble, video, spec["lines"][lang], voices, spec["seconds"], workdir, f"{key}_{lang}", spec.get("keep"))
     return out
 
 
@@ -332,7 +339,7 @@ async def publish_due(db, threads, now, lang: str, publish, notify) -> None:
 async def run_build(db, api_key: str, threads, send_video, notify) -> None:
     """Русский завод: один раз снять и собрать, загрузить 4 версии в Zernio, отправить владельцу."""
     global BUSY
-    if await db.kv_get("welcome:build") == "done3" or BUSY:
+    if await db.kv_get("welcome:build") == "done4" or BUSY:
         return
     BUSY = True
     try:
@@ -348,7 +355,7 @@ async def run_build(db, api_key: str, threads, send_video, notify) -> None:
         urls[name] = await threads.upload_image(data, f"numerita_{name}.mp4", "video/mp4")
         await send_video(data, name)
     await db.kv_set("welcome:urls", json.dumps(urls))
-    await db.kv_set("welcome:build", "done3")
+    await db.kv_set("welcome:build", "done4")
     missing = [k for k in CLIPS if f"{k}_ru" not in paths]
     if await db.kv_get("welcome:job:angel"):  # первая версия ангела без нашего лица — не используется
         missing.append("(первый «Ангел» без лица Нумериты оплачен, но не используется)")
