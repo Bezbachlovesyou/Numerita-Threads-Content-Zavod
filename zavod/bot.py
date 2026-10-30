@@ -702,7 +702,7 @@ PRIME_SHARE = (" Пиши так, чтобы читатель узнал себ�
                "«отметь», «перешли», «отправь другу», «сохрани» не пиши — Threads за них убирает пост из рекомендаций.")
 
 
-LIST_ROTATION = ["text_loves", "text_secrets", "text_marriage", "text_battery", "text_roles", "text_outgrow",
+LIST_ROTATION = ["text_gifts", "text_loves", "text_secrets", "text_marriage", "text_battery", "text_roles", "text_outgrow",
                  "text_aroma", "text_marry", "text_avoid"]  # форматы-списки по 9 группам дней рождения (референсы 30.10)
 
 
