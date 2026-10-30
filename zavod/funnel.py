@@ -25,9 +25,27 @@ async def fetch(days: int = 7) -> dict | None:
     hit = _cache.get(days)
     if hit and time.monotonic() - hit[0] < 3600:
         return hit[1]
-    data = await _fetch(days)
+    data = normalize(await _fetch(days))
     _cache[days] = (time.monotonic(), data)
     return data
+
+
+def normalize(data: dict | None) -> dict | None:
+    """Бот Нумериты отдаёт метки целиком («ad_th_soul8_2410», «ad_en_th_r12_o»), а завод считает по своему виду
+    («th_…»). 30.10.2026: из-за этого расхождения обход неделю видел «никто не пришёл». Английскому экземпляру —
+    его метки ad_en_th_ → th_, русские (ad_th_) ему не засчитываются; русскому — наоборот."""
+    if not data:
+        return data
+    from .lang import is_en
+    own, other = ("ad_en_th_", "ad_th_") if is_en() else ("ad_th_", "ad_en_th_")
+    rows = []
+    for r in data.get("labels", []):
+        label = str(r.get("label", "")).lower()
+        if label.startswith(own):
+            rows.append({**r, "label": "th_" + label[len(own):]})
+        elif not label.startswith(other) and not label.startswith("ad_"):
+            rows.append(r)  # уже в виде th_… (старый ответ бота)
+    return {**data, "labels": rows}
 
 
 def arrivals_by_link_mode(data: dict | None) -> dict[str, int] | None:

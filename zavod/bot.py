@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import os
 import hashlib
 from pathlib import Path
@@ -2298,6 +2299,11 @@ async def run_scheduler(
                     await notify_admins(bot, cfg, await en_connect_text(threads))
                 except Exception:
                     log.exception("Ссылка подключения английского Threads не отправлена")
+            if funnel.KEY and await db.claim_slot("funnel fixed report 2026-10-30"):  # счёт меток починен — настоящие цифры
+                with contextlib.suppress(Exception):
+                    await notify_admins(bot, cfg, "🔧 Нашла, почему обход видел «0 переходов»: метки считались не в том виде. "
+                                                  "Починила. Настоящие цифры за 7 дней:\n"
+                                                  + "\n".join(funnel.lines(await funnel.fetch(7))))
             if await db.claim_slot("grid force heart dna 2026-10-30"):
                 await db.kv_set("grid:force", json.dumps(["heart", "dna"]))
             if await db.claim_slot("gridvideo unbroken 2026-10-30"):  # «только видео»: прежний запрет видео снят
