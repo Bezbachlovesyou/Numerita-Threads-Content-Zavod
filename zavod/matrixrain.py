@@ -45,7 +45,10 @@ class Rain:
         self.head, self.tail, self.deep = PALETTES[palette]
         rng = random.Random(seed)
         self.cols = []
-        for depth, share in ((0.45, 1.0), (0.7, 0.8), (1.0, 0.55)):  # дальний, средний, ближний план
+        # 30.10.2026, слово владельца «раз и навсегда»: как в «Матрице», но только цифры; 10 планов глубины — от мелких
+        # дальних струй до крупных ближних; нижняя цифра струи (капля) — самая яркая и крупная, след бледнеет вверх.
+        planes = [(0.32 + 0.13 * i, max(0.1, 0.7 - 0.07 * i)) for i in range(10)]
+        for depth, share in planes:
             s = int(size * depth)
             step = int(s * 1.1)
             for x in range(step // 2, width, step):
@@ -54,8 +57,7 @@ class Rain:
                 self.cols.append({"x": x + rng.uniform(-3, 3), "z": depth, "size": s,
                                   "speed": rng.uniform(90, 300) * depth, "len": rng.randint(8, 24),
                                   "off": rng.uniform(0, height * 2),
-                                  "glyphs": [rng.choice(DIGITS) if rng.random() < 0.35 else rng.choice(KANA)
-                                             for _ in range(90)],
+                                  "glyphs": [rng.choice(DIGITS) for _ in range(90)],
                                   "flip": rng.uniform(0.06, 0.25), "ph": rng.uniform(0, 6.3)})
         self.cols.sort(key=lambda c: c["z"])
 
@@ -83,7 +85,9 @@ class Rain:
                 color = (self.head if k == 0 or (digit and twinkle > 0.9) else
                          (255, 212, 110) if digit else _mix(self.deep, self.tail, z)) + (level * 31,)
                 y = row * cell
-                (lit if digit or k == 0 else img).alpha_composite(_glyph(ch, s, color), (int(c["x"] - s / 2), y))
+                gs = int(s * 1.35) if k == 0 else s  # капля внизу струи — крупнее остальных
+                color = (255, 246, 220, 255) if k == 0 else color
+                (lit if digit or k == 0 else img).alpha_composite(_glyph(ch, gs, color), (int(c["x"] - gs / 2), y))
                 if k == 0 and z > 0.6:  # искра-блик на голове ближних столбцов
                     gx, gy = c["x"], y + s * 0.62
                     tw = 0.5 + 0.5 * math.sin(2 * math.pi * (2.1 * t + c["ph"]))
