@@ -15,7 +15,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFilter
 
-from .cards import H, W, _shape_color, _shape_points, digit_tile, draw_dna_backbones, shape_parts
+from .cards import H, W, _arc_sample, _shape_color, _shape_points, digit_tile, draw_dna_backbones, shape_parts
 
 FPS = 24
 SECONDS = 12
@@ -47,13 +47,57 @@ def _motion(style: str, x: float, y: float, angle: float, t: float) -> tuple[flo
     return x, y, angle
 
 
+HEART_RINGS = ((1.0, 1, 36), (0.78, 1, 24), (0.78, -1, 24), (0.48, 1, 14), (0.48, -1, 14), (0.2, 1, 4), (0.2, -1, 4))
+
+
+def _heart_xy(u: float) -> tuple[float, float]:
+    return (26 * 16 * math.sin(u) ** 3,
+            -10 - 26 * (13 * math.cos(u) - 5 * math.cos(2 * u) - 2 * math.cos(3 * u) - math.cos(4 * u) + 2.5))
+
+
+def heart3d_points(n: int, phase: float) -> list[tuple[float, float, float, float]]:
+    """Объёмное сердце из цифр (слово владельца 30.10.2026): «пухлая» поверхность — контур сердца, сжатый к центру,
+    с выпуклостью вперёд и назад. Цифры лежат кольцами-контурами: внешний обод, затем кольца лицевой и обратной
+    стороны. Сердце вращается вокруг вертикали; дальние цифры мельче и темнее. (x, y, поворот, масштаб)."""
+    cx, cy, depth = W / 2, H / 2 + 20, 250
+    raw = []
+    for s, side, count in HEART_RINGS:
+        z = side * depth * math.sqrt(max(0.0, 1 - s * s))
+        ring = _arc_sample(lambda t, s=s: tuple(v * s for v in _heart_xy(2 * math.pi * (0.04 + 0.92 * t))), count)
+        raw += [(x, y, z) for x, y, _ in (ring if side > 0 else ring[::-1])]
+    raw = (raw + raw)[:n]
+    proj = []
+    for x, y, z in raw:
+        xr, zr = x * math.cos(phase) + z * math.sin(phase), -x * math.sin(phase) + z * math.cos(phase)
+        persp = 1500 / (1500 - zr)
+        proj.append((cx + xr * persp, cy + y * persp, zr / depth, persp))
+    pts = []
+    for i, (x, y, zn, persp) in enumerate(proj):  # поворот цифры — по линии кольца на экране, без «вверх ногами»
+        a, b = (proj[i + 1], proj[i]) if i + 1 < n else (proj[i], proj[i - 1])
+        ang = math.degrees(math.atan2(-(a[1] - b[1]), a[0] - b[0]))
+        ang = ang - 180 if ang > 90 else ang + 180 if ang < -90 else ang
+        pts.append((x, y, ang, (0.66 + 0.28 * zn) * persp))
+    return pts
+
+
+def heart_glow(phase: float, beat: float) -> Image.Image:
+    """Светящийся силуэт сердца за цифрами — чтобы форма читалась с первого взгляда."""
+    small = Image.new("RGBA", (W // 4, H // 4), (0, 0, 0, 0))
+    cx, cy = W / 8, (H / 2 + 20) / 4
+    k = math.hypot(math.cos(phase), 0.6 * math.sin(phase))  # ширина силуэта при повороте (обод + выпуклость)
+    poly = [(cx + x * k * beat / 4, cy + y * beat / 4) for x, y in
+            (_heart_xy(2 * math.pi * i / 120) for i in range(120))]
+    ImageDraw.Draw(small).polygon(poly, fill=(255, 90, 140, 70))
+    return small.filter(ImageFilter.GaussianBlur(10)).resize((W, H), Image.BILINEAR)
+
+
 def frames(grid: dict, title: str, palette: int, seed: str, seconds: float = SECONDS):
     """Кадры RGB (bytes) по одному."""
     parts = shape_parts(grid, title, palette, seed)
     rng = random.Random(seed + "stars")
     stars = [(x, y, r, a, rng.uniform(0.25, 0.9), rng.uniform(0, 2 * math.pi)) for x, y, r, a in parts["stars"]]
     style, digits, n = grid["style"], parts["digits"], max(1, len(parts["digits"]))
-    if style == "dna":  # исходный порядок цифр по ленте (shape_parts сортирует по глубине)
+    if style in ("dna", "heart"):  # исходный порядок цифр по ленте (shape_parts сортирует по глубине)
         marks = set(grid["marks"])
         hint = next((d[5] for d in parts["digits"] if d[6]), (255, 220, 150, 255))
         order = [(ch, i in marks) for i, ch in enumerate(grid["digits"])]
@@ -100,6 +144,13 @@ def frames(grid: dict, title: str, palette: int, seed: str, seconds: float = SEC
             img = draw_dna_backbones(img, pts)
             live = [(x, y, a, int(40 * sc), ch, hint if marked else _shape_color(style, i, sc), marked)
                     for i, ((x, y, a, sc), (ch, marked)) in enumerate(zip(pts, order))]
+            digits = sorted(live, key=lambda d: d[3])
+        elif style == "heart":  # объёмное сердце вращается (≈30°/с) и бьётся (_motion)
+            phase = math.radians(30 * t)
+            img = Image.alpha_composite(img, heart_glow(phase, 1 + 0.035 * max(0.0, math.sin(2 * math.pi * 1.1 * t)) ** 6))
+            pts = heart3d_points(len(order), phase)
+            live = [(x, y, a, int(40 * sc), ch, hint if marked else (255, 150 + int(60 * sc), 170, int(max(70, min(255, 330 * (sc - 0.3))))), marked)
+                    for (x, y, a, sc), (ch, marked) in zip(pts, order)]
             digits = sorted(live, key=lambda d: d[3])
         for i, (x, y, angle, size, ch, color, marked) in enumerate(digits):
             appear = min(1.0, max(0.0, (t - 1.6 * i / n) / 0.35))  # цифры прорисовываются по линии формы

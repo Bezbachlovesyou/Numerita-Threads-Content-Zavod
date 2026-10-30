@@ -1562,6 +1562,12 @@ async def post_next(
         await db.kv_set("en:regrid2", "1")
         await db.kv_set("grid:issue", "0")
         await db.kv_set("grid:last_style", GRID_STYLES[GRID_STYLES.index("spiral") - 1])
+    # 30.10 слово владельца: «сегодня бомбанём ещё сердечко объёмное и спираль ДНК» — очередь форм живой матрицы.
+    forced = json.loads(await db.kv_get("grid:force") or "[]")
+    if forced and not en_grid_first and (not recent or recent[0] != "grid"):
+        await db.kv_set("grid:force", json.dumps(forced[1:]))
+        await db.kv_set("grid:last_style", GRID_STYLES[GRID_STYLES.index(forced[0]) - 1])
+        en_grid_first = True
     if en_grid_first:
         queued = None
     if queued and (not recent or recent[0] not in ('script','text_seed')):
@@ -2292,6 +2298,8 @@ async def run_scheduler(
                     await notify_admins(bot, cfg, await en_connect_text(threads))
                 except Exception:
                     log.exception("Ссылка подключения английского Threads не отправлена")
+            if await db.claim_slot("grid force heart dna 2026-10-30"):
+                await db.kv_set("grid:force", json.dumps(["heart", "dna"]))
             if await db.claim_slot("gridvideo unbroken 2026-10-30"):  # «только видео»: прежний запрет видео снят
                 await db.kv_set("gridvideo:broken", "")
                 await db.kv_set("gridvideo:fails", "0")
