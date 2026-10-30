@@ -159,7 +159,7 @@ def load_rubrics(path: Path) -> list[Rubric]:
 
 
 # Новые форматы по слову владельца — чаще, пока оптимизатор не наберёт по ним данных.
-BOOST = {"text_baza": 2.5, "text_rollcall": 2.5, "text_one_digit": 2.0, "text_howto": 1.5, "text_myth": 2.0, "text_insight": 1.5, "text_who_told": 2.5, "text_heaven_pairs": 3.0, "text_what_next": 2.0, "text_tag_pair": 2.0, "text_hype": 3.0, "text_secrets": 3.0, "text_marry": 3.0, "text_levels": 2.5, "grid": 2.5, "text_great": 2.0, "text_science": 2.0, "text_dna": 1.5, "text_sky": 1.5}  # не чаще раза в день — следит post_next
+BOOST = {"text_baza": 2.5, "text_rollcall": 2.5, "text_one_digit": 2.0, "text_howto": 1.5, "text_myth": 2.0, "text_insight": 1.5, "text_who_told": 2.5, "text_heaven_pairs": 3.0, "text_what_next": 2.0, "text_tag_pair": 2.0, "text_hype": 3.0, "text_secrets": 3.0, "text_marry": 3.0, "text_celeb": 2.5, "text_levels": 2.5, "grid": 2.5, "text_great": 2.0, "text_science": 2.0, "text_dna": 1.5, "text_sky": 1.5}  # не чаще раза в день — следит post_next
 
 
 class ContentPlan:
