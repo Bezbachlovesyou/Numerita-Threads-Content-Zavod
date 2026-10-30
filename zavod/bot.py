@@ -1885,7 +1885,7 @@ UNPUBLISH = ["Колесо крутится, пока ты раздумывае�
              "Протокол проверки бизнес-идеи",  # 28.10: «тематика мимо» — без нумерологии
              "Две окружности встречаются — и в пересечении рождается третья энергия",  # 29.10: «дешёвое видео»
              "Тогда зачем протокол на 14 страниц"]  # 29.10: «Нумерологическая сценка» — 0 реакций за 7 ч
-UNPUBLISH_EN = ["issue 2"]  # 30.10: первый «Guess the number» вышел ночью — снять и повторить днём (см. post_next)
+UNPUBLISH_EN = ["number · issue 2"]  # 30.10: Zernio ответил «снят» в 12:23, а пост висел в 12:53 — снимаем снова  # 30.10: первый «Guess the number» вышел ночью — снять и повторить днём (см. post_next)
 
 
 async def unpublish_matching(db: Storage, threads: ThreadsClient, fragments: list[str]) -> list[str]:
@@ -1902,16 +1902,21 @@ async def unpublish_matching(db: Storage, threads: ThreadsClient, fragments: lis
             remote_ids |= {p.get("_id") for p in await threads.find_posts(fragment, since) if p.get("_id")}
         except ThreadsError as e:
             log.warning("Поиск поста «%s» в Zernio не удался: %s", fragment, e)
-        removed = False
+        left = set(remote_ids)  # снят — только когда сняты ВСЕ копии (30.10: «снят», а пост висел)
         for remote in remote_ids:
             try:
                 status, _, _ = await threads.post_status(remote)
-                if status in ("published", "publishing"):
-                    await threads.unpublish(remote)
+                if status in ("published", "publishing", "partial") or fragment in UNPUBLISH_EN:
+                    try:
+                        await threads.unpublish(remote)
+                    except ThreadsError as e:  # уже снятый Zernio может отказать — смотрим итоговый статус
+                        log.info("Повторное снятие %s: %s", remote, e)
                     status, _, _ = await threads.post_status(remote)
-                removed = removed or status not in ("published", "publishing")
+                if status not in ("published", "publishing", "partial"):
+                    left.discard(remote)
             except ThreadsError as e:
                 log.warning("Не удалось снять пост %s: %s", remote, e)
+        removed = bool(remote_ids) and not left
         if removed or (remote_ids and not local):
             for post in local:
                 await db.delete(post.id)

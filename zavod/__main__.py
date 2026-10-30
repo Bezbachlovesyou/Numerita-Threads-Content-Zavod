@@ -107,6 +107,22 @@ async def find_en_account(handle: str) -> str:
     return ""
 
 
+async def _first_notice(key: str) -> bool:
+    """True только в первый раз: отметка в базе русского завода."""
+    from .storage import PgStorage, Storage
+    dsn = os.getenv("DATABASE_URL", "").strip()
+    db = PgStorage(dsn) if dsn else Storage(os.getenv("DB_PATH", "zavod.db"))
+    try:
+        await db.init()
+        if await db.kv_get(key):
+            return False
+        await db.kv_set(key, "1")
+        return True
+    finally:
+        if getattr(db, "pool", None):
+            await db.pool.close()
+
+
 async def english_child() -> None:
     """Слово владельца 29.10.2026: один сервис — два аккаунта Threads. Русский завод запускает рядом английский
     экземпляр отдельным процессом: тот же код, FACTORY_LANG=en, свой аккаунт Zernio (ZERNIO_EN_ACCOUNT_ID или найденный
@@ -125,8 +141,10 @@ async def english_child() -> None:
         if not account:
             await asyncio.sleep(600)
     logging.info("Английский завод: аккаунт @%s найден в Zernio, запускаю", handle)
-    try:  # владельцу — квитанция, что английский Threads подхвачен
+    try:  # владельцу — квитанция, что английский Threads подхвачен; один раз, а не при каждом обновлении (30.10)
         import httpx
+        if not await _first_notice("en:connected_notice"):
+            raise StopIteration
         token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
         admins = next((os.getenv(n) for n in ("ADMIN_IDS", "ADMIN_ID", "ADMIN_TELEGRAM_ID", "TELEGRAM_ID")
                        if os.getenv(n)), "")
@@ -137,6 +155,8 @@ async def english_child() -> None:
                         "chat_id": int(admin),
                         "text": f"🌍 Английский Threads @{handle} подключён в Zernio — английский завод запущен. "
                                 "Его отчёты будут с пометкой [EN]."})
+    except StopIteration:
+        pass
     except Exception as e:
         logging.warning("Квитанция об английском заводе не отправлена: %s", e)
     env = {k: v for k, v in os.environ.items() if k not in ("TELEGRAM_CHANNEL", "ZERNIO_INSTAGRAM_ACCOUNT_ID")}
