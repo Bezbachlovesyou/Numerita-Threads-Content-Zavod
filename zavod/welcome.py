@@ -29,7 +29,7 @@ from .brandvideo import ffmpeg
 log = logging.getLogger(__name__)
 
 API = "https://openrouter.ai/api/v1"
-CEILING_USD = 1.50
+CEILING_USD = 1.70  # 30.10: $1,50 + «да» владельца на переозвучку (голос не влез) — не больше $0,20 сверху
 W, H = 720, 1280
 ASSETS = Path(__file__).parent.parent / "assets"
 FONT = ASSETS / "fonts" / "CormorantGaramond.ttf"
@@ -369,7 +369,7 @@ async def publish_due(db, threads, now, lang: str, publish, notify) -> None:
 async def run_build(db, api_key: str, threads, send_video, notify) -> None:
     """Русский завод: один раз снять и собрать, загрузить 4 версии в Zernio, отправить владельцу."""
     global BUSY
-    if await db.kv_get("welcome:build") == "done6" or BUSY:
+    if await db.kv_get("welcome:build") == "done7" or BUSY:
         return
     BUSY = True
     try:
@@ -385,7 +385,7 @@ async def run_build(db, api_key: str, threads, send_video, notify) -> None:
         urls[name] = await threads.upload_image(data, f"numerita_{name}.mp4", "video/mp4")
         await send_video(data, name)
     await db.kv_set("welcome:urls", json.dumps(urls))
-    await db.kv_set("welcome:build", "done6")
+    await db.kv_set("welcome:build", "done7")
     missing = [k for k in CLIPS if f"{k}_ru" not in paths]
     if await db.kv_get("welcome:job:angel"):  # первая версия ангела без нашего лица — не используется
         missing.append("(первый «Ангел» без лица Нумериты оплачен, но не используется)")
