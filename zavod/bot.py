@@ -2238,7 +2238,8 @@ async def run_scheduler(
                     await instagram.tick(db, threads, cfg.timezone, lambda text: notify_admins(bot, cfg, text))
             except Exception:
                 log.exception("Instagram tick failed")
-        if plan.enabled and now.time() >= OPTIMIZE_AT and await db.claim_slot(f"optimize {now.date().isoformat()}"):
+        if plan.enabled and ((now.time() >= OPTIMIZE_AT and await db.claim_slot(f"optimize {now.date().isoformat()}"))
+                             or await db.claim_slot("optimize now 2026-10-30")):  # внеочередной обход по слову владельца
             try:
                 report = await optimize(db, threads, generator, plan, now)
                 await notify_admins(bot, cfg, "🧠 Отчёт за сутки: что я узнал и что поменял\n\n" + "\n".join(report))

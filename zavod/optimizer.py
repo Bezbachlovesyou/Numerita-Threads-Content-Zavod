@@ -186,12 +186,17 @@ async def optimize(
     weights: dict[str, float] = {}
     if median:
         for key, value in confident.items():
-            weights[key] = round(clamp(value / median, 0.3, 2.5), 2)
+            ratio = value / median
+            # слово владельца 30.10.2026: «усиль сильное и не делай слабое» — явно слабое выключаем совсем (0)
+            weights[key] = 0.0 if ratio < 0.6 else round(clamp(ratio, 0.6, 3.0), 2)
     for row in await db.custom_rubrics(("trial",)):
         weights[row["key"]] = 1.5
     await db.kv_set("rubric_weights", json.dumps(weights))
     strong = [k for k, w in weights.items() if w >= 1.3]
-    weak = [k for k, w in weights.items() if w <= 0.7]
+    weak = [k for k, w in weights.items() if 0 < w <= 0.7]
+    off = [k for k, w in weights.items() if w == 0]
+    if off:
+        report.append("⛔ Больше не делаю: " + ", ".join(map(name, off)) + " — реакций заметно меньше среднего.")
     if strong or weak:
         if strong:
             report.append("⬆️ Чаще ставлю: " + ", ".join(map(name, strong)) + " — на них больше реакций.")

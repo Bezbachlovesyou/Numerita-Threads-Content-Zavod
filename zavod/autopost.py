@@ -196,6 +196,8 @@ class ContentPlan:
         if recent_ctas[:1] == ["link"] or recent_ctas.count("link") >= 2:
             pool = [r for r in pool if r.cta != "link"] or pool
         boost = {**BOOST, "grid": 4.0} if _is_en() else BOOST  # английский: «Угадай число» — главный двигатель
+        live = [r for r in pool if self.weights.get(r.key, 1.0) > 0]  # вес 0 — рубрику больше не делаем
+        pool = live or pool
         weights = [max(0.2, self.weights.get(r.key, boost.get(r.key, 1.0))) for r in pool]
         return self.effective(rng.choices(pool, weights=weights)[0])
 
