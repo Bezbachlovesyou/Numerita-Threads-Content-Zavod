@@ -538,6 +538,39 @@ CINEMA_TEXT = {
 }
 
 
+async def welcome_publish(db: Storage, threads: ThreadsClient, key: str, url: str) -> str:
+    """Приветственный ролик (welcome.py) в Threads своего языка; русская версия — ещё и в Instagram. Квитанция — строкой."""
+    from . import welcome
+    code = "en" if lang.is_en() else "ru"
+    text = welcome.CLIPS[key]["post"][code]
+    post_id = await db.add_draft(f"Приветственный ролик {key} ({code})", text, "text_story_call")
+    remote = await threads.publish_text(text, topic_tag_for("text_story_call"), None, None, url, media_kind="story_video")
+    await db.set_threads_id(post_id, remote or "published")
+    await db.mark_published(post_id)
+    status, link, error = "unknown", None, None
+    for _ in range(12):
+        await asyncio.sleep(30)
+        status, link, error = await threads.post_status(remote) if remote else ("unknown", None, None)
+        if status in ("published", "failed", "partial"):
+            break
+    lines = [f"🎬 Ролик «{key}» в Threads: {link}" if status == "published"
+             else f"⚠️ Ролик «{key}» в Threads: Threads ответил «{status}» {error or ''}"]
+    if not lang.is_en():
+        try:
+            account = await instagram.account_id(db, threads)
+            if account:
+                _, payload = await threads._request("POST", "/posts", json={
+                    "content": re.sub(r"\n*t\.me/\S+", "\n\nСсылка — в шапке профиля ✨", text),
+                    "mediaItems": [{"type": "video", "url": url}],
+                    "platforms": [{"platform": "instagram", "accountId": account}], "publishNow": True})
+                st = (payload.get("post") or {}).get("status")
+                lines.append(f"🎬 Instagram принял ролик «{key}» (статус: {st or 'нет'})." if st != "failed"
+                             else f"⚠️ Instagram отклонил ролик «{key}».")
+        except Exception as e:
+            lines.append(f"⚠️ Instagram: {e}")
+    return "\n".join(lines)
+
+
 CINEMA_BAD = {"10206d9515b1794781bb9c544a339d2193bdcc271c9b6ec3cb9498e5e33394fc"}  # EN с русской первой репликой
 
 
@@ -2100,6 +2133,25 @@ async def run_scheduler(
                     await notify_admins(bot, cfg, await en_connect_text(threads))
                 except Exception:
                     log.exception("Ссылка подключения английского Threads не отправлена")
+            if threads is not None and now.minute % 10 == 0 and await db.claim_slot(f"welcome tick {now:%Y-%m-%d %H:%M}"):
+                try:  # приветственные ролики (слово владельца 30.10.2026, потолок $1,50)
+                    from . import welcome
+                    tries = int(await db.kv_get("welcome:tries") or 0)
+                    if (not EN and generator.api_key and not welcome.BUSY and tries < 3
+                            and await db.kv_get("welcome:build") != "done"):
+                        await db.kv_set("welcome:tries", str(tries + 1))  # оплаченное берётся по номерам заданий
+                        async def _send(data, name):
+                            for admin_id in cfg.admin_ids:
+                                await bot.send_video(admin_id, BufferedInputFile(data, f"numerita_{name}.mp4"),
+                                                     caption=f"🎬 {name}")
+                        welcome.TASK = asyncio.create_task(welcome.run_build(db, generator.api_key, threads, _send,
+                                                              lambda t: notify_admins(bot, cfg, t)))
+                    if not EN or 16 <= now.hour < 23:  # английский — когда в США и Британии день
+                        await welcome.publish_due(db, threads, now, "en" if EN else "ru",
+                                                  lambda k, u: welcome_publish(db, threads, k, u),
+                                                  lambda t: notify_admins(bot, cfg, t))
+                except Exception:
+                    log.exception("Приветственные ролики")
             # 30.10, слово владельца: новую английскую версию — сразу, не ждать 19:19 (русская — по плану в 19:19).
             if (threads is not None and now >= datetime(2026, 10, 30, *((12, 40) if EN else (19, 19)), tzinfo=now.tzinfo)
                     and now < datetime(2026, 10, 31, 12, 0, tzinfo=now.tzinfo) and not await db.kv_get("cinema:done")
