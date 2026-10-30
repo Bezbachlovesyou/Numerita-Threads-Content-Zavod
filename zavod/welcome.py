@@ -198,22 +198,57 @@ def caption_png(text: str, path: Path) -> None:
     img.save(path)
 
 
+GAP = 0.35  # пауза между фразами голоса
+
+
+def timeline(lines: list, durations: list[float], seconds: float) -> tuple[list[tuple[float, float, float]], float]:
+    """Слово владельца 30.10.2026: «текст никогда не должен налезать друг на друга». Каждая фраза начинается только
+    после конца предыдущей; надпись висит, пока звучит её фраза, и гаснет до появления следующей. Не хватает длины
+    ролика — последний кадр держится дольше. Возвращает [(надпись с, надпись по, голос с)] и общую длину."""
+    out, end = [], 0.0
+    for (a, _, _), dur in zip(lines, durations):
+        start = max(a + 0.2, end + GAP if out else a + 0.2)
+        out.append([start - 0.2, 0.0, start])
+        end = start + dur
+    total = max(float(seconds), end + 1.2)
+    for i, row in enumerate(out):
+        row[1] = (out[i + 1][0] - 0.05) if i + 1 < len(out) else total
+    check(out, durations)
+    return [tuple(r) for r in out], total
+
+
+def check(rows, durations) -> None:
+    """Самопроверка до сборки: ни надписи, ни голоса не перекрываются."""
+    for i in range(1, len(rows)):
+        if rows[i][0] < rows[i - 1][1] - 1e-6:
+            raise RuntimeError(f"надписи {i} и {i + 1} накладываются")
+        if rows[i][2] < rows[i - 1][2] + durations[i - 1] + GAP - 1e-6:
+            raise RuntimeError(f"фразы {i} и {i + 1} накладываются")
+
+
 def assemble(video: bytes, lines: list, voices: list[bytes], seconds: int, workdir: Path, name: str) -> Path:
     src = workdir / f"{name}_src.mp4"
     src.write_bytes(video)
+    durations = [len(v) / (RATE * 2) for v in voices]
+    rows, total = timeline(lines, durations, seconds)
+    pad = max(0.0, total - seconds)
     args = [ffmpeg(), "-v", "error", "-y", "-i", str(src), "-stream_loop", "-1", "-i", str(MUSIC)]
-    vf, af = [f"[0:v]scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},setsar=1[b0]"], []
+    vf = [f"[0:v]scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},setsar=1,fps=24,"
+          f"trim=0:{seconds},setpts=PTS-STARTPTS,tpad=stop_mode=clone:stop_duration={pad + 0.5:.2f}[b0]"]
+    af = []
     n = 2
-    for i, (a, b, text) in enumerate(lines):
+    for i, ((_, _, text), (a, b, _)) in enumerate(zip(lines, rows)):
         png = workdir / f"{name}_t{i}.png"
         caption_png(text, png)
-        args += ["-loop", "1", "-t", str(seconds), "-framerate", "24", "-i", str(png)]
-        vf.append(f"[{n}:v]format=rgba,fade=t=in:st={a}:d=0.4:alpha=1,fade=t=out:st={b - 0.4}:d=0.4:alpha=1[t{i}]")
-        vf.append(f"[b{i}][t{i}]overlay=0:0:enable='between(t,{a},{b})'[b{i + 1}]")
+        args += ["-loop", "1", "-t", f"{total:.2f}", "-framerate", "24", "-i", str(png)]
+        fade = min(0.35, (b - a) / 4)
+        vf.append(f"[{n}:v]format=rgba,fade=t=in:st={a:.2f}:d={fade:.2f}:alpha=1,"
+                  f"fade=t=out:st={b - fade:.2f}:d={fade:.2f}:alpha=1[t{i}]")
+        vf.append(f"[b{i}][t{i}]overlay=0:0:enable='between(t,{a:.2f},{b - 0.01:.2f})'[b{i + 1}]")
         n += 1
-    af.append(f"[1:a]atrim=0:{seconds},asetpts=N/SR/TB,volume=0.22,afade=t=in:d=1,"
-              f"afade=t=out:st={seconds - 1.5}:d=1.5[m]")
-    for i, ((a, b, _), pcm) in enumerate(zip(lines, voices)):
+    af.append(f"[1:a]atrim=0:{total:.2f},asetpts=N/SR/TB,volume=0.22,afade=t=in:d=1,"
+              f"afade=t=out:st={total - 1.5:.2f}:d=1.5[m]")
+    for i, ((_, _, start), pcm) in enumerate(zip(rows, voices)):
         wav = workdir / f"{name}_v{i}.wav"
         with wave.open(str(wav), "wb") as w:
             w.setnchannels(1)
@@ -221,16 +256,15 @@ def assemble(video: bytes, lines: list, voices: list[bytes], seconds: int, workd
             w.setframerate(RATE)
             w.writeframes(pcm)
         args += ["-i", str(wav)]
-        tempo = min(1.3, max(1.0, len(pcm) / (RATE * 2) / max(0.8, b - a - 0.4)))
-        ms = int((a + 0.2) * 1000)
-        af.append(f"[{n}:a]atempo={tempo:.3f},aresample=48000,adelay={ms}|{ms},volume=1.3[v{i}]")
+        ms = int(start * 1000)
+        af.append(f"[{n}:a]aresample=48000,adelay={ms}|{ms},volume=1.3[v{i}]")
         n += 1
     af.append("".join(f"[v{i}]" for i in range(len(voices))) + f"amix=inputs={len(voices)}:normalize=0[vv]")
     af.append("[m][vv]amix=inputs=2:normalize=0:duration=first,alimiter=limit=0.95[a]")
     out = workdir / f"{name}.mp4"
     args += ["-filter_complex", ";".join(vf + af), "-map", f"[b{len(lines)}]", "-map", "[a]",
              "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "medium", "-crf", "20", "-c:a", "aac", "-b:a", "160k",
-             "-t", str(seconds), "-movflags", "+faststart", str(out)]
+             "-t", f"{total:.2f}", "-movflags", "+faststart", str(out)]
     subprocess.run(args, check=True, capture_output=True, timeout=600)
     return out
 
@@ -247,14 +281,19 @@ async def build(db, api_key: str, first_frame_url: str = "") -> dict[str, Path]:
             spec = CLIPS[key]
             for lang in ("ru", "en"):
                 voices = []
-                for _, _, text in spec["lines"][lang]:
-                    if await _spent(db) + 0.02 > CEILING_USD:
-                        voices.append(b"")
+                for i, (_, _, text) in enumerate(spec["lines"][lang]):
+                    saved = await db.kv_get(f"welcome:voice:{key}:{lang}:{i}")
+                    if saved:  # уже оплаченная фраза — без новой траты
+                        voices.append(base64.b64decode(saved))
                         continue
+                    if await _spent(db) + 0.02 > CEILING_USD:
+                        raise RuntimeError(f"голос не влезает в потолок ${CEILING_USD:.2f} — нужен ваш ответ")
                     pcm, cost = await speak(http, api_key, text, lang)
                     await _add_spent(db, cost or 0.01)
-                    voices.append(pcm or b"\0\0" * (RATE // 10))
-                voices = [v or b"\0\0" * (RATE // 10) for v in voices]
+                    if len(pcm) < RATE:  # меньше полсекунды — озвучка сорвалась, немой ролик не собираем
+                        raise RuntimeError(f"озвучка фразы «{text[:30]}…» пустая")
+                    await db.kv_set(f"welcome:voice:{key}:{lang}:{i}", base64.b64encode(pcm).decode())
+                    voices.append(pcm)
                 out[f"{key}_{lang}"] = await asyncio.to_thread(
                     assemble, video, spec["lines"][lang], voices, spec["seconds"], workdir, f"{key}_{lang}")
     return out
@@ -293,7 +332,7 @@ async def publish_due(db, threads, now, lang: str, publish, notify) -> None:
 async def run_build(db, api_key: str, threads, send_video, notify) -> None:
     """Русский завод: один раз снять и собрать, загрузить 4 версии в Zernio, отправить владельцу."""
     global BUSY
-    if await db.kv_get("welcome:build") == "done2" or BUSY:
+    if await db.kv_get("welcome:build") == "done3" or BUSY:
         return
     BUSY = True
     try:
@@ -309,7 +348,7 @@ async def run_build(db, api_key: str, threads, send_video, notify) -> None:
         urls[name] = await threads.upload_image(data, f"numerita_{name}.mp4", "video/mp4")
         await send_video(data, name)
     await db.kv_set("welcome:urls", json.dumps(urls))
-    await db.kv_set("welcome:build", "done2")
+    await db.kv_set("welcome:build", "done3")
     missing = [k for k in CLIPS if f"{k}_ru" not in paths]
     if await db.kv_get("welcome:job:angel"):  # первая версия ангела без нашего лица — не используется
         missing.append("(первый «Ангел» без лица Нумериты оплачен, но не используется)")

@@ -91,6 +91,14 @@ class WelcomeBudget(unittest.TestCase):
             self.assertFalse(lang.has_cyrillic(spec["post"]["en"]))
             self.assertRegex(" ".join(t for _, _, t in spec["lines"]["ru"]), "[а-я]")
 
+    def test_lines_never_overlap(self):
+        spec = welcome.CLIPS["code"]
+        rows, total = welcome.timeline(spec["lines"]["ru"], [2.2, 1.0, 6.5, 2.6], 15)
+        for i in range(1, len(rows)):
+            self.assertGreaterEqual(rows[i][0], rows[i - 1][1])  # надпись после надписи
+        self.assertGreaterEqual(rows[3][2], rows[2][2] + 6.5)  # фраза после фразы
+        self.assertGreaterEqual(total, rows[3][2] + 2.6)
+
 
 if __name__ == "__main__":
     unittest.main()
