@@ -1373,6 +1373,14 @@ async def post_next(
     recent = await db.recent_rubrics(6)
     queued = await text_mode.next_seed(db) if text_mode.enabled() else await db.next_queued()
     en_grid_first = lang.is_en() and not await db.kv_get("en:first_grid")  # слово владельца: спираль — первой
+    # Слово владельца 30.10.2026: «Guess the number · issue 2» (вышел ночью, без реакций) снять и повторить днём —
+    # только после подтверждённого снятия и в 16–22 по Москве (утро США, день Британии); номер выпуска — заново 1.
+    if (lang.is_en() and not en_grid_first and 16 <= now.hour < 22 and not await db.kv_get("en:regrid")
+            and await db.kv_get(f"unpub:{UNPUBLISH_EN[0][:40]}") == "done"):
+        en_grid_first = True
+        await db.kv_set("en:regrid", "1")
+        await db.kv_set("grid:issue", "0")
+        await db.kv_set("grid:last_style", GRID_STYLES[GRID_STYLES.index("spiral") - 1])
     if en_grid_first:
         queued = None
     if queued and (not recent or recent[0] not in ('script','text_seed')):
@@ -1817,6 +1825,7 @@ UNPUBLISH = ["Колесо крутится, пока ты раздумывае�
              "Протокол проверки бизнес-идеи",  # 28.10: «тематика мимо» — без нумерологии
              "Две окружности встречаются — и в пересечении рождается третья энергия",  # 29.10: «дешёвое видео»
              "Тогда зачем протокол на 14 страниц"]  # 29.10: «Нумерологическая сценка» — 0 реакций за 7 ч
+UNPUBLISH_EN = ["issue 2"]  # 30.10: первый «Guess the number» вышел ночью — снять и повторить днём (см. post_next)
 
 
 async def unpublish_matching(db: Storage, threads: ThreadsClient, fragments: list[str]) -> list[str]:
@@ -1970,7 +1979,7 @@ async def run_scheduler(
             log.exception("Отчёт о расходах не собран")
     if threads is not None:
         try:
-            for line in await unpublish_matching(db, threads, UNPUBLISH):
+            for line in await unpublish_matching(db, threads, UNPUBLISH + (UNPUBLISH_EN if lang.is_en() else [])):
                 await notify_admins(bot, cfg, line)
         except Exception:
             log.exception("Снятие неудачных постов не удалось")
@@ -2013,7 +2022,7 @@ async def run_scheduler(
                 log.exception("Telegram channel tick failed")
             if now.minute % 10 == 0 and await db.claim_slot(f"unpub retry {now:%Y-%m-%d %H:%M}"):
                 try:
-                    for line in await unpublish_matching(db, threads, UNPUBLISH):
+                    for line in await unpublish_matching(db, threads, UNPUBLISH + (UNPUBLISH_EN if lang.is_en() else [])):
                         if "Снят" in line:
                             await notify_admins(bot, cfg, line)
                 except Exception:
