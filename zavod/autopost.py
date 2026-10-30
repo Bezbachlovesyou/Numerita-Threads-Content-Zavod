@@ -71,6 +71,15 @@ MIN_GAP = timedelta(minutes=120)
 MAX_GAP = timedelta(hours=5)
 DAY_GAP = (140, 200)  # минут, 07:00–23:59
 NIGHT_GAP = (240, 300)  # минут, 00:00–06:59
+# 30.10.2026, слово владельца: «вечер — люди читают Threads, врубим все газы». Вечерний прайм 18:00–22:59 — пост
+# каждые 60–80 мин (≈5 за вечер, ≈10–11 в сутки при потолке 20); ответы — в прежних безопасных лимитах.
+PRIME_HOURS = range(18, 23)
+PRIME_GAP = (60, 80)
+PRIME_MIN_GAP = timedelta(minutes=60)
+
+
+def min_gap(now: datetime) -> timedelta:
+    return PRIME_MIN_GAP if now.hour in PRIME_HOURS else MIN_GAP
 
 # Тема Threads для рубрики: пост показывают тем, кто следит за темой. По умолчанию — нумерология.
 TOPIC_TAGS = {"love": "Отношения", "pair": "Отношения", "ex": "Отношения", "wisdom": "Саморазвитие", "money": "Саморазвитие", "abundance": "Саморазвитие"}
@@ -251,6 +260,8 @@ class ContentPlan:
         )
 
     def next_gap(self, now: datetime, rng: random.Random) -> timedelta:
+        if now.hour in PRIME_HOURS:
+            return timedelta(minutes=rng.uniform(*PRIME_GAP))
         low, high = NIGHT_GAP if now.hour < 7 else DAY_GAP
         minutes = rng.uniform(low, high) / self.hour_weights.get(hour_bucket(now.hour), 1.0)
         return min(MAX_GAP, max(MIN_GAP, timedelta(minutes=minutes)))

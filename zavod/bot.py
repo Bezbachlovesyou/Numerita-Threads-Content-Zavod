@@ -16,7 +16,8 @@ from aiogram.filters.callback_data import CallbackData
 from aiogram.types import BufferedInputFile, CallbackQuery, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from .autopost import BOT_LINK, strip_credits, MIN_GAP, ContentPlan, ScriptedPost, Slot, topic_tag_for
+from . import autopost
+from .autopost import BOT_LINK, strip_credits, MIN_GAP, min_gap, ContentPlan, ScriptedPost, Slot, topic_tag_for
 from .cards import (
     GRID_TITLES, PLANETS, Card, birth_days, card_from_text, carousel_from_json, carousel_json, grid_json, make_grid, render_card,
     render_grid, soul_carousel, GRID_STYLES, SHAPES,
@@ -1846,11 +1847,14 @@ async def autopost_tick(
     now = datetime.now(cfg.timezone)
     last = await db.last_published_at()
     stored = await db.kv_get("next_post_at")
+    gap = min_gap(now)
     if stored:
         next_at = datetime.fromisoformat(stored)
+        if now.hour in autopost.PRIME_HOURS and last is not None and next_at > last + timedelta(minutes=80):
+            next_at = last + gap  # вечерний прайм: дневная пауза, назначенная раньше, сокращается
     else:
         # Первый запуск: если давно ничего не выходило — постим сразу.
-        next_at = now if last is None or now - last >= MIN_GAP else last + MIN_GAP
+        next_at = now if last is None or now - last >= gap else last + gap
     if now < next_at:
         return
     pause_end = post_break_end(now)
@@ -1860,8 +1864,8 @@ async def autopost_tick(
     if len(await db.recent_published(now - timedelta(days=1))) >= DAILY_POST_CAP:
         await db.kv_set("next_post_at", (now + timedelta(hours=1)).isoformat())
         return
-    if last is not None and now - last < MIN_GAP:  # пост уже вышел другим путём — выдерживаем паузу
-        await db.kv_set("next_post_at", (last + MIN_GAP).isoformat())
+    if last is not None and now - last < gap:  # пост уже вышел другим путём — выдерживаем паузу
+        await db.kv_set("next_post_at", (last + gap).isoformat())
         return
     ok = await post_next(bot, cfg, db, threads, generator, plan, now, rng)
     delay = plan.next_gap(now, rng) if ok else RETRY_AFTER_ERROR
