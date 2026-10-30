@@ -90,21 +90,21 @@ CLIPS = {
         "keep": 6.0,
         "shimmer": True,
         "lines": {
-            "ru": [(0, 3, "Кто охраняет твою судьбу?"), (3, 7, "Нумерита — ангел-хранитель чисел и звёзд."),
+            "ru": [(0, 3, "Кто охраняет твою судьбу?"), (3, 7, "Нумерита — твой ангел-хранитель. Она опирается на числа, звёзды и науку."),
                    (7, 10, "У каждого есть число, которое ведёт. Узнаешь своё?")],
-            "en": [(0, 3, "Who guards your fate?"), (3, 7, "Numerita — Guardian Angel of Numbers and Stars."),
+            "en": [(0, 3, "Who guards your fate?"), (3, 7, "Numerita — your guardian angel, guided by numbers, stars and science."),
                    (7, 10, "Everyone has a number that leads them. Want to know yours?")],
         },
         "say": {
-            "ru": ["Кто охраняет твою судьбу?", "Нумерита. Ангел-хранитель чисел и звёзд.",
+            "ru": ["Кто охраняет твою судьбу?", "Нумерита. Твой ангел-хранитель. Она опирается на числа, звёзды и науку.",
                    "У каждого есть число, которое ведёт. Узнаешь своё?"],
-            "en": ["Who guards your fate?", "Numerita. The Guardian Angel of Numbers and Stars.",
+            "en": ["Who guards your fate?", "Numerita. Your guardian angel, guided by numbers, stars and science.",
                    "Everyone has a number that leads them. Want to know yours?"],
         },
         "post": {
-            "ru": "Кто охраняет твою судьбу?\n\nЯ — Нумерита, ангел-хранитель чисел и звёзд. У каждого есть число, "
+            "ru": "Кто охраняет твою судьбу?\n\nЯ — Нумерита, твой ангел-хранитель. Опираюсь на числа, звёзды и науку. У каждого есть число, "
                   "которое ведёт. Напиши дату рождения — покажу твоё 🤍\n\nt.me/Numeritabot?start=ad_th_angel",
-            "en": "Who guards your fate?\n\nI'm Numerita, the Guardian Angel of Numbers and Stars. Everyone has a number "
+            "en": "Who guards your fate?\n\nI'm Numerita, your guardian angel, guided by numbers, stars and science. Everyone has a number "
                   "that leads them. Drop your birth date — I'll show you yours 🤍\n\nt.me/Numeritabot?start=ad_en_th_angel",
         },
     },
@@ -117,7 +117,10 @@ OLD_SAY = {
              "en": ["Your birthday isn't random.", "It's a code.",
                     "Born on the sixth, the fifteenth, or the twenty-fourth? Your soul number is six. "
                     "You keep the world around you warm.", "Drop your date, and I'll read your code."]},
-    "angel": {lang: CLIPS["angel"]["say"][lang] for lang in ("ru", "en")},
+    "angel": {"ru": ["Кто охраняет твою судьбу?", "Нумерита. Ангел-хранитель чисел и звёзд.",
+                     "У каждого есть число, которое ведёт. Узнаешь своё?"],
+              "en": ["Who guards your fate?", "Numerita. The Guardian Angel of Numbers and Stars.",
+                     "Everyone has a number that leads them. Want to know yours?"]},
 }
 VOICE_PROMPT = {
     "ru": ("Ты — Нумерита: тёплая, спокойная, загадочная молодая женщина. Прочитай вслух ДОСЛОВНО текст между тегами "
@@ -128,7 +131,7 @@ VOICE_PROMPT = {
            "add or skip anything, never speak any other language."),
 }
 RATE = 24000
-BUILD = "done15"  # версия сборки: новая — бот пересобирает из оплаченного
+BUILD = "done16"  # 30.10: «твой ангел-хранитель, опирается на числа, звёзды и науку»  # версия сборки: новая — бот пересобирает из оплаченного
 BUSY = False  # сборка идёт в этом процессе
 
 
