@@ -11,8 +11,8 @@ MIN_AGE = timedelta(hours=4 if __import__('zavod.lang', fromlist=['is_en']).is_e
 # Слово владельца 29.10.2026: «старые посты без лайков и комментариев — мертвечина, удали». Смотрим 60 дней назад,
 # до 10 удалений в сутки, не чаще раза в 20 минут; аналитика Zernio по старым постам обновляется реже — свежесть 6 ч.
 LOOKBACK = timedelta(days=60)
-DAILY_CAP = 10
-SCAN_EVERY = timedelta(minutes=20)
+DAILY_CAP = 30  # 30.10: владелец просит убрать все пустые посты — быстрее разбираем накопленное
+SCAN_EVERY = timedelta(minutes=10)
 FRESH = timedelta(hours=6)
 
 log = logging.getLogger(__name__)
