@@ -76,7 +76,7 @@ class ThreadsClient:
     async def publish_text(
         self, text: str, topic_tag: str | None = None, first_comment: str | None = None,
         image_urls: list[str] | None = None, video_url: str | None = None,
-        *, media_kind: str | None = None,
+        *, media_kind: str | None = None, thread_items: list[str] | None = None,
     ) -> str:
         """Публикует пост. topic_tag — тема Threads (показ подписчикам темы), first_comment — первый комментарий."""
         if len(text) > MAX_LENGTH:
@@ -89,6 +89,12 @@ class ThreadsClient:
             extra["topic_tag"] = topic_tag
         if first_comment:
             extra["firstComment"] = first_comment[:MAX_LENGTH]
+        if thread_items:  # цепочка: первый элемент — сам пост, остальные — ответы по порядку (Zernio threadItems)
+            if any(len(t) > MAX_LENGTH for t in thread_items):
+                raise ThreadsError(f"Элемент цепочки длиннее {MAX_LENGTH} символов.")
+            if lang.is_en() and any(lang.has_cyrillic(t) for t in thread_items):
+                raise ThreadsError("Русские буквы в английском аккаунте — цепочка не отправлена.")
+            extra["threadItems"] = [{"content": t} for t in thread_items]
         if extra:
             platform["platformSpecificData"] = extra
         body: dict = {"content": text, "platforms": [platform], "publishNow": True}

@@ -571,6 +571,40 @@ async def welcome_publish(db: Storage, threads: ThreadsClient, key: str, url: st
     return "\n".join(lines)
 
 
+CITIES = [  # серия «Город силы» (просьба владельца 30.10.2026 через бот Нумериты; расчёт проверен Swiss Ephemeris)
+    "Есть город, где в минуту твоего рождения Солнце стояло в самой высокой точке неба.\n\n"
+    "И почти наверняка ты живёшь не там.\n\nНайти его можно за 10 секунд — по одному только времени рождения 👇",
+    "В минуту твоего рождения где-то на Земле был ровно полдень: Солнце в самой высокой точке неба над одной "
+    "линией-меридианом.\n\nПравило простое: каждый час до полудня сдвигает эту линию на 15° к востоку, каждый час "
+    "после — на 15° к западу.\n\nРодился в Москве в 9 утра? Твоё Солнце было в высшей точке над Сибирью — где-то "
+    "между Новосибирском и Иркутском.",
+    "Так устроена астрокартография — метод, который астролог Джим Льюис развил в 1970-х. По традиции:\n\n"
+    "☀️ Солнце в зените — город признания и карьеры\n🤍 Венера на закате — город любви и союзов\n"
+    "🌙 Луна в надире — место, где ты по-настоящему дома\n— Сатурн на восходе — город испытаний: закаляет, но даётся "
+    "тяжело\n\nЭто не приказ переезжать. Но очень интересно сверить с тем, где тебе и правда было хорошо.",
+    "У создателя Нумериты линия Солнца прошла ровно через Дубай. А родился он в Дубне. Совпадение? 🙂\n\n"
+    "Свою карту мира с линиями планет и лучшие города для карьеры, любви и дома Нумерита рисует в Telegram: "
+    "«Путь» → «Города силы».\nt.me/Numeritabot?start=ad_th_cities\n\n"
+    "А в каком городе тебе было лучше всего? Напиши в комментариях — проверю по твоей дате.",
+]
+
+
+async def cities_series(db: Storage, threads: ThreadsClient) -> str:
+    """Однократно: цепочка из 4 постов «Город силы» одним тредом. Возвращает квитанцию для владельца."""
+    post_id = await db.add_draft("Город силы — серия 4", CITIES[0], "text_sky")
+    remote = await threads.publish_text(CITIES[0], topic_tag_for("text_sky"), thread_items=CITIES)
+    await db.set_threads_id(post_id, remote or "published")
+    await db.mark_published(post_id)
+    status, link, error = "unknown", None, None
+    for _ in range(12):
+        await asyncio.sleep(30)
+        status, link, error = await threads.post_status(remote) if remote else ("unknown", None, None)
+        if status in ("published", "failed", "partial"):
+            break
+    return (f"🏙 Серия «Город силы» (4 поста цепочкой) в Threads: {link}" if status == "published"
+            else f"⚠️ Серия «Город силы»: Threads ответил «{status}» {error or ''}")
+
+
 CINEMA_BAD = {"10206d9515b1794781bb9c544a339d2193bdcc271c9b6ec3cb9498e5e33394fc"}  # EN с русской первой репликой
 
 
@@ -2192,6 +2226,13 @@ async def run_scheduler(
                                                   lambda t: notify_admins(bot, cfg, t))
                 except Exception:
                     log.exception("Приветственные ролики")
+            if (threads is not None and not EN and datetime(2026, 10, 30, 20, 30, tzinfo=now.tzinfo) <= now
+                    < datetime(2026, 10, 31, 12, 0, tzinfo=now.tzinfo) and await db.claim_slot("cities series 2026-10-30")):
+                try:  # однократно, без повторов вслепую: сбой — сообщение владельцу
+                    await notify_admins(bot, cfg, await cities_series(db, threads))
+                except Exception as e:
+                    log.exception("Серия «Город силы» не вышла")
+                    await notify_admins(bot, cfg, f"⚠️ Серия «Город силы» не вышла: {e}")
             # 30.10, слово владельца: новую английскую версию — сразу, не ждать 19:19 (русская — по плану в 19:19).
             if (threads is not None and now >= datetime(2026, 10, 30, *((12, 40) if EN else (19, 19)), tzinfo=now.tzinfo)
                     and now < datetime(2026, 10, 31, 12, 0, tzinfo=now.tzinfo) and not await db.kv_get("cinema:done")
