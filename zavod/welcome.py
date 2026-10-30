@@ -350,7 +350,7 @@ def assemble(video: bytes, lines: list, voices: list[bytes], seconds: int, workd
     out = workdir / f"{name}.mp4"
     args += ["-filter_complex", ";".join(vf + af), "-map", "[out]", "-map", "[a]",
              "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "slow", "-crf", "17", "-c:a", "aac", "-b:a", "160k",
-             "-t", f"{total:.2f}", "-movflags", "+faststart", str(out)]
+             "-aspect", "9:16", "-t", f"{total:.2f}", "-movflags", "+faststart", str(out)]
     subprocess.run(args, check=True, capture_output=True, timeout=600)
     return out
 
@@ -425,7 +425,7 @@ async def publish_due(db, threads, now, lang: str, publish, notify) -> None:
 async def run_build(db, api_key: str, threads, send_video, notify) -> None:
     """Русский завод: один раз снять и собрать, загрузить 4 версии в Zernio, отправить владельцу."""
     global BUSY
-    if await db.kv_get("welcome:build") == "done9" or BUSY:
+    if await db.kv_get("welcome:build") == "done10" or BUSY:
         return
     BUSY = True
     try:
@@ -441,7 +441,7 @@ async def run_build(db, api_key: str, threads, send_video, notify) -> None:
         urls[name] = await threads.upload_image(data, f"numerita_{name}.mp4", "video/mp4")
         await send_video(data, name)
     await db.kv_set("welcome:urls", json.dumps(urls))
-    await db.kv_set("welcome:build", "done9")
+    await db.kv_set("welcome:build", "done10")
     missing = [k for k in CLIPS if f"{k}_ru" not in paths]
     if await db.kv_get("welcome:job:angel"):  # первая версия ангела без нашего лица — не используется
         missing.append("(первый «Ангел» без лица Нумериты оплачен, но не используется)")
