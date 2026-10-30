@@ -1887,6 +1887,8 @@ async def unpublish_matching(db: Storage, threads: ThreadsClient, fragments: lis
             report.append(f"🗑 Снят из Threads: «{fragment}»")
         elif local or remote_ids:
             report.append(f"⚠️ Не получилось снять «{fragment}» — попробую снова через 10 минут.")
+        elif fragment in UNPUBLISH_EN:
+            report.append(f"⚠️ Не нашла пост «{fragment}» ни в базе, ни в Zernio — ищу снова через 10 минут.")
     return report
 
 
@@ -2050,8 +2052,8 @@ async def run_scheduler(
             if now.minute % 10 == 0 and await db.claim_slot(f"unpub retry {now:%Y-%m-%d %H:%M}"):
                 try:
                     for line in await unpublish_matching(db, threads, UNPUBLISH + (UNPUBLISH_EN if lang.is_en() else [])):
-                        if "Снят" in line:
-                            await notify_admins(bot, cfg, line)
+                        if "Снят" in line or await db.claim_slot(f"unpub warn {line[:60]} {now:%Y-%m-%d %H}"):
+                            await notify_admins(bot, cfg, line)  # неудачу — раз в час, чтобы не молчать
                 except Exception:
                     log.exception("Повторное снятие постов не удалось")
             try:  # квитанции Threads — раз в 5 минут, чтобы не тратить запросы API

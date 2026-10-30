@@ -137,11 +137,14 @@ class ThreadsClient:
 
     async def find_posts(self, fragment: str, since: datetime) -> list[dict]:
         """Посты аккаунта в Zernio, где в тексте есть этот кусок (для снятия по просьбе владельца)."""
-        _, payload = await self._request("GET", "/posts", params={
-            "limit": 50, "accountId": self.account_id, "fromDate": since.date().isoformat(),
-            "search": fragment.strip()[:40], "fields": "content,status",
-        })
-        return [p for p in payload.get("posts") or [] if fragment in (p.get("content") or "")]
+        params = {"limit": 50, "accountId": self.account_id, "fromDate": since.date().isoformat(),
+                  "fields": "content,status"}
+        _, payload = await self._request("GET", "/posts", params={**params, "search": fragment.strip()[:40]})
+        found = [p for p in payload.get("posts") or [] if fragment in (p.get("content") or "")]
+        if not found:  # поиск Zernio бывает по словам и пропускает короткие куски — смотрим последние посты целиком
+            _, payload = await self._request("GET", "/posts", params=params)
+            found = [p for p in payload.get("posts") or [] if fragment in (p.get("content") or "")]
+        return found
 
     async def post_status(self, post_id: str) -> tuple[str, str | None, str | None]:
         """Квитанция Threads по посту Zernio: (статус, публичная ссылка, причина отказа)."""
