@@ -28,19 +28,22 @@ TAGS = "#нумерология #числосудьбы #астрология #�
 CTA = "✨ Твой разбор по дате рождения за 10 секунд — ссылка в шапке профиля @numerita.ai"
 
 
-async def account_id(db, client) -> str | None:
-    """ID аккаунта Instagram в Zernio: переменная, сохранённый или найденный в списке подключённых аккаунтов."""
+async def account_id(db, client, handle: str | None = None) -> str | None:
+    """ID аккаунта Instagram в Zernio по нику: русский — numerita.ai, английский — numerita.love (30.10.2026: в профиле
+    Zernio два Instagram — «первый попавшийся» мог оказаться чужим языком). Переменная окружения — для русского."""
+    from .lang import is_en
+    handle = (handle or ("numerita.love" if is_en() else "numerita.ai")).lower().lstrip("@")
     env = os.getenv("ZERNIO_INSTAGRAM_ACCOUNT_ID", "").strip()
-    if env:
+    if env and handle == "numerita.ai":
         return env
-    saved = await db.kv_get("ig:account")
+    saved = await db.kv_get(f"ig:acc:{handle}")
     if saved:
         return saved
-    last = await db.kv_get("ig:lookup")  # не спрашиваем Zernio чаще раза в час
+    last = await db.kv_get(f"ig:lookup:{handle}")  # не спрашиваем Zernio чаще раза в 10 минут
     now = datetime.now(timezone.utc)
-    if last and now - datetime.fromisoformat(last) < timedelta(hours=1):
+    if last and now - datetime.fromisoformat(last) < timedelta(minutes=10):
         return None
-    await db.kv_set("ig:lookup", now.isoformat())
+    await db.kv_set(f"ig:lookup:{handle}", now.isoformat())
     try:
         _, payload = await client._request("GET", "/accounts")
     except ThreadsError as e:
@@ -48,12 +51,35 @@ async def account_id(db, client) -> str | None:
         return None
     accounts = payload.get("accounts") or payload.get("data") or (payload if isinstance(payload, list) else [])
     for acc in accounts:
-        if (acc.get("platform") or "").lower() == "instagram":
+        user = (acc.get("username") or acc.get("name") or "").lower().lstrip("@")
+        if (acc.get("platform") or "").lower() == "instagram" and user == handle:
             ident = acc.get("_id") or acc.get("id") or acc.get("accountId")
             if ident:
-                await db.kv_set("ig:account", ident)
+                await db.kv_set(f"ig:acc:{handle}", ident)
                 return ident
     return None
+
+
+async def post_video(client, account: str, url: str, caption: str) -> tuple[str, str | None]:
+    """Видео в Instagram через Zernio; (статус, ссылка) — ждём квитанцию до 5 минут."""
+    import asyncio
+    _, payload = await client._request("POST", "/posts", json={
+        "content": caption, "mediaItems": [{"type": "video", "url": url}],
+        "platforms": [{"platform": "instagram", "accountId": account}], "publishNow": True})
+    post = payload.get("post") or payload
+    remote = post.get("_id") or post.get("id")
+    status, link = post.get("status") or "unknown", None
+    for _ in range(10):
+        if not remote:
+            break
+        await asyncio.sleep(30)
+        _, data = await client._request("GET", f"/posts/{remote}")
+        got = data.get("post") or data
+        target = next((p for p in got.get("platforms") or [] if p.get("platform") == "instagram"), {})
+        status, link = target.get("status") or got.get("status") or status, target.get("platformPostUrl")
+        if status in ("published", "failed", "partial"):
+            break
+    return status, link
 
 
 def caption(post) -> str:

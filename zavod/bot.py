@@ -1962,6 +1962,27 @@ async def run_op(cmd: dict, db: Storage, threads: ThreadsClient | None, bot: Bot
         await db.kv_set("grid:force", json.dumps([cmd["shape"]] + forced))
         await db.kv_set("next_post_at", datetime.now(cfg.timezone).isoformat())
         await notify_admins(bot, cfg, f"{tag}🌀 Матрица «{cmd['shape']}» — следующим постом, ссылку пришлю.")
+    elif action == "ig" and threads is not None:  # Instagram своего языка: живая матрица или готовый ролик
+        account = await instagram.account_id(db, threads, cmd.get("handle"))
+        if not account:
+            await notify_admins(bot, cfg, f"{tag}⚠️ Instagram @{cmd.get('handle') or ''} не найден в Zernio — подключи его там.")
+            return
+        media = cmd.get("media", "")
+        if media.startswith("grid:"):
+            from .gridvideo import render_video
+            shape = media[5:]
+            grid = make_grid(random.Random(cmd["id"]), style=shape, egg=f"{datetime.now(cfg.timezone):%d%m}")
+            title = SHAPES[shape][0]
+            if lang.is_en():
+                from .cards import SHAPES_EN
+                title = SHAPES_EN.get(shape, title)
+            data = await asyncio.to_thread(render_video, grid, title, random.Random(cmd["id"]).randrange(4), cmd["id"])
+        else:
+            data = (Path(__file__).parent.parent / "assets" / media).read_bytes()
+        url = await threads.upload_image(data, f"ig_{cmd['id']}.mp4", "video/mp4")
+        status, link = await instagram.post_video(threads, account, url, cmd.get("caption", ""))
+        await notify_admins(bot, cfg, f"{tag}📸 Instagram: {link}" if status == "published"
+                            else f"{tag}⚠️ Instagram ответил «{status}»")
     elif action == "unpublish" and threads is not None and cmd.get("fragment"):
         for line in await unpublish_matching(db, threads, [cmd["fragment"]]) or ["⚠️ Пост не найден"]:
             await notify_admins(bot, cfg, tag + line)
