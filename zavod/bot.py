@@ -2006,6 +2006,25 @@ async def run_op(cmd: dict, db: Storage, threads: ThreadsClient | None, bot: Bot
         status, link = await instagram.post_video(threads, account, url, cmd.get("caption", ""))
         await notify_admins(bot, cfg, f"{tag}📸 Instagram: {link}" if status == "published"
                             else f"{tag}⚠️ Instagram ответил «{status}»")
+    elif action == "raw_clips" and threads is not None:  # оплаченные исходники Kling/Grok без надписей — $0
+        import httpx
+        from . import welcome
+        lines = []
+        rows = await db._rows("SELECT key, value FROM kv WHERE key LIKE 'welcome:job:%'")
+        async with httpx.AsyncClient(timeout=180) as http:
+            for row in rows:
+                jid = row["value"]
+                if not jid or jid == "failed":
+                    continue
+                r = await http.get(f"{welcome.API}/videos/{jid}/content", follow_redirects=True,
+                                   headers={"Authorization": f"Bearer {cfg.openrouter_api_key}"})
+                if r.status_code != 200 or len(r.content) < 50_000:
+                    lines.append(f"{row['key'][12:]}: недоступен ({r.status_code})")
+                    continue
+                url = await threads.upload_image(r.content, f"raw_{row['key'][12:]}.mp4", "video/mp4")
+                lines.append(f"{row['key'][12:]}: {url}")
+        await db.kv_set("welcome:raw_urls", json.dumps(lines, ensure_ascii=False))
+        await notify_admins(bot, cfg, "🎞 Исходники роликов без надписей (уже оплачены, $0):\n" + "\n".join(lines or ["нет"]))
     elif action in ("reels_on", "reels_off"):
         await db.kv_set("reels:on", "1" if action == "reels_on" else "0")
         await notify_admins(bot, cfg, f"{tag}🎬 Публикация рилсов {'включена' if action == 'reels_on' else 'выключена'}.")
