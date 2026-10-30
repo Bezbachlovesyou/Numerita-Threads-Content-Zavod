@@ -50,7 +50,7 @@ class WelcomeBudget(unittest.TestCase):
 
     def test_ceiling_blocks_order(self):
         async def go():
-            await self.db.kv_set("welcome:spent", "1.20")
+            await self.db.kv_set("welcome:spent", "2.20")
             http = FakeHttp()
             self.assertIsNone(await welcome.clip(self.db, http, "angel", "k"))  # 0,84 не влезает
             self.assertEqual(http.posts, 0)
@@ -103,3 +103,57 @@ class WelcomeBudget(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AngelPortrait(unittest.TestCase):
+    def test_once_and_sent(self):
+        import base64, io
+        from unittest import mock
+        from PIL import Image
+        buf = io.BytesIO()
+        Image.new("RGB", (90, 160), (200, 170, 90)).save(buf, "PNG")
+        data_url = "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
+
+        class Resp:
+            status_code, text = 200, ""
+
+            def json(self):
+                return {"choices": [{"message": {"images": [{"image_url": {"url": data_url}}]}}],
+                        "usage": {"cost": 0.14}}
+
+        class Client:
+            def __init__(self, *a, **k):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+            async def post(self, *a, **k):
+                Client.calls += 1
+                return Resp()
+        Client.calls = 0
+
+        class Threads:
+            async def upload_image(self, data, name, *a):
+                return "https://cdn/x.jpg"
+
+        sent = []
+
+        async def photo(data, caption):
+            sent.append(caption)
+
+        db = Storage(os.path.join(tempfile.mkdtemp(), "t.db"))
+
+        async def go():
+            await db.init()
+            with mock.patch.object(welcome.httpx, "AsyncClient", Client):
+                await welcome.angel_portrait(db, "k", Threads(), photo)
+                await welcome.angel_portrait(db, "k", Threads(), photo)
+            self.assertEqual(Client.calls, 1)
+            self.assertEqual(await db.kv_get("angel3:ref_url"), "https://cdn/x.jpg")
+            self.assertIn("/angel_ok", sent[0])
+            self.assertAlmostEqual(await welcome._spent(db), 0.14, places=2)
+        asyncio.run(go())

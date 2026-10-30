@@ -30,7 +30,7 @@ from .brandvideo import ffmpeg
 log = logging.getLogger(__name__)
 
 API = "https://openrouter.ai/api/v1"
-CEILING_USD = 1.70  # 30.10: $1,50 + «да» владельца на переозвучку (голос не влез) — не больше $0,20 сверху
+CEILING_USD = 2.70  # +$1,00 — «да» владельца 30.10 на новую Нумериту (портрет + Kling); было 1.70 = 30.10: $1,50 + «да» владельца на переозвучку (голос не влез) — не больше $0,20 сверху
 W, H = 1080, 1920  # 30.10: 1080p — чётче на телефоне (было 720p, «качество низкое»)
 ASSETS = Path(__file__).parent.parent / "assets"
 FONT = ASSETS / "fonts" / "CormorantGaramond.ttf"
@@ -128,6 +128,7 @@ VOICE_PROMPT = {
            "add or skip anything, never speak any other language."),
 }
 RATE = 24000
+BUILD = "done15"  # версия сборки: новая — бот пересобирает из оплаченного
 BUSY = False  # сборка идёт в этом процессе
 
 
@@ -498,11 +499,15 @@ async def publish_due(db, threads, now, lang: str, publish, notify) -> None:
 async def run_build(db, api_key: str, threads, send_video, notify) -> None:
     """Русский завод: один раз снять и собрать, загрузить 4 версии в Zernio, отправить владельцу."""
     global BUSY
-    if await db.kv_get("welcome:build") == "done14" or BUSY:
+    if await db.kv_get("welcome:build") == BUILD or BUSY:
         return
     BUSY = True
     try:
-        ref = await threads.upload_image((ASSETS / "numerita_angel.jpg").read_bytes(), "numerita_angel.jpg")
+        if await db.kv_get("angel3:approved") == "yes" and await db.kv_get("angel3:ref_url"):
+            ref = await db.kv_get("angel3:ref_url")  # новая Нумерита, одобренная владельцем
+            CLIPS["angel"].update(job="angel3", prompt=PROMPT3, keep=None)
+        else:
+            ref = await threads.upload_image((ASSETS / "numerita_angel.jpg").read_bytes(), "numerita_angel.jpg")
         paths = await build(db, api_key, ref)
     except Exception as e:
         BUSY = False
@@ -514,10 +519,65 @@ async def run_build(db, api_key: str, threads, send_video, notify) -> None:
         urls[name] = await threads.upload_image(data, f"numerita_{name}.mp4", "video/mp4")
         await send_video(data, name)
     await db.kv_set("welcome:urls", json.dumps(urls))
-    await db.kv_set("welcome:build", "done14")
+    await db.kv_set("welcome:build", BUILD)
     missing = [k for k in CLIPS if f"{k}_ru" not in paths]
     if await db.kv_get("welcome:job:angel"):  # первая версия ангела без нашего лица — не используется
         missing.append("(первый «Ангел» без лица Нумериты оплачен, но не используется)")
     await notify(f"🎬 Приветственные ролики собраны: {len(paths)} из 4. Потрачено ${await _spent(db):.2f} из "
                  f"${CEILING_USD:.2f}." + (f"\n⚠️ Не снялись: {', '.join(missing)} — повторно не заказываю." if missing else "")
                  + "\nВыкладываю по очереди: сначала «Ангел», через 3 часа — «Твой код».")
+
+
+# Новая Нумерита (слово владельца 30.10.2026, «да, $1»): взгляд в кадр, естественные ресницы, ангельское лицо, фигура
+# женственнее при закрытом платье. Сначала правим нашу картинку (одна попытка, ≈$0,14) и шлём владельцу; Kling снимает,
+# только когда он ответит /angel_ok.
+IMAGE_MODEL = "google/gemini-3-pro-image"
+EDIT_PROMPT = (
+    "Edit this exact character and keep her identity: the same face shape, hairstyle, golden halo of digits, large "
+    "wings made of glowing digits, golden embroidered dress, background, composition and art style. Changes only: "
+    "1) she looks straight into the camera with warm, direct eye contact; 2) natural soft light eyelashes, no heavy "
+    "black mascara or dramatic make-up — a pure, serene, angelic face with a gentle closed-lip smile, like an icon; "
+    "3) a more feminine figure with a fuller bust, elegant and modest: the dress stays closed with a high neckline, "
+    "nothing revealing. Keep the glowing golden digits on the halo, wings and dress. Vertical 9:16. No text.")
+PROMPT3 = (
+    "Animate this exact character from the first frame without changing her face, figure, halo, wings or dress. She "
+    "keeps looking straight into the camera the whole time and never looks down. Waves of soft golden light run across "
+    "the glowing digits of her halo, wings and dress; stars twinkle; a warm light glows at her heart; she blinks gently "
+    "and slowly raises her open palm toward the viewer, a small bright star rises from her palm toward the camera. "
+    "Serene, pure, angelic expression. Slow cinematic push-in.")
+
+
+async def angel_portrait(db, api_key: str, threads, send_photo) -> None:
+    """Один раз: правка картинки Нумериты и отправка владельцу на «да» (/angel_ok)."""
+    if not api_key or await db.kv_get("angel3:img"):
+        return
+    await db.kv_set("angel3:img", "started")  # до заказа: перезапуск не закажет второй раз
+    if await _spent(db) + 0.20 > CEILING_USD:
+        await db.kv_set("angel3:img", "no budget")
+        return
+    src = base64.b64encode((ASSETS / "numerita_angel.jpg").read_bytes()).decode()
+    body = {"model": IMAGE_MODEL, "modalities": ["image", "text"], "image_config": {"aspect_ratio": "9:16"},
+            "usage": {"include": True}, "messages": [{"role": "user", "content": [
+                {"type": "text", "text": EDIT_PROMPT},
+                {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + src}}]}]}
+    async with httpx.AsyncClient(timeout=240) as http:
+        r = await http.post(f"{API}/chat/completions", json=body,
+                            headers={"Authorization": f"Bearer {api_key}", "X-Title": "Numerita Threads"})
+    data = r.json() if r.status_code < 400 else {}
+    await _add_spent(db, float((data.get("usage") or {}).get("cost") or (0.15 if data else 0)))
+    try:
+        url = data["choices"][0]["message"]["images"][0]["image_url"]["url"]
+        img = base64.b64decode(url.split(",", 1)[1])
+    except (KeyError, IndexError, TypeError):
+        await db.kv_set("angel3:img", f"failed {r.status_code}")
+        raise RuntimeError(f"картинка Нумериты не получилась ({r.status_code}): {r.text[:150]}")
+    import io
+    pic = Image.open(io.BytesIO(img)).convert("RGB").resize((720, 1280), Image.LANCZOS)
+    buf = io.BytesIO()
+    pic.save(buf, "JPEG", quality=93)
+    ref = await threads.upload_image(buf.getvalue(), "numerita_angel3.jpg")
+    await db.kv_set("angel3:ref_url", ref)
+    await db.kv_set("angel3:img", "sent")
+    await send_photo(buf.getvalue(), f"✨ Новая Нумерита: взгляд в кадр, естественные ресницы, фигура женственнее, платье "
+                                      f"закрытое. Потрачено всего ${await _spent(db):.2f} из ${CEILING_USD:.2f}.\n"
+                                      "Снимать с ней «Ангела» (≈$0,84)? Ответь /angel_ok — да, /angel_no — нет.")

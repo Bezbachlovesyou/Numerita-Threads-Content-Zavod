@@ -811,6 +811,23 @@ def create_router(cfg: Config, plan: ContentPlan) -> Router:
     async def safety_handler(message: Message, db: Storage):
         await message.answer(await api_budget.report(db,datetime.now(timezone.utc)),parse_mode=None)
 
+    @router.message(Command("angel_ok"))
+    async def angel_ok_handler(message: Message, db: Storage):
+        from . import welcome
+        if not await db.kv_get("angel3:ref_url"):
+            await message.answer("Картинки новой Нумериты ещё нет.", parse_mode=None)
+            return
+        await db.kv_set("angel3:approved", "yes")
+        await db.kv_set("welcome:build", "")  # пересобрать: «Ангел» с новой Нумеритой, остальное из оплаченного
+        await db.kv_set(f"welcome:tries:{welcome.BUILD}", "0")
+        await message.answer(f"Принято: снимаю «Ангела» с новой Нумеритой (≈$0,84, потолок ${welcome.CEILING_USD:.2f}). "
+                             "Ролики придут, когда пройдут проверку.", parse_mode=None)
+
+    @router.message(Command("angel_no"))
+    async def angel_no_handler(message: Message, db: Storage):
+        await db.kv_set("angel3:approved", "no")
+        await message.answer("Принято: новую картинку не снимаю, денег на видео не трачу.", parse_mode=None)
+
     @router.message(Command("connect_en"))
     async def connect_en_handler(message: Message, threads: ThreadsClient | None):
         await message.answer(await en_connect_text(threads), parse_mode=None, disable_web_page_preview=True)
@@ -2143,10 +2160,10 @@ async def run_scheduler(
             if threads is not None and now.minute % 10 == 0 and await db.claim_slot(f"welcome tick {now:%Y-%m-%d %H:%M}"):
                 try:  # приветственные ролики (слово владельца 30.10.2026, потолок $1,50)
                     from . import welcome
-                    tries = int(await db.kv_get("welcome:tries14") or 0)  # 3: пересборка — голос не налезает
+                    tries = int(await db.kv_get(f"welcome:tries:{welcome.BUILD}") or 0)  # 3: пересборка — голос не налезает
                     if (not EN and generator.api_key and not welcome.BUSY and tries < 3
-                            and await db.kv_get("welcome:build") != "done14"):
-                        await db.kv_set("welcome:tries14", str(tries + 1))  # оплаченное берётся по номерам заданий
+                            and await db.kv_get("welcome:build") != welcome.BUILD):
+                        await db.kv_set(f"welcome:tries:{welcome.BUILD}", str(tries + 1))  # оплаченное берётся по номерам заданий
                         async def _send(data, name):
                             for admin_id in cfg.admin_ids:
                                 # размеры кадра явно — иначе Telegram показывает вертикальный ролик приплюснутым (30.10)
@@ -2155,6 +2172,15 @@ async def run_scheduler(
                                                      supports_streaming=True)
                         welcome.TASK = asyncio.create_task(welcome.run_build(db, generator.api_key, threads, _send,
                                                               lambda t: notify_admins(bot, cfg, t)))
+                    if not EN and not welcome.BUSY:  # новая Нумерита — картинка владельцу на «да» (однократно)
+                        async def _photo(data, caption):
+                            for admin_id in cfg.admin_ids:
+                                await bot.send_photo(admin_id, BufferedInputFile(data, "numerita_angel3.jpg"),
+                                                     caption=caption[:1024])
+                        try:
+                            await welcome.angel_portrait(db, generator.api_key, threads, _photo)
+                        except Exception as e:
+                            await notify_admins(bot, cfg, f"⚠️ Новая Нумерита: {e}")
                     if not EN or 16 <= now.hour < 23:  # английский — когда в США и Британии день
                         await welcome.publish_due(db, threads, now, "en" if EN else "ru",
                                                   lambda k, u: welcome_publish(db, threads, k, u),
