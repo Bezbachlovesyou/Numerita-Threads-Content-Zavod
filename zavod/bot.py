@@ -2098,7 +2098,8 @@ async def run_scheduler(
                     await notify_admins(bot, cfg, await en_connect_text(threads))
                 except Exception:
                     log.exception("Ссылка подключения английского Threads не отправлена")
-            if (threads is not None and now >= datetime(2026, 10, 30, 19, 19, tzinfo=now.tzinfo)
+            # 30.10, слово владельца: новую английскую версию — сразу, не ждать 19:19 (русская — по плану в 19:19).
+            if (threads is not None and now >= datetime(2026, 10, 30, *((12, 40) if EN else (19, 19)), tzinfo=now.tzinfo)
                     and now < datetime(2026, 10, 31, 12, 0, tzinfo=now.tzinfo) and not await db.kv_get("cinema:done")
                     and await db.claim_slot(f"cinema try {now:%Y-%m-%d %H:%M}"[:-1])):  # раз в 10 мин, пока файла нет
                 try:
