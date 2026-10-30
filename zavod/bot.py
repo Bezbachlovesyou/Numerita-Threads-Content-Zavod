@@ -1961,6 +1961,13 @@ async def run_op(cmd: dict, db: Storage, threads: ThreadsClient | None, bot: Bot
             await notify_admins(bot, cfg, f"{tag}⚠️ Пост не вышел: {post.error}")
         else:
             asyncio.create_task(post_receipt(bot, cfg, db, threads, datetime.now(cfg.timezone)))
+    elif action == "thread" and threads is not None and cmd.get("items"):  # цепочка постов одним тредом
+        items = [str(t).strip() for t in cmd["items"] if str(t).strip()]
+        post_id = await db.add_draft(f"ops:{cmd['id']}", items[0], cmd.get("rubric") or "text_seed")
+        remote = await threads.publish_text(items[0], topic_tag_for(cmd.get("rubric")), thread_items=items)
+        await db.set_threads_id(post_id, remote or "published")
+        await db.mark_published(post_id)
+        asyncio.create_task(post_receipt(bot, cfg, db, threads, datetime.now(cfg.timezone)))
     elif action == "grid" and cmd.get("shape") in GRID_STYLES:
         forced = json.loads(await db.kv_get("grid:force") or "[]")
         await db.kv_set("grid:force", json.dumps([cmd["shape"]] + forced))

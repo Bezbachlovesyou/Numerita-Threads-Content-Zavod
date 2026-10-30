@@ -55,5 +55,25 @@
   "action": "post",
   "rubric": "text_daily",
   "text": "Ошибка или урок?\n\nОшибка — это когда женился не на той.\nУрок — это когда понял почему.\nА туман — когда третий раз женишься на той же. Просто в другом платье.\n\nЧисла тут подсказывают: 2, 11, 20, 29 путают любовь с жалостью. 8, 17, 26 — с договором. 5, 14, 23 — с приключением.\n\nПрошлое остаётся ошибкой, пока из него ничего не вынесли. Вынесли — значит, урок, и можно жить дальше.\n\nУ тебя что было: ошибка, урок или туман? 👇"
+ },
+ {
+  "id": "roles-ru-2026-10-30",
+  "account": "ru",
+  "action": "thread",
+  "rubric": "text_roles",
+  "items": [
+   "Твоя дата рождения = твоя роль главного героя 🎬\n\n1 — Первопроходец ☀️\n2 — Дипломат 🕊\n3 — Вдохновитель 🎉\n4 — Изобретатель ⚡\n5 — Авантюрист ✈️\n6 — Хранитель красоты 🌹\n7 — Мудрец 🕯\n8 — Магнат 💎\n9 — Спасатель 🔥\n10 — Звезда ✨\n11 — Интуит 🌙\n12 — Учитель 📚\n13 — Бунтарь 🎸\n14 — Свободный ветер 🌊\n15 — Магнит 🧲\n16 — Старая душа 🌌",
+   "17 — Король положения 👑\n18 — Тихий герой 🛡\n19 — Солнце компании 🌞\n20 — Эмпат 💞\n21 — Победитель 🏆\n22 — Архитектор 🏛\n23 — Обаятельный хулиган 😏\n24 — Семейное сердце 🏡\n25 — Философ 🧭\n26 — Строитель империи 🏗\n27 — Целитель душ 🌿\n28 — Новатор 🚀\n29 — Мистик 🔮\n30 — Шоумен 🎤\n31 — Строитель мечты 🌉\n\nСовпало? Пиши свой день 👇"
+  ]
+ },
+ {
+  "id": "roles-en-2026-10-30",
+  "account": "en",
+  "action": "thread",
+  "rubric": "text_roles",
+  "items": [
+   "Your birthday = your main character role 🎬\n\n1 — The Trailblazer ☀️\n2 — The Diplomat 🕊\n3 — The Spark 🎉\n4 — The Inventor ⚡\n5 — The Wanderer ✈️\n6 — The Keeper of Beauty 🌹\n7 — The Sage 🕯\n8 — The Mogul 💎\n9 — The Rescuer 🔥\n10 — The Star ✨\n11 — The Intuitive 🌙\n12 — The Teacher 📚\n13 — The Rebel 🎸\n14 — The Free Wind 🌊\n15 — The Magnet 🧲\n16 — The Old Soul 🌌",
+   "17 — The Ruler 👑\n18 — The Quiet Hero 🛡\n19 — The Sunshine 🌞\n20 — The Empath 💞\n21 — The Winner 🏆\n22 — The Architect 🏛\n23 — The Charming Troublemaker 😏\n24 — The Heart of the Home 🏡\n25 — The Philosopher 🧭\n26 — The Empire Builder 🏗\n27 — The Soul Healer 🌿\n28 — The Innovator 🚀\n29 — The Mystic 🔮\n30 — The Showstopper 🎤\n31 — The Dream Builder 🌉\n\nDoes it fit? Drop your day 👇"
+  ]
  }
 ]
