@@ -12,6 +12,7 @@
 """
 
 import asyncio
+import hashlib
 import base64
 import json
 import logging
@@ -46,19 +47,20 @@ CLIPS = {
                    "connect with thin threads of light into a shining constellation. The camera glides forward "
                    "through the constellation; it pulses gently, and at the end a soft warm golden flash fills the frame."),
         "lines": {
-            "ru": [(0, 3, "Твой день рождения — не случайность."), (3, 7, "Это код."),
+            # 30.10: короткую «Это код.» голос глотал — две первые фразы звучат одной репликой и одной надписью
+            "ru": [(0, 7, "Твой день рождения — не случайность. Это код."),
                    (7, 12, "Родился 6-го, 15-го или 24-го? Твоё число души — 6: ты держишь мир вокруг себя тёплым."),
                    (12, 15, "Напиши дату — покажу твой код.")],
-            "en": [(0, 3, "Your birthday isn't random."), (3, 7, "It's a code."),
+            "en": [(0, 7, "Your birthday isn't random. It's a code."),
                    (7, 12, "Born on the 6th, 15th or 24th? Your soul number is 6 — you keep the world around you warm."),
                    (12, 15, "Drop your date — I'll read your code.")],
         },
         # Что произносит голос: числа словами, без тире и скобок — иначе модель запинается и глотает слова (30.10).
         "say": {
-            "ru": ["Твой день рождения не случайность.", "Это код.",
+            "ru": ["Твой день рождения не случайность. Это код.",
                    "Родился шестого, пятнадцатого или двадцать четвёртого? Твоё число души шесть. "
                    "Ты держишь мир вокруг себя тёплым.", "Напиши дату, и я покажу твой код."],
-            "en": ["Your birthday isn't random.", "It's a code.",
+            "en": ["Your birthday isn't random. It's a code.",
                    "Born on the sixth, the fifteenth, or the twenty-fourth? Your soul number is six. "
                    "You keep the world around you warm.", "Drop your date, and I'll read your code."],
         },
@@ -105,6 +107,16 @@ CLIPS = {
                   "that leads them. Drop your birth date — I'll show you yours 🤍\n\nt.me/Numeritabot?start=ad_en_th_angel",
         },
     },
+}
+# Тексты голоса прошлой сборки (кэш welcome:voice2 был по номеру фразы) — чтобы не платить заново за те же фразы.
+OLD_SAY = {
+    "code": {"ru": ["Твой день рождения не случайность.", "Это код.",
+                    "Родился шестого, пятнадцатого или двадцать четвёртого? Твоё число души шесть. "
+                    "Ты держишь мир вокруг себя тёплым.", "Напиши дату, и я покажу твой код."],
+             "en": ["Your birthday isn't random.", "It's a code.",
+                    "Born on the sixth, the fifteenth, or the twenty-fourth? Your soul number is six. "
+                    "You keep the world around you warm.", "Drop your date, and I'll read your code."]},
+    "angel": {lang: CLIPS["angel"]["say"][lang] for lang in ("ru", "en")},
 }
 VOICE_PROMPT = {
     "ru": ("Ты — Нумерита: тёплая, спокойная, загадочная молодая женщина. Прочитай вслух ДОСЛОВНО текст между тегами "
@@ -368,7 +380,10 @@ async def build(db, api_key: str, first_frame_url: str = "") -> dict[str, Path]:
             for lang in ("ru", "en"):
                 voices = []
                 for i, text in enumerate(spec["say"][lang]):
-                    saved = await db.kv_get(f"welcome:voice2:{key}:{lang}:{i}")
+                    saved = await db.kv_get(f"welcome:voice3:{key}:{lang}:{hashlib.sha1(text.encode()).hexdigest()[:10]}")
+                    old = OLD_SAY.get(key, {}).get(lang, [])
+                    if not saved and text in old:  # та же фраза из прошлой сборки — уже оплачена
+                        saved = await db.kv_get(f"welcome:voice2:{key}:{lang}:{old.index(text)}")
                     if saved:  # уже оплаченная фраза — без новой траты
                         voices.append(base64.b64decode(saved))
                         continue
@@ -385,7 +400,7 @@ async def build(db, api_key: str, first_frame_url: str = "") -> dict[str, Path]:
                             break
                     if not voice_ok(pcm, text):
                         raise RuntimeError(f"озвучка фразы «{text[:30]}…» обрывается — ролик не собираю")
-                    await db.kv_set(f"welcome:voice2:{key}:{lang}:{i}", base64.b64encode(pcm).decode())
+                    await db.kv_set(f"welcome:voice3:{key}:{lang}:{hashlib.sha1(text.encode()).hexdigest()[:10]}", base64.b64encode(pcm).decode())
                     voices.append(pcm)
                 out[f"{key}_{lang}"] = await asyncio.to_thread(
                     assemble, video, spec["lines"][lang], voices, spec["seconds"], workdir, f"{key}_{lang}", spec.get("keep"))
@@ -430,7 +445,7 @@ async def publish_due(db, threads, now, lang: str, publish, notify) -> None:
 async def run_build(db, api_key: str, threads, send_video, notify) -> None:
     """Русский завод: один раз снять и собрать, загрузить 4 версии в Zernio, отправить владельцу."""
     global BUSY
-    if await db.kv_get("welcome:build") == "done10" or BUSY:
+    if await db.kv_get("welcome:build") == "done11" or BUSY:
         return
     BUSY = True
     try:
@@ -446,7 +461,7 @@ async def run_build(db, api_key: str, threads, send_video, notify) -> None:
         urls[name] = await threads.upload_image(data, f"numerita_{name}.mp4", "video/mp4")
         await send_video(data, name)
     await db.kv_set("welcome:urls", json.dumps(urls))
-    await db.kv_set("welcome:build", "done10")
+    await db.kv_set("welcome:build", "done11")
     missing = [k for k in CLIPS if f"{k}_ru" not in paths]
     if await db.kv_get("welcome:job:angel"):  # первая версия ангела без нашего лица — не используется
         missing.append("(первый «Ангел» без лица Нумериты оплачен, но не используется)")
