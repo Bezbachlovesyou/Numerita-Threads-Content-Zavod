@@ -1994,6 +1994,9 @@ async def run_op(cmd: dict, db: Storage, threads: ThreadsClient | None, bot: Bot
         status, link = await instagram.post_video(threads, account, url, cmd.get("caption", ""))
         await notify_admins(bot, cfg, f"{tag}📸 Instagram: {link}" if status == "published"
                             else f"{tag}⚠️ Instagram ответил «{status}»")
+    elif action in ("reels_on", "reels_off"):
+        await db.kv_set("reels:on", "1" if action == "reels_on" else "0")
+        await notify_admins(bot, cfg, f"{tag}🎬 Публикация рилсов {'включена' if action == 'reels_on' else 'выключена'}.")
     elif action == "unpublish" and threads is not None and cmd.get("fragment"):
         for line in await unpublish_matching(db, threads, [cmd["fragment"]]) or ["⚠️ Пост не найден"]:
             await notify_admins(bot, cfg, tag + line)
@@ -2408,6 +2411,12 @@ async def run_scheduler(
                     await notify_admins(bot, cfg, await en_connect_text(threads))
                 except Exception:
                     log.exception("Ссылка подключения английского Threads не отправлена")
+            if threads is not None:
+                try:  # говорящие рилсы из ленты основного бота (включаются командой пульта reels_on)
+                    from . import reels
+                    await reels.tick(db, threads, lambda t: notify_admins(bot, cfg, t))
+                except Exception:
+                    log.exception("Рилсы")
             try:  # пульт владельца: команды из ops/commands.json (без перезапуска)
                 from . import ops
                 await ops.tick(db, "en" if EN else "ru", lambda c: run_op(c, db, threads, bot, cfg))
