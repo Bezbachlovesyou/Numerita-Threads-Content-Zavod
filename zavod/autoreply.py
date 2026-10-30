@@ -352,11 +352,11 @@ async def answer_comments(
         )
         if links_ok and asks_link(comment["message"]):
             mode = "link"
-        elif (links_ok and is_en() and re.search(r"\d", comment["message"] or "")
+        elif (links_ok and re.search(r"\d", comment["message"] or "")
               and not await db.link_replies(now - timedelta(days=30), author)):
             # Английский аккаунт (слово владельца 30.10.2026): в начале чаще даём ссылку — человек прислал дату/число,
             # отвечаем по сути и одной фразой зовём за полным разбором. Общие лимиты ссылок и стоп-кран прежние,
-            # одному человеку — раз в 30 дней.
+            # одному человеку — раз в 30 дней. 30.10.2026 вечером владелец сказал «да» и для русского аккаунта.
             mode = "offer"
         given = await db.replies_to_author(author, now - timedelta(days=1))
         if given > free_per_day:  # бесплатные ответы на сегодня закончились

@@ -2381,6 +2381,17 @@ async def run_scheduler(
                 await ops.tick(db, "en" if EN else "ru", lambda c: run_op(c, db, threads, bot, cfg))
             except Exception:
                 log.exception("Пульт")
+            if (not EN and threads is not None and now >= datetime(2026, 10, 30, 20, 0, tzinfo=now.tzinfo)
+                    and await db.claim_slot("friday five 2026-10-30")):  # слово владельца: пятничная раздача пятерым
+                async def _friday():
+                    try:
+                        from . import giveaway
+                        await notify_admins(bot, cfg, await giveaway.friday_five(db, threads, datetime.now(cfg.timezone),
+                                                                                 asyncio.sleep))
+                    except Exception as e:
+                        log.exception("Пятничные подарки")
+                        await notify_admins(bot, cfg, f"⚠️ Пятничные подарки: {e}")
+                asyncio.create_task(_friday())
             if await db.claim_slot("post now 2026-10-30 19:30"):  # владелец: «19:25, а постов не вижу» — пост сразу
                 await db.kv_set("next_post_at", datetime.now(cfg.timezone).isoformat())
             if now.hour in autopost.PRIME_HOURS and threads is not None:  # самопроверка: посты не стоят
