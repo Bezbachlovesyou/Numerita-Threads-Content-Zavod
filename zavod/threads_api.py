@@ -122,7 +122,11 @@ class ThreadsClient:
 
     async def unpublish(self, post_id: str) -> None:
         """Снимает пост из Threads (запись в Zernio остаётся со статусом cancelled)."""
-        await self._request("POST", f"/posts/{post_id}/unpublish", json={"platform": "threads"})
+        # accountId — чтобы Zernio снял копию именно нашего аккаунта (30.10: «снят» пришло, а пост в Threads висел)
+        _, payload = await self._request("POST", f"/posts/{post_id}/unpublish",
+                                         json={"platform": "threads", "accountId": self.account_id})
+        if payload and payload.get("success") is False:
+            raise ThreadsError(f"Zernio не снял пост: {payload.get('message') or payload}")
 
     async def find_post(self, text: str, since: datetime) -> str | None:
         """Есть ли уже в Zernio пост с этим текстом (после сбоя связи) — чтобы не опубликовать дважды."""
