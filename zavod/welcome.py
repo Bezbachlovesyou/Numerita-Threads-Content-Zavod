@@ -547,9 +547,14 @@ EDIT_PROMPT = (
 PROMPT3 = (
     "Animate this exact character from the first frame without changing her face, figure, halo, wings or dress. "
     "Her eyes stay locked on the viewer the entire time, a calm, magnetic, hypnotic gaze straight out of the screen; "
-    "she never looks down and never lowers her eyelids. The golden halo of digits slowly rotates like a sacred dial; "
-    "waves of golden light run across the glowing digits of her halo, wings and dress, the digits shimmer and sparkle. "
-    "Magical living cosmos around her: galaxies slowly swirl, stars twinkle and sparkle, golden dust drifts, soft "
+    "she never looks down and never lowers her eyelids. The golden halo of digits is a separate ring floating behind "
+    "her head, not touching her hair; only the halo slowly rotates like a sacred dial, while her face, hair, chin and "
+    "head stay perfectly still; "
+    "waves of golden light run across the glowing digits of her halo, skin, wings and dress, the digits shimmer. "
+    "A digital rain of glowing golden digits only (no letters, no glyphs), large, small and tiny, falls in front of "
+    "and behind her at different depths, like in The Matrix. "
+    "Magical living cosmos around her with deep 3D parallax: galaxies slowly swirl, stars twinkle, comets and meteors "
+    "streak across, golden dust drifts, soft "
     "nebula glow pulses; the tarot cards float and turn in the air, the golden astrolabes and armillary spheres slowly "
     "rotate and drift. A warm light glows at her heart; she gently raises her open palm toward the viewer and a small "
     "bright star rises toward the camera. Serene, pure, angelic. Slow cinematic push-in, rich magical atmosphere.")
