@@ -702,6 +702,10 @@ PRIME_SHARE = (" Пиши так, чтобы читатель узнал себ�
                "«отметь», «перешли», «отправь другу», «сохрани» не пиши — Threads за них убирает пост из рекомендаций.")
 
 
+LIST_ROTATION = ["text_loves", "text_secrets", "text_marriage", "text_battery", "text_roles", "text_outgrow",
+                 "text_aroma", "text_marry", "text_avoid"]  # форматы-списки по 9 группам дней рождения (референсы 30.10)
+
+
 DAILY_FORMATS = [  # бытовые форматы (слово владельца 30.10.2026 через сессию основного бота)
     ("Признавайтесь", "Шестёрки, признавайтесь: вы тоже 20 минут выбираете кружку под настроение, потому что «эстетика "
      "важна»? ☕ Напиши своё число души — угадаю твой бытовой пунктик.",
@@ -1632,6 +1636,12 @@ async def post_next(
         daily = next((r for r in plan.all_rubrics() if r.key == "text_daily"), None)
         if daily and not dead and not en_grid_first and rubric.key != "grid" and "text_daily" not in recent[:2]:
             rubric = daily  # 30.10 слово владельца: каждый третий пост — бытовой и простой
+        if rubric.key in LIST_ROTATION:  # 30.10 владелец: форматы-списки по дням рождения — чередовать по кругу
+            have = {r.key: r for r in plan.all_rubrics()}
+            keys = [k for k in LIST_ROTATION if k in have]
+            n = int(await db.kv_get("list:fmt") or 0)
+            await db.kv_set("list:fmt", str(n + 1))
+            rubric = have[keys[n % len(keys)]]
         slot = plan.render(rubric, now, rng)
         if now.hour in autopost.PRIME_HOURS and slot.rubric.key != "grid":  # вечер: каждый пост — новый приём
             n = int(await db.kv_get("prime:angle") or 0)
