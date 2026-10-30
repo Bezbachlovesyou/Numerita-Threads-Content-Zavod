@@ -655,6 +655,71 @@ async def cinema_stories(db: Storage, threads: ThreadsClient, bot: Bot, cfg: Con
     return True
 
 
+GAS_TEXT = {  # ролик владельца 30.10.2026: «смешно — везде, с шуткой про газ, интрига, хук, ссылка на бота»
+    "threads": "Мы попросили нейросеть озвучить ангела-хранителя.\n\nАнгел посмотрел в камеру и сказал: "
+               "«Я Нумерита, и я делаю газ».\n\nХотели переозвучить. Потом посчитали — и оставили.\n\n"
+               "Рождённым 1, 5, 9, 10, 14, 18, 19, 23 и 27 числа ангел не нужен: у вас педаль газа встроена "
+               "с рождения 🔥 Остальным Нумерита покажет, где ваша педаль — и где вы всю жизнь давите на тормоз.\n\n"
+               "Твоя дата → твоя педаль: t.me/Numeritabot?start=ad_th_gaz",
+    "instagram": "Мы попросили нейросеть озвучить ангела-хранителя.\n\nАнгел посмотрел в камеру и сказал: "
+                 "«Я Нумерита, и я делаю газ».\n\nХотели переозвучить. Потом посчитали — и оставили.\n\n"
+                 "Рождённым 1, 5, 9, 10, 14, 18, 19, 23 и 27 числа ангел не нужен: педаль газа встроена с рождения 🔥 "
+                 "Остальным Нумерита покажет, где ваша педаль — и где вы всю жизнь давите на тормоз.\n\n"
+                 "Ссылка — в шапке профиля ✨",
+    "channel": "<b>Ангел-хранитель оговорился. Или нет?</b>\n\nМы попросили нейросеть озвучить Нумериту. Она посмотрела "
+               "в камеру и честно сказала: «Я Нумерита, и я делаю газ».\n\nХотели переозвучить. Потом посчитали — и "
+               "оставили: 1 — Солнце, 5 — Меркурий, 9 — Марс. Рождённым 1, 5, 9, 10, 14, 18, 19, 23 и 27 числа "
+               "газ выдают при рождении 🔥 Остальным ангел помогает найти педаль — и снять ногу с тормоза.\n\n"
+               "<a href=\"https://t.me/Numeritabot?start=ad_th_tggaz\">Нажать на газ с Нумеритой →</a>",
+}
+
+
+async def gas_post(db: Storage, threads: ThreadsClient | None, bot: Bot, cfg: Config) -> str:
+    """Однократно (слово владельца 30.10.2026): смешной ролик «я делаю газ» — русский Threads, Instagram, канал."""
+    from aiogram.types import FSInputFile
+    path = Path(__file__).parent.parent / "assets/numerita_gas.mp4"
+    lines = []
+    if threads is not None:
+        url = await threads.upload_image(path.read_bytes(), "numerita_gas.mp4", "video/mp4")
+        text = GAS_TEXT["threads"]
+        post_id = await db.add_draft("Ролик «я делаю газ»", text, "text_story_call")
+        remote = await threads.publish_text(text, topic_tag_for("text_story_call"), None, None, url,
+                                            media_kind="story_video")
+        await db.set_threads_id(post_id, remote or "published")
+        await db.mark_published(post_id)
+        try:
+            account = await instagram.account_id(db, threads)
+            if account:
+                _, payload = await threads._request("POST", "/posts", json={
+                    "content": GAS_TEXT["instagram"], "mediaItems": [{"type": "video", "url": url}],
+                    "platforms": [{"platform": "instagram", "accountId": account}], "publishNow": True})
+                st = (payload.get("post") or {}).get("status")
+                lines.append(f"Instagram принял ролик (Zernio: {st or 'нет статуса'})." if st != "failed"
+                             else "⚠️ Instagram отклонил ролик.")
+            else:
+                lines.append("⚠️ Instagram не подключён в Zernio.")
+        except Exception as e:
+            lines.append(f"⚠️ Instagram: {e}")
+        status, link, error = "unknown", None, None
+        for _ in range(12):
+            await asyncio.sleep(30)
+            status, link, error = await threads.post_status(remote) if remote else ("unknown", None, None)
+            if status in ("published", "failed", "partial"):
+                break
+        lines.insert(0, f"⛽ Газ в Threads: {link}" if status == "published"
+                     else f"⚠️ Газ в Threads: Threads ответил «{status}» {error or ''}")
+    if cfg.telegram_channel:
+        try:
+            msg = await bot.send_video(cfg.telegram_channel, FSInputFile(path), caption=GAS_TEXT["channel"],
+                                       parse_mode="HTML", width=1080, height=1080, supports_streaming=True)
+            await tgchannel.react(bot, cfg.telegram_channel, msg.message_id)
+            ch = str(cfg.telegram_channel).lstrip("@")
+            lines.append(f"Канал: t.me/{ch}/{msg.message_id}" if not ch.startswith("-") else "Канал: пост вышел.")
+        except Exception as e:
+            lines.append(f"⚠️ Канал: {e}")
+    return "\n".join(lines)
+
+
 async def grid_tonight(db: Storage, threads: ThreadsClient, bot: Bot, cfg: Config) -> None:
     """Однократно: выпуск 1 серии «Угадай число» — живая спираль. Владельцу — только квитанция Threads
     (confirm_grid_videos; не принял видео — спираль перевыходит картинкой)."""
@@ -2244,6 +2309,12 @@ async def run_scheduler(
                     await db.kv_set("cinema:done", "error")  # публикация могла пройти — вслепую не повторяем
                     log.exception("Кино «Истории подписчиц» не вышло")
                     await notify_admins(bot, cfg, "⚠️ Кино «Истории подписчиц» не вышло — проверю вручную.")
+            if not EN and await db.claim_slot("gas video 2026-10-30"):  # слово владельца: «добавь везде»
+                try:
+                    await notify_admins(bot, cfg, await gas_post(db, threads, bot, cfg))
+                except Exception as e:
+                    log.exception("Ролик «газ» не вышел")
+                    await notify_admins(bot, cfg, f"⚠️ Ролик «газ» не вышел: {e}")
             if (not EN and now >= datetime(2026, 10, 30, 8, 30, tzinfo=now.tzinfo)
                     and await db.claim_slot("principles digest 2026-10-30")):  # владелец просил утром выжимку принципов
                 try:
