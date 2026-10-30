@@ -30,7 +30,7 @@ log = logging.getLogger(__name__)
 
 API = "https://openrouter.ai/api/v1"
 CEILING_USD = 1.70  # 30.10: $1,50 + «да» владельца на переозвучку (голос не влез) — не больше $0,20 сверху
-W, H = 720, 1280
+W, H = 1080, 1920  # 30.10: 1080p — чётче на телефоне (было 720p, «качество низкое»)
 ASSETS = Path(__file__).parent.parent / "assets"
 FONT = ASSETS / "fonts" / "CormorantGaramond.ttf"
 MUSIC = ASSETS / "channel" / "cosmos.m4a"
@@ -52,6 +52,15 @@ CLIPS = {
             "en": [(0, 3, "Your birthday isn't random."), (3, 7, "It's a code."),
                    (7, 12, "Born on the 6th, 15th or 24th? Your soul number is 6 — you keep the world around you warm."),
                    (12, 15, "Drop your date — I'll read your code.")],
+        },
+        # Что произносит голос: числа словами, без тире и скобок — иначе модель запинается и глотает слова (30.10).
+        "say": {
+            "ru": ["Твой день рождения не случайность.", "Это код.",
+                   "Родился шестого, пятнадцатого или двадцать четвёртого? Твоё число души шесть. "
+                   "Ты держишь мир вокруг себя тёплым.", "Напиши дату, и я покажу твой код."],
+            "en": ["Your birthday isn't random.", "It's a code.",
+                   "Born on the sixth, the fifteenth, or the twenty-fourth? Your soul number is six. "
+                   "You keep the world around you warm.", "Drop your date, and I'll read your code."],
         },
         "post": {
             "ru": "Твой день рождения — не случайность. Это код.\n\nРодился 6-го, 15-го или 24-го? Твоё число души — 6. "
@@ -82,6 +91,12 @@ CLIPS = {
                    (7, 10, "У каждого есть число, которое ведёт. Узнаешь своё?")],
             "en": [(0, 3, "Who guards your fate?"), (3, 7, "Numerita — Guardian Angel of Numbers and Stars."),
                    (7, 10, "Everyone has a number that leads them. Want to know yours?")],
+        },
+        "say": {
+            "ru": ["Кто охраняет твою судьбу?", "Нумерита. Ангел-хранитель чисел и звёзд.",
+                   "У каждого есть число, которое ведёт. Узнаешь своё?"],
+            "en": ["Who guards your fate?", "Numerita. The Guardian Angel of Numbers and Stars.",
+                   "Everyone has a number that leads them. Want to know yours?"],
         },
         "post": {
             "ru": "Кто охраняет твою судьбу?\n\nЯ — Нумерита, ангел-хранитель чисел и звёзд. У каждого есть число, "
@@ -179,33 +194,66 @@ async def speak(http: httpx.AsyncClient, api_key: str, text: str, lang: str) -> 
 BADGE = "@Numeritabot"  # слово владельца 30.10.2026: значок Telegram + адрес, без слова Telegram, внизу кадра
 
 
+def trim(pcm: bytes, level: int = 500) -> bytes:
+    """Срезает тишину в начале и конце фразы (оставляя 80 мс) — без немых пауз между словами ролика."""
+    import array
+    a = array.array("h", pcm[: len(pcm) // 2 * 2])
+    idx = [i for i in range(0, len(a), 240) if abs(a[i]) > level or max(map(abs, a[i:i + 240]), default=0) > level]
+    if not idx:
+        return pcm
+    pad = int(RATE * 0.08)
+    lo, hi = max(0, idx[0] - pad), min(len(a), idx[-1] + 240 + pad)
+    return a[lo:hi].tobytes()
+
+
+def voice_ok(pcm: bytes, text: str) -> bool:
+    """Длина фразы правдоподобна для текста: не меньше ~60% обычного темпа (≈14 знаков в секунду)."""
+    return len(pcm) / (RATE * 2) >= max(0.5, 0.6 * len(text) / 14)
+
+
+SS = 2  # рисуем плашки вдвое крупнее и уменьшаем — гладкие края без зерна (замечание владельца 30.10)
+
+
+def _canvas():
+    return Image.new("RGBA", (W * SS, H * SS), (0, 0, 0, 0))
+
+
+def _save(img: Image.Image, path: Path) -> None:
+    img.resize((W, H), Image.LANCZOS).save(path)
+
+
 def badge_png(path: Path) -> None:
     """Плашка внизу на весь ролик: голубой знак Telegram (бумажный самолётик) и адрес бота."""
-    img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    k = W / 720 * SS
+    img = _canvas()
     d = ImageDraw.Draw(img)
-    font = ImageFont.truetype(str(ASSETS / "fonts" / "Montserrat.ttf"), 32)
+    font = ImageFont.truetype(str(ASSETS / "fonts" / "Montserrat.ttf"), int(32 * k))
     try:
         font.set_variation_by_axes([600])
     except Exception:
         pass
     tw = d.textlength(BADGE, font=font)
-    r, gap = 22, 14
-    w = int(tw + 2 * r + gap + 44)
-    x0, y0 = (W - w) // 2, H - 128
-    d.rounded_rectangle((x0, y0, x0 + w, y0 + 64), radius=32, fill=(4, 8, 18, 200), outline=GOLD + (140,), width=2)
-    cx, cy = x0 + 22 + r, y0 + 32
+    r, gap = 22 * k, 14 * k
+    w = tw + 2 * r + gap + 44 * k
+    x0, y0 = (W * SS - w) / 2, H * SS - 128 * k
+    d.rounded_rectangle((x0, y0, x0 + w, y0 + 64 * k), radius=int(32 * k), fill=(4, 8, 18, 200),
+                        outline=GOLD + (140,), width=int(2 * k))
+    cx, cy = x0 + 22 * k + r, y0 + 32 * k
     d.ellipse((cx - r, cy - r, cx + r, cy + r), fill=(42, 171, 238, 255))
-    d.polygon([(cx - 11, cy - 1), (cx + 11, cy - 9), (cx + 6, cy + 10), (cx + 1, cy + 3)], fill=(255, 255, 255, 255))
-    d.polygon([(cx - 11, cy - 1), (cx + 1, cy + 3), (cx - 2, cy + 9)], fill=(210, 230, 245, 255))
+    q = k
+    d.polygon([(cx - 11 * q, cy - 1 * q), (cx + 11 * q, cy - 9 * q), (cx + 6 * q, cy + 10 * q), (cx + 1 * q, cy + 3 * q)],
+              fill=(255, 255, 255, 255))
+    d.polygon([(cx - 11 * q, cy - 1 * q), (cx + 1 * q, cy + 3 * q), (cx - 2 * q, cy + 9 * q)], fill=(210, 230, 245, 255))
     d.text((cx + r + gap, cy), BADGE, font=font, fill=GOLD + (255,), anchor="lm")
-    img.save(path)
+    _save(img, path)
 
 
 def caption_png(text: str, path: Path) -> None:
     """Надпись в нижней трети: золото на тёмной полупрозрачной плашке, переносы по ширине."""
-    img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    k = W / 720 * SS
+    img = _canvas()
     d = ImageDraw.Draw(img)
-    font = ImageFont.truetype(str(FONT), 50)
+    font = ImageFont.truetype(str(FONT), int(50 * k))
     try:  # полужирное начертание — читается на любом кадре (замечание владельца о нечитаемом тексте, 30.10)
         font.set_variation_by_axes([650])
     except Exception:
@@ -213,19 +261,19 @@ def caption_png(text: str, path: Path) -> None:
     words, lines, cur = text.split(), [], ""
     for w in words:
         t = (cur + " " + w).strip()
-        if d.textlength(t, font=font) > W - 120 and cur:
+        if d.textlength(t, font=font) > (720 - 120) * k and cur:
             lines.append(cur)
             cur = w
         else:
             cur = t
     lines.append(cur)
-    lh = 62
-    y = int(H * 0.72) - len(lines) * lh // 2
-    d.rounded_rectangle((40, y - 24, W - 40, y + len(lines) * lh + 18), radius=24, fill=(4, 8, 18, 205),
-                        outline=GOLD + (120,), width=2)
+    lh = 62 * k
+    y = H * SS * 0.72 - len(lines) * lh / 2
+    d.rounded_rectangle((40 * k, y - 24 * k, W * SS - 40 * k, y + len(lines) * lh + 18 * k), radius=int(24 * k),
+                        fill=(4, 8, 18, 205), outline=GOLD + (120,), width=int(2 * k))
     for i, ln in enumerate(lines):
-        d.text((W / 2, y + i * lh + lh / 2), ln, font=font, fill=GOLD + (255,), anchor="mm")
-    img.save(path)
+        d.text((W * SS / 2, y + i * lh + lh / 2), ln, font=font, fill=GOLD + (255,), anchor="mm")
+    _save(img, path)
 
 
 GAP = 0.35  # пауза между фразами голоса
@@ -265,7 +313,7 @@ def assemble(video: bytes, lines: list, voices: list[bytes], seconds: int, workd
     pad = max(0.0, total - seconds)
     args = [ffmpeg(), "-v", "error", "-y", "-i", str(src), "-stream_loop", "-1", "-i", str(MUSIC)]
     slow = f"trim=0:{keep},setpts=(PTS-STARTPTS)*{seconds / keep:.4f}," if keep else ""
-    vf = [f"[0:v]{slow}scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},setsar=1,fps=24,"
+    vf = [f"[0:v]{slow}scale={W}:{H}:flags=lanczos:force_original_aspect_ratio=increase,crop={W}:{H},setsar=1,fps=24,"
           f"trim=0:{seconds},setpts=PTS-STARTPTS,tpad=stop_mode=clone:stop_duration={pad + 0.5:.2f}[b0]"]
     af = []
     n = 2
@@ -300,7 +348,7 @@ def assemble(video: bytes, lines: list, voices: list[bytes], seconds: int, workd
     af.append("[m][vv]amix=inputs=2:normalize=0:duration=first,alimiter=limit=0.95[a]")
     out = workdir / f"{name}.mp4"
     args += ["-filter_complex", ";".join(vf + af), "-map", "[out]", "-map", "[a]",
-             "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "medium", "-crf", "20", "-c:a", "aac", "-b:a", "160k",
+             "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "slow", "-crf", "17", "-c:a", "aac", "-b:a", "160k",
              "-t", f"{total:.2f}", "-movflags", "+faststart", str(out)]
     subprocess.run(args, check=True, capture_output=True, timeout=600)
     return out
@@ -318,18 +366,25 @@ async def build(db, api_key: str, first_frame_url: str = "") -> dict[str, Path]:
             spec = CLIPS[key]
             for lang in ("ru", "en"):
                 voices = []
-                for i, (_, _, text) in enumerate(spec["lines"][lang]):
-                    saved = await db.kv_get(f"welcome:voice:{key}:{lang}:{i}")
+                for i, text in enumerate(spec["say"][lang]):
+                    saved = await db.kv_get(f"welcome:voice2:{key}:{lang}:{i}")
                     if saved:  # уже оплаченная фраза — без новой траты
                         voices.append(base64.b64decode(saved))
                         continue
                     if await _spent(db) + 0.02 > CEILING_USD:
                         raise RuntimeError(f"голос не влезает в потолок ${CEILING_USD:.2f} — нужен ваш ответ")
-                    pcm, cost = await speak(http, api_key, text, lang)
-                    await _add_spent(db, cost or 0.01)
-                    if len(pcm) < RATE:  # меньше полсекунды — озвучка сорвалась, немой ролик не собираем
-                        raise RuntimeError(f"озвучка фразы «{text[:30]}…» пустая")
-                    await db.kv_set(f"welcome:voice:{key}:{lang}:{i}", base64.b64encode(pcm).decode())
+                    pcm = b""
+                    for attempt in range(2):  # фраза проглочена (слишком коротко для текста) — один повтор
+                        if await _spent(db) + 0.02 > CEILING_USD:
+                            raise RuntimeError(f"голос не влезает в потолок ${CEILING_USD:.2f} — нужен ваш ответ")
+                        raw, cost = await speak(http, api_key, text, lang)
+                        await _add_spent(db, cost or 0.01)
+                        pcm = trim(raw)
+                        if voice_ok(pcm, text):
+                            break
+                    if not voice_ok(pcm, text):
+                        raise RuntimeError(f"озвучка фразы «{text[:30]}…» обрывается — ролик не собираю")
+                    await db.kv_set(f"welcome:voice2:{key}:{lang}:{i}", base64.b64encode(pcm).decode())
                     voices.append(pcm)
                 out[f"{key}_{lang}"] = await asyncio.to_thread(
                     assemble, video, spec["lines"][lang], voices, spec["seconds"], workdir, f"{key}_{lang}", spec.get("keep"))
@@ -369,7 +424,7 @@ async def publish_due(db, threads, now, lang: str, publish, notify) -> None:
 async def run_build(db, api_key: str, threads, send_video, notify) -> None:
     """Русский завод: один раз снять и собрать, загрузить 4 версии в Zernio, отправить владельцу."""
     global BUSY
-    if await db.kv_get("welcome:build") == "done7" or BUSY:
+    if await db.kv_get("welcome:build") == "done8" or BUSY:
         return
     BUSY = True
     try:
@@ -385,7 +440,7 @@ async def run_build(db, api_key: str, threads, send_video, notify) -> None:
         urls[name] = await threads.upload_image(data, f"numerita_{name}.mp4", "video/mp4")
         await send_video(data, name)
     await db.kv_set("welcome:urls", json.dumps(urls))
-    await db.kv_set("welcome:build", "done7")
+    await db.kv_set("welcome:build", "done8")
     missing = [k for k in CLIPS if f"{k}_ru" not in paths]
     if await db.kv_get("welcome:job:angel"):  # первая версия ангела без нашего лица — не используется
         missing.append("(первый «Ангел» без лица Нумериты оплачен, но не используется)")
