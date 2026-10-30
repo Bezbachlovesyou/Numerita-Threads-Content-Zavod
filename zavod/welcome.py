@@ -90,22 +90,24 @@ CLIPS = {
         "keep": 6.0,
         "shimmer": True,
         "lines": {
-            "ru": [(0, 3, "Кто охраняет твою судьбу?"), (3, 7, "Нумерита — твой ангел-хранитель. Она опирается на числа, звёзды и науку."),
-                   (7, 10, "У каждого есть число, которое ведёт. Узнаешь своё?")],
-            "en": [(0, 3, "Who guards your fate?"), (3, 7, "Numerita — your guardian angel, guided by numbers, stars and science."),
-                   (7, 10, "Everyone has a number that leads them. Want to know yours?")],
+            "ru": [(0, 3, "Кто рядом, когда трудно выбрать путь?"), (3, 7, "Нумерита — твой ангел-хранитель. Она видит тебя через числа, звёзды и науку."),
+                   (7, 10, "И помогает выбрать твой путь. Напиши дату рождения — начнём.")],
+            "en": [(0, 3, "Who is there when the path is hard to choose?"), (3, 7, "Numerita — your guardian angel. She sees you through numbers, stars and science."),
+                   (7, 10, "And helps you choose your path. Share your birth date — let's begin.")],
         },
         "say": {
-            "ru": ["Кто охраняет твою судьбу?", "Нумерита. Твой ангел-хранитель. Она опирается на числа, звёзды и науку.",
-                   "У каждого есть число, которое ведёт. Узнаешь своё?"],
-            "en": ["Who guards your fate?", "Numerita. Your guardian angel, guided by numbers, stars and science.",
-                   "Everyone has a number that leads them. Want to know yours?"],
+            "ru": ["Кто рядом, когда трудно выбрать путь?", "Нумерита. Твой ангел-хранитель. Она видит тебя через числа, звёзды и науку.",
+                   "И помогает выбрать твой путь. Напиши дату рождения, и начнём."],
+            "en": ["Who is there when the path is hard to choose?", "Numerita. Your guardian angel. She sees you through numbers, stars and science.",
+                   "And helps you choose your path. Share your birth date, and let's begin."],
         },
         "post": {
-            "ru": "Кто охраняет твою судьбу?\n\nЯ — Нумерита, твой ангел-хранитель. Опираюсь на числа, звёзды и науку. У каждого есть число, "
-                  "которое ведёт. Напиши дату рождения — покажу твоё 🤍\n\nt.me/Numeritabot?start=ad_th_angel",
-            "en": "Who guards your fate?\n\nI'm Numerita, your guardian angel, guided by numbers, stars and science. Everyone has a number "
-                  "that leads them. Drop your birth date — I'll show you yours 🤍\n\nt.me/Numeritabot?start=ad_en_th_angel",
+            "ru": "Кто рядом, когда трудно выбрать путь?\n\nЯ — Нумерита, твой ангел-хранитель. Вижу тебя через числа, "
+                  "звёзды и науку — и помогаю выбрать твой путь. Напиши дату рождения, начнём 🤍\n\n"
+                  "t.me/Numeritabot?start=ad_th_angel",
+            "en": "Who is there when the path is hard to choose?\n\nI'm Numerita, your guardian angel. I see you through "
+                  "numbers, stars and science — and help you choose your path. Share your birth date, let's begin 🤍\n\n"
+                  "t.me/Numeritabot?start=ad_en_th_angel",
         },
     },
 }
@@ -131,7 +133,7 @@ VOICE_PROMPT = {
            "add or skip anything, never speak any other language."),
 }
 RATE = 24000
-BUILD = "done16"  # 30.10: «твой ангел-хранитель, опирается на числа, звёзды и науку»  # версия сборки: новая — бот пересобирает из оплаченного
+BUILD = "done17"  # 30.10: «твой ангел-хранитель, опирается на числа, звёзды и науку»  # версия сборки: новая — бот пересобирает из оплаченного
 BUSY = False  # сборка идёт в этом процессе
 
 
@@ -543,11 +545,14 @@ EDIT_PROMPT = (
     "3) a more feminine figure with a fuller bust, elegant and modest: the dress stays closed with a high neckline, "
     "nothing revealing. Keep the glowing golden digits on the halo, wings and dress. Vertical 9:16. No text.")
 PROMPT3 = (
-    "Animate this exact character from the first frame without changing her face, figure, halo, wings or dress. She "
-    "keeps looking straight into the camera the whole time and never looks down. Waves of soft golden light run across "
-    "the glowing digits of her halo, wings and dress; stars twinkle; a warm light glows at her heart; she blinks gently "
-    "and slowly raises her open palm toward the viewer, a small bright star rises from her palm toward the camera. "
-    "Serene, pure, angelic expression. Slow cinematic push-in.")
+    "Animate this exact character from the first frame without changing her face, figure, halo, wings or dress. "
+    "Her eyes stay locked on the viewer the entire time, a calm, magnetic, hypnotic gaze straight out of the screen; "
+    "she never looks down and never lowers her eyelids. The golden halo of digits slowly rotates like a sacred dial; "
+    "waves of golden light run across the glowing digits of her halo, wings and dress, the digits shimmer and sparkle. "
+    "Magical living cosmos around her: galaxies slowly swirl, stars twinkle and sparkle, golden dust drifts, soft "
+    "nebula glow pulses; the tarot cards float and turn in the air, the golden astrolabes and armillary spheres slowly "
+    "rotate and drift. A warm light glows at her heart; she gently raises her open palm toward the viewer and a small "
+    "bright star rises toward the camera. Serene, pure, angelic. Slow cinematic push-in, rich magical atmosphere.")
 
 
 async def angel_portrait(db, api_key: str, threads, send_photo) -> None:

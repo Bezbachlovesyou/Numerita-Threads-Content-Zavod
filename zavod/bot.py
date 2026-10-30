@@ -2157,6 +2157,11 @@ async def run_scheduler(
                     await notify_admins(bot, cfg, await en_connect_text(threads))
                 except Exception:
                     log.exception("Ссылка подключения английского Threads не отправлена")
+            if not EN and await db.claim_slot("angel3 owner ok 2026-10-30"):  # «да, Angel OK» — владелец в чате с Claude
+                from . import welcome
+                await db.kv_set("angel3:approved", "yes")
+                await db.kv_set("welcome:build", "")
+                await db.kv_set(f"welcome:tries:{welcome.BUILD}", "0")
             if threads is not None and now.minute % 10 == 0 and await db.claim_slot(f"welcome tick {now:%Y-%m-%d %H:%M}"):
                 try:  # приветственные ролики (слово владельца 30.10.2026, потолок $1,50)
                     from . import welcome
