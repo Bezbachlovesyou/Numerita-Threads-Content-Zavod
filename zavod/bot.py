@@ -2147,8 +2147,10 @@ async def run_scheduler(
                         await db.kv_set("welcome:tries9", str(tries + 1))  # оплаченное берётся по номерам заданий
                         async def _send(data, name):
                             for admin_id in cfg.admin_ids:
+                                # размеры кадра явно — иначе Telegram показывает вертикальный ролик приплюснутым (30.10)
                                 await bot.send_video(admin_id, BufferedInputFile(data, f"numerita_{name}.mp4"),
-                                                     caption=f"🎬 {name}")
+                                                     caption=f"🎬 {name}", width=welcome.W, height=welcome.H,
+                                                     supports_streaming=True)
                         welcome.TASK = asyncio.create_task(welcome.run_build(db, generator.api_key, threads, _send,
                                                               lambda t: notify_admins(bot, cfg, t)))
                     if not EN or 16 <= now.hour < 23:  # английский — когда в США и Британии день
