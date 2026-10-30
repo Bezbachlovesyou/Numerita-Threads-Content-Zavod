@@ -2143,7 +2143,7 @@ async def run_scheduler(
                     from . import welcome
                     tries = int(await db.kv_get("welcome:tries") or 0)
                     if (not EN and generator.api_key and not welcome.BUSY and tries < 3
-                            and await db.kv_get("welcome:build") != "done"):
+                            and await db.kv_get("welcome:build") != "done2"):
                         await db.kv_set("welcome:tries", str(tries + 1))  # оплаченное берётся по номерам заданий
                         async def _send(data, name):
                             for admin_id in cfg.admin_ids:

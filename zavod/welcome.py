@@ -63,11 +63,15 @@ CLIPS = {
     "angel": {
         "model": "kwaivgi/kling-v3.0-std", "seconds": 10, "estimate": 0.84,
         "body": {"resolution": "720p", "aspect_ratio": "9:16", "generate_audio": False},
-        "prompt": ("From shimmering stardust the silhouette of a serene young angel woman slowly appears. Her large wings "
-                   "are woven from glowing golden digits, a halo of small stars circles above her head, her body is "
-                   "translucent light. Calm, kind face like an icon, lips gently closed. She opens her eyes, looks at "
-                   "the viewer and extends her open palm; a bright star rises from her palm toward the camera. "
-                   "Chaste, elegant, cinematic lighting, gold and azure."),
+        # Слово владельца 30.10.2026: Нумерита — узнаваемый цифровой персонаж бренда, не меняется. Первый кадр — наш
+        # оригинал assets/numerita_angel.jpg; модель только оживляет его, не перерисовывая лицо, крылья, нимб и платье.
+        "first_frame": ASSETS / "numerita_angel.jpg", "job": "angel2",
+        "prompt": ("Animate this exact character from the first frame without changing her: the same face, hairstyle, "
+                   "golden halo of digits, wings made of glowing digits, golden embroidered dress and proportions. "
+                   "Gentle living motion only: golden digits on her wings and halo shimmer and slowly flow, stars and "
+                   "galaxies twinkle, a warm light glows at her heart; she blinks softly, smiles a little warmer and "
+                   "slowly raises her open palm toward the viewer, a small bright star rises from her palm toward the "
+                   "camera. Slow cinematic push-in. Keep her identity identical in every frame."),
         "lines": {
             "ru": [(0, 3, "Кто охраняет твою судьбу?"), (3, 7, "Нумерита — ангел-хранитель чисел и звёзд."),
                    (7, 10, "У каждого есть число, которое ведёт. Узнаешь своё?")],
@@ -102,24 +106,30 @@ async def _add_spent(db, usd: float) -> None:
     await db.kv_set("welcome:spent", f"{await _spent(db) + usd:.4f}")
 
 
-async def clip(db, http: httpx.AsyncClient, key: str, api_key: str) -> bytes | None:
+async def clip(db, http: httpx.AsyncClient, key: str, api_key: str, first_frame_url: str = "") -> bytes | None:
     """Видео сцены: по сохранённому номеру задания или новым заказом — только если влезает в потолок."""
     spec, headers = CLIPS[key], {"Authorization": f"Bearer {api_key}"}
-    jid = await db.kv_get(f"welcome:job:{key}")
+    job = f"welcome:job:{spec.get('job', key)}"
+    jid = await db.kv_get(job)
     if jid == "failed":
         return None
     if not jid:
         if await _spent(db) + spec["estimate"] > CEILING_USD:
             log.warning("Приветственный ролик %s не влезает в потолок $%.2f", key, CEILING_USD)
-            await db.kv_set(f"welcome:job:{key}", "failed")
+            await db.kv_set(job, "failed")
             return None
         body = {"model": spec["model"], "prompt": spec["prompt"] + STYLE, "duration": spec["seconds"], **spec["body"]}
+        if spec.get("first_frame"):
+            if not first_frame_url:  # без нашего кадра ангела не снимаем — иначе выйдет чужое лицо
+                raise RuntimeError("нет адреса кадра Нумериты")
+            body["frame_images"] = [{"type": "image_url", "image_url": {"url": first_frame_url},
+                                     "frame_type": "first_frame"}]
         r = await http.post(f"{API}/videos", json=body, headers=headers)
         if r.status_code >= 400:  # отказ при заказе не оплачивается; не повторяем вслепую
-            await db.kv_set(f"welcome:job:{key}", "failed")
+            await db.kv_set(job, "failed")
             raise RuntimeError(f"{spec['model']} ответила {r.status_code}: {r.text[:200]}")
         jid = r.json()["id"]
-        await db.kv_set(f"welcome:job:{key}", jid)  # сразу в базу: повтор после перезапуска не платит заново
+        await db.kv_set(job, jid)  # сразу в базу: повтор после перезапуска не платит заново
         await _add_spent(db, spec["estimate"])  # резервируем смету; уточним по факту
     for _ in range(120):  # до 20 минут
         st = (await http.get(f"{API}/videos/{jid}", headers=headers)).json()
@@ -132,7 +142,7 @@ async def clip(db, http: httpx.AsyncClient, key: str, api_key: str) -> bytes | N
             v.raise_for_status()
             return v.content
         if st.get("status") in ("failed", "cancelled", "expired"):
-            await db.kv_set(f"welcome:job:{key}", "failed")
+            await db.kv_set(job, "failed")
             raise RuntimeError(f"{spec['model']}: {st.get('error') or st.get('status')}")
         await asyncio.sleep(10)
     raise RuntimeError(f"{spec['model']}: не готово за 20 минут — подожду тот же номер задания")
@@ -225,11 +235,11 @@ def assemble(video: bytes, lines: list, voices: list[bytes], seconds: int, workd
     return out
 
 
-async def build(db, api_key: str) -> dict[str, Path]:
+async def build(db, api_key: str, first_frame_url: str = "") -> dict[str, Path]:
     """Снимает (или берёт оплаченное) и собирает 4 версии. Возвращает {"code_ru": path, ...}."""
     out, workdir = {}, Path(tempfile.mkdtemp(prefix="welcome_"))
     async with httpx.AsyncClient(timeout=180) as http:
-        videos = await asyncio.gather(*(clip(db, http, k, api_key) for k in CLIPS), return_exceptions=True)
+        videos = await asyncio.gather(*(clip(db, http, k, api_key, first_frame_url) for k in CLIPS), return_exceptions=True)
         for key, video in zip(CLIPS, videos):
             if isinstance(video, Exception) or not video:
                 log.warning("Приветственный ролик %s не снят: %s", key, video)
@@ -271,9 +281,10 @@ async def publish_due(db, threads, now, lang: str, publish, notify) -> None:
         return
     for key in ORDER:
         url = urls.get(f"{key}_{lang}")
-        if not url or await db.kv_get(f"welcome:posted:{key}"):
+        flag = f"welcome:posted:{CLIPS[key].get('job', key)}"
+        if not url or await db.kv_get(flag):
             continue
-        await db.kv_set(f"welcome:posted:{key}", "1")  # до отправки: сбой не приведёт к дублю
+        await db.kv_set(flag, "1")  # до отправки: сбой не приведёт к дублю
         await db.kv_set("welcome:last_post", now.isoformat())
         await notify(await publish(key, url))
         return
@@ -282,11 +293,12 @@ async def publish_due(db, threads, now, lang: str, publish, notify) -> None:
 async def run_build(db, api_key: str, threads, send_video, notify) -> None:
     """Русский завод: один раз снять и собрать, загрузить 4 версии в Zernio, отправить владельцу."""
     global BUSY
-    if await db.kv_get("welcome:urls") or await db.kv_get("welcome:build") == "done" or BUSY:
+    if await db.kv_get("welcome:build") == "done2" or BUSY:
         return
     BUSY = True
     try:
-        paths = await build(db, api_key)
+        ref = await threads.upload_image((ASSETS / "numerita_angel.jpg").read_bytes(), "numerita_angel.jpg")
+        paths = await build(db, api_key, ref)
     except Exception as e:
         BUSY = False
         await notify(f"⚠️ Приветственные ролики: {e}. Потрачено ${await _spent(db):.2f} из ${CEILING_USD:.2f}.")
@@ -297,8 +309,10 @@ async def run_build(db, api_key: str, threads, send_video, notify) -> None:
         urls[name] = await threads.upload_image(data, f"numerita_{name}.mp4", "video/mp4")
         await send_video(data, name)
     await db.kv_set("welcome:urls", json.dumps(urls))
-    await db.kv_set("welcome:build", "done")
+    await db.kv_set("welcome:build", "done2")
     missing = [k for k in CLIPS if f"{k}_ru" not in paths]
+    if await db.kv_get("welcome:job:angel"):  # первая версия ангела без нашего лица — не используется
+        missing.append("(первый «Ангел» без лица Нумериты оплачен, но не используется)")
     await notify(f"🎬 Приветственные ролики собраны: {len(paths)} из 4. Потрачено ${await _spent(db):.2f} из "
                  f"${CEILING_USD:.2f}." + (f"\n⚠️ Не снялись: {', '.join(missing)} — повторно не заказываю." if missing else "")
                  + "\nВыкладываю по очереди: сначала «Ангел», через 3 часа — «Твой код».")
