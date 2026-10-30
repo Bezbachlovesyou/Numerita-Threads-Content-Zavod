@@ -675,6 +675,30 @@ GAS_TEXT = {  # ролик владельца 30.10.2026: «смешно — в�
 }
 
 
+DAILY_FORMATS = [  # бытовые форматы (слово владельца 30.10.2026 через сессию основного бота)
+    ("Признавайтесь", "Шестёрки, признавайтесь: вы тоже 20 минут выбираете кружку под настроение, потому что «эстетика "
+     "важна»? ☕ Напиши своё число души — угадаю твой бытовой пунктик.",
+     "Life Path 6s, be honest: you spend 20 minutes picking the right mug because \"the vibe matters\"? ☕ Drop your "
+     "number — I'll guess your tiny daily quirk."),
+    ("Как разные числа…", "Как разные числа ждут доставку: 1 — уже звонит курьеру. 4 — следит по карте с таблицей. "
+     "7 — забыл(а), что что-то заказывал(а). 9 — ждёт у двери и угощает курьера. А ты?",
+     "How numbers wait for a delivery: 1 — already calling the courier. 4 — tracking it with a spreadsheet. 7 — forgot "
+     "they ordered anything. 9 — waiting at the door with a snack for the courier. Which one are you?"),
+    ("Диалог с Нумеритой", "Я: с понедельника начну новую жизнь. Нумерита: у тебя личный год завершений. Я: значит, "
+     "завершу… понедельник. 🙂 А какой у тебя личный год? Скажу, с чем ему по пути.",
+     "Me: new life starts Monday. Numerita: you're in a Personal Year of endings. Me: so I'll end… Monday. 🙂 What's "
+     "your personal year? I'll tell you what it's good for."),
+    ("Выбери вариант", "Пятница, вечер. Ты: А) диван и сериал Б) друзья и шум В) план на понедельник. Напиши букву и "
+     "дату рождения — проверю, совпало ли с твоим числом.",
+     "Friday night. You pick: A) couch + series B) friends + noise C) planning Monday. Reply with a letter and your "
+     "birthday — I'll check if it matches your number."),
+    ("Бытовая суперсила", "Бытовая суперсила по числу души: 2 — мирит всех в семейном чате. 5 — найдёт парковку где "
+     "угодно. 8 — знает, где лежат все документы. Какая у тебя?",
+     "Your everyday superpower by soul number: 2 — calms down every family group chat. 5 — finds parking anywhere. "
+     "8 — knows where every document is. What's yours?"),
+]
+
+
 async def gas_post(db: Storage, threads: ThreadsClient | None, bot: Bot, cfg: Config) -> str:
     """Однократно (слово владельца 30.10.2026): смешной ролик «я делаю газ» — русский Threads, Instagram, канал."""
     from aiogram.types import FSInputFile
@@ -1572,7 +1596,16 @@ async def post_next(
                 dead = None
             else:
                 rubric = plan.effective(original)
+        daily = next((r for r in plan.all_rubrics() if r.key == "text_daily"), None)
+        if daily and not dead and not en_grid_first and rubric.key != "grid" and "text_daily" not in recent[:2]:
+            rubric = daily  # 30.10 слово владельца: каждый третий пост — бытовой и простой
         slot = plan.render(rubric, now, rng)
+        if slot.rubric.key == "text_daily":
+            n = int(await db.kv_get("daily:fmt") or 0)
+            await db.kv_set("daily:fmt", str(n + 1))
+            name, ru, en = DAILY_FORMATS[n % len(DAILY_FORMATS)]
+            slot = replace(slot, topic=slot.topic + f"\nФормат: «{name}». Образец тона (не копировать): "
+                                                   + (en if lang.is_en() else ru))
         post_focus = await constraint.focus(db, "post_focus")  # обход по Голдратту: фокус на узкое звено
         if post_focus:
             slot = replace(slot, topic=slot.topic + "\n\nФокус на сегодня (узкое звено): " + post_focus)
