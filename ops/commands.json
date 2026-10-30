@@ -89,5 +89,19 @@
   "action": "post",
   "rubric": "text_sunrise",
   "text": "Born before sunrise? You might be living with the wrong number 🌅\n\nIn the Vedic tradition a new day begins at sunrise, not midnight. Born on the 15th at 4 a.m. with sunrise at 6? By that tradition it's still the 14th. Your 6 becomes a 5.\n\nThat's why Numerita always asks for your birth time and place and checks the sunrise.\n\nKnow your birth time? Drop your date, time and city — I'll tell you your true number 👇"
+ },
+ {
+  "id": "battery-ru-2026-10-30",
+  "account": "ru",
+  "action": "post",
+  "rubric": "text_battery",
+  "text": "Твоя дата рождения = твоя социальная батарейка 🔋\n\n1, 10, 19, 28 — заряжается от сцены и аплодисментов 🎤\n2, 11, 20, 29 — 20% после вечеринки, 100% после разговора по душам 🌙\n3, 12, 21, 30 — вечный повербанк для всех вокруг ⚡\n4, 13, 22, 31 — включается по расписанию 📅\n5, 14, 23 — заряжается в дороге ✈️\n6, 15, 24 — только от любимых людей 🤍\n7, 16, 25 — режим полёта 📵\n8, 17, 26 — экономит заряд на важное 💎\n9, 18, 27 — отдаёт всё и садится первым 🔥\n\nКакая у тебя? Пиши день рождения 👇"
+ },
+ {
+  "id": "battery-en-2026-10-30",
+  "account": "en",
+  "action": "post",
+  "rubric": "text_battery",
+  "text": "Your birth date = your social battery 🔋\n\n1, 10, 19, 28 — charges on stage and applause 🎤\n2, 11, 20, 29 — 20% after a party, 100% after a deep talk 🌙\n3, 12, 21, 30 — everyone's power bank ⚡\n4, 13, 22, 31 — turns on by schedule 📅\n5, 14, 23 — charges on the road ✈️\n6, 15, 24 — only from favourite people 🤍\n7, 16, 25 — airplane mode 📵\n8, 17, 26 — saves battery for what matters 💎\n9, 18, 27 — gives it all, dies first 🔥\n\nWhat's yours? Drop your birthday 👇"
  }
 ]
