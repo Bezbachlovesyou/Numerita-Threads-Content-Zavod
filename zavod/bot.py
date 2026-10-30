@@ -2143,10 +2143,10 @@ async def run_scheduler(
             if threads is not None and now.minute % 10 == 0 and await db.claim_slot(f"welcome tick {now:%Y-%m-%d %H:%M}"):
                 try:  # приветственные ролики (слово владельца 30.10.2026, потолок $1,50)
                     from . import welcome
-                    tries = int(await db.kv_get("welcome:tries11") or 0)  # 3: пересборка — голос не налезает
+                    tries = int(await db.kv_get("welcome:tries12") or 0)  # 3: пересборка — голос не налезает
                     if (not EN and generator.api_key and not welcome.BUSY and tries < 3
-                            and await db.kv_get("welcome:build") != "done11"):
-                        await db.kv_set("welcome:tries11", str(tries + 1))  # оплаченное берётся по номерам заданий
+                            and await db.kv_get("welcome:build") != "done12"):
+                        await db.kv_set("welcome:tries12", str(tries + 1))  # оплаченное берётся по номерам заданий
                         async def _send(data, name):
                             for admin_id in cfg.admin_ids:
                                 # размеры кадра явно — иначе Telegram показывает вертикальный ролик приплюснутым (30.10)

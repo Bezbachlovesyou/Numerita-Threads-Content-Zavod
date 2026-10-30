@@ -223,6 +223,44 @@ def voice_ok(pcm: bytes, text: str) -> bool:
     return len(pcm) / (RATE * 2) >= max(0.5, 0.6 * len(text) / 14)
 
 
+_EAR = None
+SKIP_WORDS = {"нумерита", "numerita"}  # имя распознаватель пишет по-разному — не считаем
+
+
+def _norm(text: str) -> list[str]:
+    import re
+    return [w[:5] for w in re.findall(r"[a-zа-яё']+", text.lower().replace("ё", "е")) if len(w) > 2 and w not in SKIP_WORDS]
+
+
+def hear(path: Path, lang: str, says: list[str]) -> str | None:
+    """Проверка слухом, $0 (faster-whisper локально; слово владельца 30.10.2026 «проверяй, что вышло»): весь голос
+    на одном языке и каждая фраза прозвучала (не меньше 60% её слов). Возвращает описание проблемы или None."""
+    global _EAR
+    try:
+        import numpy as np
+        from faster_whisper import WhisperModel
+    except ImportError:
+        return None  # распознаватель не установлен — проверку пропускаем, сборка не падает
+    raw = path.with_suffix(".raw")
+    subprocess.run([ffmpeg(), "-v", "error", "-y", "-i", str(path), "-vn", "-ar", "16000", "-ac", "1", "-f", "s16le",
+                    str(raw)], check=True, capture_output=True, timeout=120)
+    if _EAR is None:
+        _EAR = WhisperModel("small", compute_type="int8")
+    audio = np.fromfile(raw, "<i2").astype(np.float32) / 32768
+    segs, info = _EAR.transcribe(audio, multilingual=True)
+    segs = list(segs)
+    heard = " ".join(s.text for s in segs)
+    if info.language != lang:
+        return f"язык голоса «{info.language}» вместо «{lang}»: {heard[:120]}"
+    got = set(_norm(heard))
+    for text in says:
+        words = _norm(text)
+        if words and sum(w in got for w in words) / len(words) < 0.6:
+            return f"не слышно фразы «{text[:50]}» — распознано: {heard[:160]}"
+    log.info("Слухом проверено %s: %s", path.name, heard)
+    return None
+
+
 SS = 2  # рисуем плашки вдвое крупнее и уменьшаем — гладкие края без зерна (замечание владельца 30.10)
 
 
@@ -382,7 +420,9 @@ async def build(db, api_key: str, first_frame_url: str = "") -> dict[str, Path]:
                 for i, text in enumerate(spec["say"][lang]):
                     saved = await db.kv_get(f"welcome:voice3:{key}:{lang}:{hashlib.sha1(text.encode()).hexdigest()[:10]}")
                     old = OLD_SAY.get(key, {}).get(lang, [])
-                    if not saved and text in old:  # та же фраза из прошлой сборки — уже оплачена
+                    if saved == "bad":  # не прошла проверку слухом — только новая запись
+                        saved = None
+                    elif not saved and text in old:  # та же фраза из прошлой сборки — уже оплачена
                         saved = await db.kv_get(f"welcome:voice2:{key}:{lang}:{old.index(text)}")
                     if saved:  # уже оплаченная фраза — без новой траты
                         voices.append(base64.b64decode(saved))
@@ -402,8 +442,14 @@ async def build(db, api_key: str, first_frame_url: str = "") -> dict[str, Path]:
                         raise RuntimeError(f"озвучка фразы «{text[:30]}…» обрывается — ролик не собираю")
                     await db.kv_set(f"welcome:voice3:{key}:{lang}:{hashlib.sha1(text.encode()).hexdigest()[:10]}", base64.b64encode(pcm).decode())
                     voices.append(pcm)
-                out[f"{key}_{lang}"] = await asyncio.to_thread(
+                path = await asyncio.to_thread(
                     assemble, video, spec["lines"][lang], voices, spec["seconds"], workdir, f"{key}_{lang}", spec.get("keep"))
+                problem = await asyncio.to_thread(hear, path, lang, spec["say"][lang])
+                if problem:  # проверка слухом не прошла — фразы этой версии переозвучим при следующей попытке
+                    for text in spec["say"][lang]:
+                        await db.kv_set(f"welcome:voice3:{key}:{lang}:{hashlib.sha1(text.encode()).hexdigest()[:10]}", "bad")
+                    raise RuntimeError(f"{key}_{lang}: {problem}")
+                out[f"{key}_{lang}"] = path
     return out
 
 
@@ -445,7 +491,7 @@ async def publish_due(db, threads, now, lang: str, publish, notify) -> None:
 async def run_build(db, api_key: str, threads, send_video, notify) -> None:
     """Русский завод: один раз снять и собрать, загрузить 4 версии в Zernio, отправить владельцу."""
     global BUSY
-    if await db.kv_get("welcome:build") == "done11" or BUSY:
+    if await db.kv_get("welcome:build") == "done12" or BUSY:
         return
     BUSY = True
     try:
@@ -461,7 +507,7 @@ async def run_build(db, api_key: str, threads, send_video, notify) -> None:
         urls[name] = await threads.upload_image(data, f"numerita_{name}.mp4", "video/mp4")
         await send_video(data, name)
     await db.kv_set("welcome:urls", json.dumps(urls))
-    await db.kv_set("welcome:build", "done11")
+    await db.kv_set("welcome:build", "done12")
     missing = [k for k in CLIPS if f"{k}_ru" not in paths]
     if await db.kv_get("welcome:job:angel"):  # первая версия ангела без нашего лица — не используется
         missing.append("(первый «Ангел» без лица Нумериты оплачен, но не используется)")
