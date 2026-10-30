@@ -58,3 +58,15 @@ class EnglishOffer(unittest.IsolatedAsyncioTestCase):
         self.assertIn('t.me/', sent[0])
         self.assertTrue(sent[0].rstrip().endswith('_o') or '_o' in sent[0])
         tmp.cleanup()
+
+
+class EnglishNoCyrillic(unittest.TestCase):
+    def test_cyrillic_blocked_in_en(self):
+        from unittest import mock
+        from zavod import lang, textguard
+        with mock.patch.object(lang, "LANG", "en"):
+            self.assertTrue(textguard.post_problem("Born on the 9th? Привет", []))
+            self.assertTrue(textguard.reply_problem("Lovely «date»", []))
+            self.assertIsNone(textguard.reply_problem("Lovely date, a true 6.", []))
+        with mock.patch.object(lang, "LANG", "ru"):
+            self.assertIsNone(textguard.reply_problem("Привет, шестёрка", []))

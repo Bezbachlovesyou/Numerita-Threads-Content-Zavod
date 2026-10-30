@@ -10,7 +10,7 @@ from datetime import datetime
 
 import httpx
 from .api_budget import RequestBudget
-from . import text_mode
+from . import lang, text_mode
 
 API_URL = "https://zernio.com/api/v1"
 MAX_LENGTH = 500
@@ -81,6 +81,8 @@ class ThreadsClient:
         """Публикует пост. topic_tag — тема Threads (показ подписчикам темы), first_comment — первый комментарий."""
         if len(text) > MAX_LENGTH:
             raise ThreadsError(f"Пост длиннее {MAX_LENGTH} символов ({len(text)}).")
+        if lang.is_en() and (lang.has_cyrillic(text) or lang.has_cyrillic(first_comment)):
+            raise ThreadsError("Русские буквы в английском аккаунте — пост не отправлен.")
         platform: dict = {"platform": "threads", "accountId": self.account_id}
         extra = {}
         if topic_tag:
@@ -179,6 +181,8 @@ class ThreadsClient:
 
     async def reply(self, post_id: str, comment_id: str, message: str) -> None:
         """Отвечает на комментарий. Ключ идемпотентности не даст ответить дважды при повторе."""
+        if lang.is_en() and lang.has_cyrillic(message):
+            raise ThreadsError("Русские буквы в английском ответе — не отправлен.")
         await self._request(
             "POST",
             f"/inbox/comments/{post_id}",

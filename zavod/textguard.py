@@ -8,6 +8,8 @@
 
 import re
 
+from . import lang
+
 WORD = re.compile(r"[a-zа-яё0-9]+", re.IGNORECASE)
 SHINGLE_LIMIT = 0.35
 TITLE_LIMIT = 0.8
@@ -72,6 +74,8 @@ def post_problem(text: str, recent: list[str]) -> str | None:
     """Почему пост нельзя выпускать как есть, или None."""
     if junk := garbage(text):
         return f"служебный мусор «{junk}»"
+    if lang.is_en() and lang.has_cyrillic(text):
+        return "в английском аккаунте русские буквы — перепиши целиком на литературном английском"
     if hook := bait(text):
         return f"призыв ради реакций «{hook}» — Threads не рекомендует такие посты; дай причину ответить без призыва"
     title, question = first_line(text), last_question(text)
@@ -91,6 +95,8 @@ def reply_problem(text: str, recent: list[str]) -> str | None:
     """Почему ответ нельзя отправлять как есть, или None."""
     if junk := garbage(text):
         return f"служебный мусор «{junk}»"
+    if lang.is_en() and lang.has_cyrillic(text):
+        return "русские буквы в английском ответе"
     for old in recent:
         if len(words(text)) >= 8 and similarity(text, old) >= SHINGLE_LIMIT:
             return "повторяет недавний ответ"

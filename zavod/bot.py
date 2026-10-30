@@ -1585,10 +1585,30 @@ async def coherence_gate(generator: Generator, text: str) -> str:
     return result if len(result) <= MAX_LENGTH else text
 
 
+async def en_editor_gate(generator: Generator, text: str) -> str:
+    """Слово владельца 30.10.2026: в английском Threads — только правильный литературный английский, ни одной русской
+    буквы. Каждый английский пост вычитывает редактор-носитель: OK или исправленный текст. Ссылки сохраняем."""
+    links = SCRIPT_LINK_LINE.findall(text)
+    body = SCRIPT_LINK_LINE.sub("", text).strip()
+    try:
+        answer = await generator.improve(lang.EN_EDITOR, body, max_tokens=700, kind="coherence")
+        answer = answer.strip() if isinstance(answer, str) else ""
+    except Exception as e:
+        log.warning("Английская вычитка не удалась: %s", e)
+        return text
+    if not answer or answer.upper().strip(" .") == "OK" or len(answer) > len(body) * 1.25 \
+            or lang.has_cyrillic(answer):
+        return text
+    result = "\n".join([strip_credits(answer)] + links)
+    return result if len(result) <= MAX_LENGTH else text
+
+
 async def hook_gate(generator: Generator, text: str) -> str:
     """Каждый пост перед выходом проходит проверку крючка: не цепляет — переписываем один раз.
     Ссылки с меткой сохраняем как были. Затем — проверка цельности (coherence_gate)."""
     text = await safe_gate(generator, await coherence_gate(generator, text))
+    if lang.is_en():
+        text = await en_editor_gate(generator, text)
     links = SCRIPT_LINK_LINE.findall(text)
     body = SCRIPT_LINK_LINE.sub("", text).strip()
     try:
