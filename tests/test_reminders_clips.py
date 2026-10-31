@@ -150,3 +150,37 @@ class RemindersPostgres(Reminders):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SendAssets(unittest.IsolatedAsyncioTestCase):
+    async def test_only_cover_files_are_sent_as_documents(self):
+        cfg = SimpleNamespace(timezone=TZ, admin_ids=[7])
+        bot, notified = MagicMock(), []
+        bot.send_document, bot.send_message = AsyncMock(), AsyncMock()
+
+        class Client:
+            def __init__(self, *a, **k): pass
+            async def __aenter__(self): return self
+            async def __aexit__(self, *a): return False
+            async def get(self, url, params=None): return SimpleNamespace(status_code=200, content=b"x" * 100)
+
+        with patch("httpx.AsyncClient", Client), \
+             patch.object(B, "notify_admins", AsyncMock(side_effect=lambda b, c, t: notified.append(t))):
+            await B.send_assets(bot, cfg, ["assets/cover/a.jpg", "zavod/config.py", "assets/cover/../x"], "Инструкция", "")
+        self.assertEqual(bot.send_document.await_count, 1)
+        self.assertEqual(bot.send_document.await_args.args[1].filename, "a.jpg")
+        self.assertEqual(notified[0], "Инструкция")
+        self.assertEqual(sum("не из assets/cover" in n for n in notified), 2)
+
+    async def test_accounts_check_reports_names_and_counts_only(self):
+        cfg = SimpleNamespace(timezone=TZ, admin_ids=[7])
+        notified = []
+        threads = MagicMock()
+        threads._request = AsyncMock(return_value=(200, {"accounts": [
+            {"platform": "threads", "_id": "SECRET1"}, {"platform": "threads", "_id": "SECRET2"}, {"platform": "instagram", "_id": "SECRET3"}]}))
+        with patch.object(B, "notify_admins", AsyncMock(side_effect=lambda b, c, t: notified.append(t))):
+            await B.accounts_check(None, cfg, threads, "")
+        self.assertIn("instagram — 1", notified[0])
+        self.assertIn("threads — 2", notified[0])
+        self.assertIn("Facebook в Zernio НЕ подключён", notified[0])
+        self.assertNotIn("SECRET", notified[0])

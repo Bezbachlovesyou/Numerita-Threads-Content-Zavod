@@ -2038,6 +2038,42 @@ async def resend_clips(bot: Bot, cfg: Config, db: Storage, tag: str) -> None:
                         await bot.send_message(admin_id, f"⚠️ Ролик {key}_{code} не отправился: {type(e).__name__}")
 
 
+async def send_assets(bot: Bot, cfg: Config, files: list[str], text: str, tag: str) -> None:
+    """Прислать владельцу файлы из репозитория (только assets/cover/…) документами, без пережатия: обложки, баннеры."""
+    import httpx
+    from . import ops
+    if text:
+        await notify_admins(bot, cfg, tag + text)
+    async with httpx.AsyncClient(timeout=180, follow_redirects=True) as http:
+        for path in files:
+            if not path.startswith("assets/cover/") or ".." in path:
+                await notify_admins(bot, cfg, f"{tag}⚠️ Файл не из assets/cover/: {path}")
+                continue
+            r = await http.get(f"{ops.RAW}/{path}", params={"t": int(datetime.now().timestamp())})
+            if r.status_code != 200 or not r.content:
+                await notify_admins(bot, cfg, f"{tag}⚠️ Файл {path} не найден в репозитории ({r.status_code}).")
+                continue
+            for admin_id in cfg.admin_ids:
+                try:
+                    await bot.send_document(admin_id, BufferedInputFile(r.content, Path(path).name))
+                except Exception as e:
+                    log.exception("Файл %s не отправлен владельцу", path)
+                    await bot.send_message(admin_id, f"⚠️ {Path(path).name} не отправился: {type(e).__name__}")
+
+
+async def accounts_check(bot: Bot, cfg: Config, threads: ThreadsClient, tag: str) -> None:
+    """Какие площадки подключены в Zernio (только названия и количество, без номеров и ключей)."""
+    _, payload = await threads._request("GET", "/accounts")
+    accounts = payload.get("accounts") or payload.get("data") or (payload if isinstance(payload, list) else [])
+    counts: dict[str, int] = {}
+    for acc in accounts:
+        name = (acc.get("platform") or "?").lower()
+        counts[name] = counts.get(name, 0) + 1
+    line = ", ".join(f"{k} — {v}" for k, v in sorted(counts.items())) or "ничего не подключено"
+    fb = "Facebook подключён." if counts.get("facebook") else "Facebook в Zernio НЕ подключён: страницу пока вести нечем."
+    await notify_admins(bot, cfg, f"{tag}🔌 Подключено в Zernio: {line}.\n{fb}")
+
+
 def chain_lines(c: dict) -> list[str]:
     from . import chain
     return ["", *chain.lines(c)]
@@ -2144,6 +2180,10 @@ async def run_op(cmd: dict, db: Storage, threads: ThreadsClient | None, bot: Bot
         await notify_admins(bot, cfg, f"{tag}💡 Идея {'снята с учёта' if done else 'не найдена'}.")
     elif action == "resend_clips" and threads is not None:  # 4 приветственных ролика заново владельцу + что с ними делать ($0)
         asyncio.create_task(resend_clips(bot, cfg, db, tag))
+    elif action == "send_assets":  # файлы из assets/cover/ владельцу документами (обложки, баннеры), $0
+        asyncio.create_task(send_assets(bot, cfg, [str(f) for f in cmd.get("files") or []], text, tag))
+    elif action == "accounts_check" and threads is not None:
+        await accounts_check(bot, cfg, threads, tag)
     elif action == "approve_spend":  # «да» владельца: {"label": "...", "usd": 1.5} и/или {"loss_budget": 5} — для контролёра прибыли
         if cmd.get("label") and float(cmd.get("usd") or 0) > 0:
             await profit.authorize(db, str(cmd["label"]), float(cmd["usd"]))
