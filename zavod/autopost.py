@@ -18,7 +18,7 @@ from pathlib import Path
 
 from .cards import PALETTES, PLANETS, birth_days
 from .knowledge import reduce_number
-from . import physics, text_mode
+from . import personal, physics, text_mode
 
 log = logging.getLogger(__name__)
 
@@ -159,7 +159,7 @@ def load_rubrics(path: Path) -> list[Rubric]:
 
 
 # Новые форматы по слову владельца — чаще, пока оптимизатор не наберёт по ним данных.
-BOOST = {"text_baza": 2.5, "text_rollcall": 2.5, "text_one_digit": 2.0, "text_howto": 1.5, "text_myth": 2.0, "text_insight": 1.5, "text_who_told": 2.5, "text_heaven_pairs": 3.0, "text_what_next": 2.0, "text_tag_pair": 2.0, "text_hype": 3.0, "text_secrets": 3.0, "text_marry": 3.0, "text_celeb": 2.5, "text_aroma": 2.5, "text_roles": 2.5, "text_avoid": 2.5, "text_sunrise": 2.5, "text_seek": 4.0, "text_physics": 3.0, "text_battery": 2.5, "text_outgrow": 2.5, "text_marriage": 2.5, "text_loves": 2.5, "text_gifts": 2.5, "text_eras": 2.5, "text_success": 2.5, "text_wealth": 2.5, "text_levels": 2.5, "grid": 2.5, "text_great": 2.0, "text_science": 2.0, "text_dna": 1.5, "text_sky": 1.5}  # не чаще раза в день — следит post_next
+BOOST = {"text_baza": 2.5, "text_rollcall": 2.5, "text_one_digit": 2.0, "text_howto": 1.5, "text_myth": 2.0, "text_insight": 1.5, "text_who_told": 2.5, "text_heaven_pairs": 3.0, "text_what_next": 2.0, "text_tag_pair": 2.0, "text_hype": 3.0, "text_secrets": 3.0, "text_marry": 3.0, "text_celeb": 2.5, "text_aroma": 2.5, "text_roles": 2.5, "text_avoid": 2.5, "text_sunrise": 4.5, "text_seek": 4.0, "text_physics": 3.0, "text_year": 4.0, "text_pair": 4.0, "text_unknown": 3.0, "text_battery": 2.5, "text_outgrow": 2.5, "text_marriage": 2.5, "text_loves": 2.5, "text_gifts": 2.5, "text_eras": 2.5, "text_success": 2.5, "text_wealth": 2.5, "text_levels": 2.5, "grid": 2.5, "text_great": 2.0, "text_science": 2.0, "text_dna": 1.5, "text_sky": 1.5}  # не чаще раза в день — следит post_next
 
 
 class ContentPlan:
@@ -205,6 +205,9 @@ class ContentPlan:
         if recent_ctas[:1] == ["link"] or recent_ctas.count("link") >= 2:
             pool = [r for r in pool if r.cta != "link"] or pool
         boost = {**BOOST, "grid": 4.0} if _is_en() else BOOST  # английский: «Угадай число» — главный двигатель
+        if not any(k in personal.PERSONAL for k in recent[:3]) and rng.random() < personal.PERSONAL_SHARE:
+            # третий механизм (год, время, пара — личное не узнать из общего поста): не реже, чем раз в 3–4 поста
+            pool = [r for r in pool if r.key in personal.PERSONAL] or pool
         live = [r for r in pool if self.weights.get(r.key, 1.0) > 0]  # вес 0 — рубрику больше не делаем
         pool = live or pool
         weights = [max(0.2, self.weights.get(r.key, boost.get(r.key, 1.0))) for r in pool]
@@ -233,6 +236,7 @@ class ContentPlan:
             when=when_phrase(today),
             who=rng.choice(WHO_TO_TAG),
             physics=physics.fact_for(digit, rng) if "{physics}" in rubric.text else "",
+            year_example=personal.year_example(rng) if "{year_example}" in rubric.text else "",
         )
         if "{emotion}" in rubric.text:  # пометка для самоулучшения: какая эмоция лучше вовлекает
             topic += f"\n[эмоция: {emotion[0]}]"

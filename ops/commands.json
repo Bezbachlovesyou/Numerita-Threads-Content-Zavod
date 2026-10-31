@@ -253,5 +253,47 @@
   "account": "ru",
   "action": "tell",
   "file": "knowledge/research/draft_physics_thread_8.md"
+ },
+ {
+  "id": "personal-year-ru-2026-10-31",
+  "account": "ru",
+  "action": "post",
+  "rubric": "text_year",
+  "text": "ОДИН ДЕНЬ РОЖДЕНИЯ — ДВЕ РАЗНЫЕ СУДЬБЫ 🎲\n\nОбе родились 14 мая, число души у обеих 5: быстрый ум, живая речь.\nНо 14.05.1985 даёт число судьбы 6 (цифры даты в сумме 33 → 6): красота, вкус, дар притягивать людей. А 14.05.1992 — число судьбы 4 (сумма 31 → 4): бунтарь и новатор.\n\nОбщий пост не знает твой год. Напиши свой день рождения числом — назову число души. Год, время и пару лучше считать лично: ссылка в шапке профиля."
+ },
+ {
+  "id": "personal-pair-ru-2026-10-31",
+  "account": "ru",
+  "action": "post",
+  "rubric": "text_pair",
+  "text": "ЧТО ОБЩИЙ ПОСТ НЕ СКАЖЕТ О ВАШЕЙ ПАРЕ 💞\n\nРождённые 2, 11, 20, 29 и 8, 17, 26 — мягкая Луна и основательный Сатурн. Восьмёрка даёт двойке чувство безопасности, двойка смягчает суровый нрав. Точка роста: сдержанность восьмёрки двойке порой кажется холодностью.\n\nНо это портрет двух чисел. Ваша пара — две конкретные даты, годы и время рождения.\n\nНапишите два дня числами (без месяца и года) — скажу, как они ладят. Полную пару лучше считать лично: ссылка в шапке профиля."
+ },
+ {
+  "id": "personal-unknown-ru-2026-10-31",
+  "account": "ru",
+  "action": "post",
+  "rubric": "text_unknown",
+  "text": "ЧЕГО НЕ ЗНАЕТ НИ ОДИН ОБЩИЙ ПОСТ О ТЕБЕ ✨\n\nОбщий пост знает о тебе одно: день рождения. Это как знать человека по табличке на двери и не знать, что у него в квартире.\n\nТри вещи делают разбор личным: год (число судьбы), время и город рождения (по традиции день начинается на рассвете и может сдвинуться) и твоя пара (две даты).\n\nНапиши свой день числом — назову число души. Остальное — лично: ссылка в шапке профиля."
+ },
+ {
+  "id": "personal-year-en-2026-10-31",
+  "account": "en",
+  "action": "post",
+  "rubric": "text_year",
+  "text": "SAME BIRTHDAY, TWO DIFFERENT DESTINIES 🎲\n\nBoth were born on May 14th, soul number 5: a quick mind, a lively tongue.\nBut May 14, 1985 gives destiny number 6 (the digits add up to 33 → 6): beauty, taste, a gift for drawing people in. And May 14, 1992 gives 4 (31 → 4): a rebel and an innovator.\n\nA general post doesn't know your year. Tell me your birth day as a number and I'll name your soul number. Year, birth time and partner are best worked out in private: link in my profile."
+ },
+ {
+  "id": "personal-pair-en-2026-10-31",
+  "account": "en",
+  "action": "post",
+  "rubric": "text_pair",
+  "text": "WHAT A GENERAL POST CAN'T TELL YOU ABOUT YOUR COUPLE 💞\n\nBorn on the 2nd, 11th, 20th or 29th meets the 8th, 17th or 26th: a gentle Moon and a steady Saturn. The 8 gives the 2 a sense of safety; the 2 softens the 8's stern streak. Growth point: the 8's reserve can feel like coolness to a sensitive 2.\n\nBut that's two numbers. Your couple is two exact dates and years.\n\nTell me both days as numbers (no month or year) and I'll say how they get along. The full reading: link in my profile."
+ },
+ {
+  "id": "personal-unknown-en-2026-10-31",
+  "account": "en",
+  "action": "post",
+  "rubric": "text_unknown",
+  "text": "WHAT NO GENERAL POST KNOWS ABOUT YOU ✨\n\nA general post knows one thing about you: your birthday. That's knowing someone by the nameplate on the door, not by what's inside the apartment.\n\nThree things make a reading personal: your year (destiny number), your birth time and city (in the tradition the day begins at sunrise, so it can shift), and your partner (two dates).\n\nTell me your day as a number and I'll name your soul number. The rest is private: link in my profile."
  }
 ]
