@@ -230,5 +230,11 @@
   "id": "raw-clips-2026-10-30",
   "account": "ru",
   "action": "raw_clips"
+ },
+ {
+  "id": "birth-days-2026-10-31",
+  "account": "ru",
+  "action": "tell",
+  "file": "knowledge/research/birth_days_1_31.md"
  }
 ]
