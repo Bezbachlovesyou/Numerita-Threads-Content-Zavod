@@ -1,0 +1,326 @@
+"""Матрица профилей постов: 128 параметров, которые чередуются (слово владельца 31.10.2026: «один жанр и бытовая сценка с сатирическим панчем — нет; много стилей
+и жанров на основе Жванецкого, Задорнова, Воли, Мартиросяна и других; угадай, узнай, истории, анекдоты, факты; иногда лаконично, иногда объёмно, иногда с визуализацией;
+придумать 100 параметров и чередовать их, не отступая от того, чтобы цепляло и вело в бота»).
+
+Каждый пост получает ПРОФИЛЬ: по одному значению из 12 осей (жанр, голос, длина, хук, форма, визуал, тон, связь с числами, финал, тема, источник правды, рассказчик).
+Профиль попадает в задание модели и записывается в базу (pm:post:<номер>), чтобы видеть, какие значения дают комментарии и переходы (learn, /params), и усиливать удачные.
+Чередование: значения, использованные в последних постах, получают сниженный вес; несовместимые сочетания (афоризм и «объёмно») исключены.
+Рубрики с собственным жёстким форматом (списки по 9 группам и т. п.) получают только голос и тон (и иногда визуал); рубрика text_free отдаёт модели все оси.
+Правила честности, табу и язык аккаунта неприкосновенны: профиль меняет форму, а не правду.
+
+Приёмы юмористов — «по приёмам, не тексты»: без цитат, без политики и без насмешек над людьми и народами (knowledge/research/humor_voices.md)."""
+
+import json
+import random
+from datetime import datetime, timedelta
+
+FREE = "text_free"
+RECENT_KEEP = 14
+AVOID = {"genre": 4, "voice": 3, "structure": 3, "length": 2, "hook": 3, "visual": 2, "tone": 2, "link": 2, "ending": 3, "theme": 3, "truth": 2, "narrator": 2}
+
+# Ось → список (id, подпись, инструкция модели). Инструкции короткие: модель получает 12 строк профиля.
+GENRES = [
+    ("scene", "сценка", "Сценка: 2–4 реплики двух чисел или людей, развязка в последней реплике."),
+    ("monolog", "монолог", "Монолог живым голосом: разговорная интонация, парадокс, горькая улыбка, афористичный финал."),
+    ("aphorisms", "афоризмы", "Россыпь афоризмов: 4–6 коротких отточенных фраз о числах и людях, каждая работает сама."),
+    ("anecdote", "анекдот", "Анекдот-миниатюра со своей развязкой (придумай новый, известные не пересказывай); помечать не нужно, это жанр."),
+    ("parable", "притча", "Притча на 3–5 предложений: образ и неожиданный вывод без назидания."),
+    ("guess", "угадай", "Игра «угадай»: загадка про число или характер; ответ не раскрывай, зови угадать в ответах."),
+    ("recognize", "узнай себя", "«Узнай себя»: 4–6 штрихов поведения, по которым человек находит себя или своего близкого."),
+    ("subscriber", "история подписчика", "История подписчика: ТОЛЬКО реальная, присланная с согласием (имя и подробности не раскрывай); иначе этот жанр не используется."),
+    ("fiction", "выдуманная быль", "Выдуманная история-быль: короткий рассказ с героем-числом; честно пометь «выдумка» или «быль, которой не было»."),
+    ("fact", "факт и образ", "Интересный проверенный факт (наука, история, математика) и образ из него для человека."),
+    ("physics", "физика и образ", "Факт физики или астрономии из задания (не меняй цифры) и честный мостик «Образ, не наука:»."),
+    ("myth", "миф и разбор", "Миф в кавычках и честный разбор с юмором."),
+    ("letter", "письмо", "Письмо от числа человеку: тёплое, с неожиданной деталью."),
+    ("poem", "стих", "Четверостишие или две рифмованные строфы: образ, ритм, панч в конце; рифма не вымученная."),
+    ("interview", "интервью", "Интервью с числом: 3–4 вопроса и ответа, живые и острые."),
+    ("howto", "как сделать", "Мини-инструкция «как…» с юмором и неожиданным шагом."),
+    ("vote", "выбор А/Б/В", "Выбор А/Б/В: ситуация и три узнаваемых варианта; зови выбрать букву и написать свой день рождения числом."),
+    ("test", "мини-тест", "Мини-тест из 3 вопросов с вариантами; в конце — как прочитать ответы (образ, не диагноз)."),
+    ("whatif", "что если", "Гипотеза «что если…»: один образ, развитый до смешного или трогательного."),
+    ("expect", "ожидание/реальность", "«Ожидание / реальность» про число: два контрастных образа."),
+    ("diary", "дневник", "Запись из дневника Нумериты от первого лица: наблюдение дня и деталь (без выдуманных личных событий конкретных людей)."),
+    ("history", "эпизод из истории", "Достоверный исторический эпизод о числах, календаре или счёте и вывод для сегодняшнего человека."),
+    ("wordplay", "игра слов", "Игра слов и смыслов вокруг числа или слова (язык, а не народы), с открытием и улыбкой."),
+    ("support", "минутка поддержки", "Тёплая минутка поддержки: две-три фразы, которые хочется перечитать; без назидания."),
+    ("sitcom", "ситком чисел", "Ситком чисел: спор или примирение двух чисел из базы, характеры в репликах."),
+    ("confession", "исповедь числа", "Исповедь числа: «признаюсь…» от лица числа, самоирония и нежность."),
+]
+VOICES_RU = [
+    ("zhvanetsky", "Жванецкий", "Приём Жванецкого: точное слово, парадокс, пауза перед главным, афоризм в конце; горькая улыбка."),
+    ("zadornov", "Задорнов (язык)", "Приём Задорнова: игра со словами и смыслами, удивление «а ведь…»; без насмешек над народами и без политики."),
+    ("volya", "Воля", "Приём Воли: самоирония, личная история с эскалацией и возвратом к началу (callback), честная неловкость."),
+    ("martirosyan", "Мартиросян", "Приём Мартиросяна: персонаж-маска, гипербола, быстрый ритм реплик, неожиданная смена роли; без национальных шуток."),
+    ("khazanov", "Хазанов", "Приём Хазанова: монолог маски, где характер выдаёт сам рассказчик."),
+    ("shirvindt", "Ширвиндт", "Приём Ширвиндта: сухой афоризм, интеллигентная ирония, недоговорённость."),
+    ("zoshchenko", "Зощенко", "Приём Зощенко: комический бытовой сказ, простодушный рассказчик и канцелярские обороты."),
+    ("ilf_petrov", "Ильф и Петров", "Приём Ильфа и Петрова: ироническое сравнение и точная деталь, лёгкая сатира над ситуацией."),
+    ("chekhov", "Чехов", "Приём Чехова: короткая бытовая деталь с грустной улыбкой."),
+    ("warm", "тёплая подруга", "Голос Нумериты: тёплая мудрая подруга-ангел с юмором."),
+    ("deadpan", "невозмутимо", "Невозмутимый тон: серьёзно о смешном, без подмигиваний."),
+    ("standup", "стендап", "Ритм современного стендапа: наблюдение → усиление → неожиданный поворот."),
+]
+VOICES_EN = [
+    ("seinfeld", "Seinfeld", "Seinfeld's manner: observational comedy about tiny everyday things, 'what's the deal with…', escalating nitpicks."),
+    ("wilde", "Wilde", "Wilde's manner: elegant paradox and epigram, the truth turned upside down."),
+    ("twain", "Twain", "Twain's manner: dry folksy exaggeration with a sharp moral sting."),
+    ("wodehouse", "Wodehouse", "Wodehouse's manner: precise, unexpected comparisons and breezy comic narration."),
+    ("hedberg", "Hedberg", "Hedberg's manner: short absurd one-liners with a logic that is slightly off."),
+    ("wright", "Wright", "Steven Wright's manner: deadpan, flat delivery of surreal thoughts."),
+    ("martin", "Demetri Martin", "Demetri Martin's manner: wordplay and neat conceptual jokes, list-like precision."),
+    ("vine", "Tim Vine", "Tim Vine's manner: quick clean puns, one after another."),
+    ("bargatze", "Bargatze", "Nate Bargatze's manner: clean, gentle storytelling about being a slightly confused ordinary person."),
+    ("warm", "warm friend", "Numerita's voice: a warm, wise guardian-angel friend with a sense of humor."),
+]
+LENGTHS = [
+    ("one_line", "одна фраза", "Длина: одна фраза до 100 знаков."),
+    ("xs", "очень коротко", "Длина: до 160 знаков."),
+    ("s", "коротко", "Длина: 160–240 знаков."),
+    ("m", "средне", "Длина: 240–340 знаков."),
+    ("l", "объёмно", "Длина: 350–470 знаков, полноценная мини-история или разбор."),
+    ("lines", "много коротких строк", "Длина: 4–8 коротких строк, всего до 300 знаков."),
+]
+HOOKS = [
+    ("nerve", "вопрос в нерв", "Хук: вопрос, который попадает в нерв."),
+    ("bold", "дерзкое утверждение", "Хук: дерзкое, но честное утверждение."),
+    ("number", "цифра-интрига", "Хук: конкретная цифра или дата с интригой."),
+    ("really", "«ты точно…»", "Хук: «Ты точно…» — узнаваемое обвинение с улыбкой."),
+    ("nobody", "«никто не говорит…»", "Хук: «Никто не говорит, что…» — неудобная, но тёплая правда."),
+    ("paradox", "парадокс", "Хук: парадокс, который хочется разрешить."),
+    ("midscene", "сцена с середины", "Хук: сцена с середины действия, без разгона."),
+    ("callgroup", "обращение к группе", "Хук: обращение к группе дней рождения КАПСОМ («РОЖДЁННЫЕ …»)."),
+    ("confess", "«признавайтесь»", "Хук: «Признавайтесь, у кого…»."),
+    ("factpunch", "факт-удар", "Хук: неожиданный проверенный факт в первой строке."),
+    ("truth", "мягкая неудобная правда", "Хук: мягкая неудобная правда о людях."),
+    ("gamepromise", "обещание игры", "Хук: обещание маленькой игры («за 10 секунд узнаешь…»)."),
+]
+STRUCTURES = [
+    ("groups", "список по группам", "Форма: строки по группам дней рождения."),
+    ("dialogue", "диалог", "Форма: диалог, реплики с тире."),
+    ("monologue", "сплошной монолог", "Форма: сплошной текст, один голос."),
+    ("one_gloss", "фраза и пояснение", "Форма: одна сильная фраза и короткое пояснение."),
+    ("before_after", "до и после", "Форма: «до» и «после», две части."),
+    ("expect_real", "ожидание/реальность", "Форма: два блока: ожидание и реальность."),
+    ("scale", "шкала", "Форма: шкала от 0 до 10 с оценками."),
+    ("mini_table", "мини-таблица", "Форма: мини-таблица из 3–4 строк."),
+    ("countdown", "обратный отсчёт", "Форма: обратный отсчёт от 5 до 1."),
+    ("qa", "вопрос-ответ", "Форма: вопрос и ответ."),
+]
+VISUALS = [
+    ("none", "без визуала", "Визуал: чистый текст."),
+    ("emoji", "рамка из эмодзи", "Визуал: 3–5 эмодзи как рамка или маркеры (разрешено в этом посте)."),
+    ("blocks", "шкала блоками", "Визуал: шкала блоками ▰▰▰▱▱ у каждого пункта."),
+    ("columns", "колонки", "Визуал: выровненные колонки через « | »."),
+    ("box", "карточка-рамка", "Визуал: текст в рамке из символов ┌─┐ / └─┘."),
+    ("arrows", "цепочка стрелок", "Визуал: цепочка через стрелки →."),
+    ("ladder", "лесенка", "Визуал: нумерованная лесенка шагов 1→2→3."),
+    ("bars", "столбики", "Визуал: столбики из символов █ с подписями."),
+]
+TONES = [
+    ("tender", "нежно", "Тон: нежный."), ("bold", "дерзко", "Тон: дерзкий, но без грубости."), ("philosophical", "философски", "Тон: философский."),
+    ("playful", "озорно", "Тон: озорной."), ("nostalgic", "ностальгически", "Тон: ностальгический."), ("inspiring", "вдохновляюще", "Тон: вдохновляющий."),
+    ("ironic", "иронично", "Тон: ироничный."), ("support", "тёплая поддержка", "Тон: тёплая поддержка."), ("mystery", "загадочно", "Тон: загадочный."),
+    ("absurd", "торжественный абсурд", "Тон: торжественный абсурд."),
+]
+LINKS = [
+    ("group", "группа дней", "Числа: группа дней рождения («1, 10, 19, 28»)."),
+    ("single", "одно число", "Числа: одно число души и его планета."),
+    ("pair", "две даты", "Числа: два числа — пара."),
+    ("year", "год и судьба", "Числа: год и число судьбы (сумма цифр даты)."),
+    ("planet", "планета", "Числа: планета числа как образ."),
+    ("today", "число дня", "Числа: число сегодняшнего дня."),
+    ("personal_day", "личный день", "Числа: личный день человека."),
+    ("word", "число как слово", "Числа: число как слово или имя собственное в игре смыслов."),
+]
+ENDINGS = [
+    ("ask_number", "напиши день рождения", "Финал: попроси написать день рождения числом (без месяца и года)."),
+    ("game_answer", "ответ-игра", "Финал: игра — ответ человек напишет в комментариях."),
+    ("say_by_date", "скажу по дате", "Финал: «напиши число — скажу, что оно значит»."),
+    ("and_you", "а ты какой?", "Финал: короткое «А ты какой?»."),
+    ("punch", "панч без призыва", "Финал: панч без призыва и без вопроса."),
+    ("profile", "ссылка в шапке", "Финал: мягко — личное (год, время, пара) считаем лично, ссылка в шапке профиля."),
+    ("riddle", "загадка на потом", "Финал: загадка, ответ на которую будет позже."),
+    ("comments", "продолжение в комментариях", "Финал: продолжение — в комментариях."),
+    ("gift", "подарок по числу", "Финал: обещание маленького подарка — разбора по числу в ответе."),
+    ("open_loop", "открытая петля", "Финал: честная открытая петля — чего по этим данным не видно (год, время и город, пара)."),
+]
+THEMES = [
+    ("love", "любовь", "Тема: любовь."), ("money", "деньги", "Тема: деньги и ценности."), ("work", "работа", "Тема: работа."), ("family", "семья", "Тема: семья."),
+    ("friends", "дружба", "Тема: дружба."), ("home", "быт", "Тема: быт и дом."), ("goals", "цели", "Тема: цели и мечты."), ("courage", "смелость", "Тема: страх и смелость."),
+    ("time", "время", "Тема: время и опоздания."), ("food", "привычки", "Тема: привычки и еда."), ("travel", "путешествия", "Тема: путешествия."),
+    ("creative", "творчество", "Тема: творчество."), ("night", "ночь", "Тема: ночь и сон."), ("phone", "чаты и телефон", "Тема: чаты и телефон."),
+]
+TRUTHS = [
+    ("observe", "наблюдение", "Опора: наблюдение за жизнью."), ("fact", "проверенный факт", "Опора: проверенный факт."), ("tradition", "история традиции", "Опора: история из традиции чисел."),
+    ("gita", "Бхагавад-гита", "Опора: мысль из Бхагавад-гиты (честно как традиция)."), ("math", "арифметика чисел", "Опора: проверяемая арифметика (сложение цифр даты)."),
+    ("episode", "эпизод из истории", "Опора: достоверный исторический эпизод."),
+]
+NARRATORS = [
+    ("numerita", "Нумерита от первого лица", "Рассказчик: Нумерита от первого лица."), ("friend", "число-друг", "Рассказчик: число-друг, говорит о себе."),
+    ("collective", "собирательный знакомый", "Рассказчик: «один знакомый» — обязательно собирательный образ, честно подан как выдуманный."),
+    ("real", "подписчик (реальный)", "Рассказчик: реальный подписчик с согласием."), ("observer", "наблюдатель", "Рассказчик: сторонний наблюдатель."),
+    ("two", "два голоса", "Рассказчик: два голоса, спор или перекличка."),
+]
+
+AXES = {"genre": GENRES, "voice": VOICES_RU, "length": LENGTHS, "hook": HOOKS, "structure": STRUCTURES, "visual": VISUALS, "tone": TONES,
+        "link": LINKS, "ending": ENDINGS, "theme": THEMES, "truth": TRUTHS, "narrator": NARRATORS}
+ORDER = ("genre", "voice", "length", "hook", "structure", "visual", "tone", "link", "ending", "theme", "truth", "narrator")
+PARTIAL = ("voice", "tone")  # рубрики с собственным форматом: только голос и тон (иногда ещё визуал)
+REAL_ONLY = {("genre", "subscriber"), ("narrator", "real")}  # только если есть реальные истории (flags["real_story"])
+
+# Совместимость: жанр задаёт допустимые значения других осей.
+SHORT = ("one_line", "xs", "s", "lines")
+RULES = {
+    "aphorisms": {"length": SHORT, "structure": ("one_gloss", "monologue", "countdown"), "visual": ("none", "emoji")},
+    "poem": {"length": ("s", "m", "lines"), "structure": ("monologue",), "visual": ("none",)},
+    "guess": {"ending": ("game_answer", "ask_number", "riddle")},
+    "vote": {"ending": ("ask_number", "game_answer"), "structure": ("qa", "groups", "dialogue")},
+    "test": {"ending": ("ask_number", "say_by_date", "game_answer"), "length": ("m", "l", "lines"), "structure": ("qa", "scale", "mini_table")},
+    "physics": {"truth": ("fact", "math"), "length": ("m", "l")},
+    "fact": {"truth": ("fact", "math", "episode", "tradition")},
+    "history": {"truth": ("episode", "tradition")},
+    "fiction": {"length": ("m", "l"), "narrator": ("collective", "friend", "observer", "two"), "ending": ("and_you", "ask_number", "punch", "game_answer")},
+    "diary": {"narrator": ("numerita",), "visual": ("none", "emoji")},
+    "interview": {"structure": ("qa", "dialogue"), "narrator": ("two", "friend")},
+    "sitcom": {"structure": ("dialogue",), "narrator": ("two",)},
+    "scene": {"structure": ("dialogue",), "narrator": ("two", "observer", "friend")},
+    "letter": {"narrator": ("friend", "numerita"), "structure": ("monologue",)},
+    "support": {"length": ("xs", "s", "m"), "tone": ("tender", "support", "inspiring", "philosophical")},
+    "anecdote": {"length": ("xs", "s", "m"), "structure": ("monologue", "dialogue")},
+    "subscriber": {"narrator": ("real",)},
+}
+
+
+def total_values(lang: str = "ru") -> int:
+    return sum(len(v if k != "voice" else (VOICES_EN if lang == "en" else VOICES_RU)) for k, v in AXES.items())
+
+
+def axis(name: str, lang: str = "ru") -> list:
+    return (VOICES_EN if lang == "en" else VOICES_RU) if name == "voice" else AXES[name]
+
+
+def _entry(name: str, vid: str, lang: str = "ru"):
+    return next((e for e in axis(name, lang) if e[0] == vid), None)
+
+
+def sample(rng: random.Random, lang: str, rubric_key: str, recent: list[dict], weights: dict | None = None, flags: dict | None = None) -> dict:
+    """Профиль поста {ось: id}. Для рубрик с собственным форматом — только голос и тон (иногда визуал); для text_free — все оси."""
+    flags, weights = flags or {}, weights or {}
+    axes = list(ORDER) if rubric_key == FREE else list(PARTIAL) + (["visual"] if rng.random() < 0.2 else [])
+    profile: dict[str, str] = {}
+    for name in axes:
+        options = [e[0] for e in axis(name, lang)]
+        genre = profile.get("genre")
+        allowed = RULES.get(genre, {}).get(name)
+        if allowed:
+            options = [o for o in options if o in allowed] or options
+        options = [o for o in options if flags.get("real_story") or (name, o) not in REAL_ONLY]
+        window = [r.get(name) for r in recent[:AVOID.get(name, 2)]]
+        fresh = [o for o in options if o not in window or (name, o) == ("visual", "none")]  # недавние значения исключаем, пока есть из чего выбирать
+        options = fresh or options
+        w = [weights.get(f"{name}:{o}", 1.0) * (8.0 if (name, o) == ("visual", "none") else 1.0) for o in options]  # чаще чистый текст
+        profile[name] = rng.choices(options, weights=w)[0]
+    return profile
+
+
+def render(profile: dict, lang: str = "ru", extra: str = "") -> str:
+    """Строка профиля для задания модели."""
+    parts = []
+    for name in ORDER:
+        if name in profile:
+            e = _entry(name, profile[name], lang)
+            if e:
+                parts.append(f"• {e[2]}")
+    free = "genre" in profile
+    head = ("ПРОФИЛЬ ПОСТА (из 128 чередующихся параметров; следуй ему: он важнее привычной формы, но не отменяет честность, табу и язык аккаунта):"
+            if free else "ПРОФИЛЬ ГОЛОСА (чередуется от поста к посту; формат рубрики сохраняй, меняй подачу):")
+    return head + "\n" + "\n".join(parts) + (("\n" + extra) if extra else "")
+
+
+def label(profile: dict, lang: str = "ru") -> str:
+    return ", ".join(f"{(_entry(n, v, lang) or (v, v))[1]}" for n, v in profile.items())
+
+
+async def recent(db) -> list[dict]:
+    return json.loads(await db.kv_get("pm:recent") or "[]")
+
+
+async def weights(db) -> dict:
+    return json.loads(await db.kv_get("pm:weights") or "{}")
+
+
+async def pick(db, lang: str, rubric_key: str, rng: random.Random, flags: dict | None = None) -> dict:
+    """Следующий профиль с учётом недавних постов и выученных весов; запоминает выбор для чередования."""
+    prev = await recent(db)
+    profile = sample(rng, lang, rubric_key, prev, await weights(db), flags)
+    await db.kv_set("pm:recent", json.dumps(([profile] + prev)[:RECENT_KEEP]))
+    return profile
+
+
+async def record(db, post_id: int, profile: dict) -> None:
+    await db.kv_set(f"pm:post:{post_id}", json.dumps(profile))
+
+
+async def learn(db, now: datetime, days: int = 14, min_posts: int = 3) -> dict:
+    """Выучить веса значений: среднее «комментарии + 0,2·лайки» поста с этим значением против среднего по всем постам с профилем.
+    Вес в пределах 0,5–2,0 (среднее по значению / среднее по всем постам), только при достаточной выборке; одно значение не выключает ось."""
+    rows = []
+    for p in await db.engagement(now - timedelta(days=days)):
+        raw = await db.kv_get(f"pm:post:{p['id']}")
+        if raw:
+            rows.append((json.loads(raw), int(p["comments"] or 0) + 0.2 * int(p["likes"] or 0)))
+    if len(rows) < 8:
+        return {}
+    mean = (sum(s for _, s in rows) / len(rows)) or 0.5
+    stats: dict[str, list[float]] = {}
+    for prof, s in rows:
+        for name, vid in prof.items():
+            stats.setdefault(f"{name}:{vid}", []).append(s)
+    learned = {k: round(max(0.5, min(2.0, (sum(v) / len(v)) / mean)), 2) for k, v in stats.items() if len(v) >= min_posts}
+    await db.kv_set("pm:weights", json.dumps(learned))
+    return learned
+
+
+async def stats_lines(db, now: datetime, lang: str = "ru", days: int = 14, top: int = 6) -> list[str]:
+    """Что дают значения профилей: среднее число комментариев на пост (для /params)."""
+    agg: dict[str, list[int]] = {}
+    total = 0
+    for p in await db.engagement(now - timedelta(days=days)):
+        raw = await db.kv_get(f"pm:post:{p['id']}")
+        if not raw:
+            continue
+        total += 1
+        for name, vid in json.loads(raw).items():
+            agg.setdefault(f"{name}:{vid}", []).append(int(p["comments"] or 0))
+    if not total:
+        return ["профили постов: данных пока нет"]
+    rows = sorted(((sum(v) / len(v), len(v), k) for k, v in agg.items() if len(v) >= 2), reverse=True)
+
+    def name(key: str) -> str:
+        axis_name, vid = key.split(":", 1)
+        e = _entry(axis_name, vid, lang)
+        return f"{axis_name} — {e[1] if e else vid}"
+    out = [f"профили постов за {days} дн.: постов {total}, значений в игре {len(agg)}"]
+    out += [f"  лучше: {name(k)} — {a:.1f} комментариев на пост (постов {n})" for a, n, k in rows[:top]]
+    out += [f"  слабее: {name(k)} — {a:.1f} (постов {n})" for a, n, k in rows[-3:]] if len(rows) > top else []
+    return out
+
+
+def catalog_md() -> str:
+    """Каталог всех параметров (docs/post-parameters.md)."""
+    out = ["# 128 параметров профиля поста", "", "Чередуются от поста к посту (zavod/postmatrix.py). Рубрика text_free отдаёт модели все 12 осей; остальные — голос и тон.", ""]
+    titles = {"genre": "Жанр", "voice": "Голос (приёмы юмористов, по приёмам, без текстов)", "length": "Длина", "hook": "Хук", "structure": "Форма",
+              "visual": "Визуал (в тексте)", "tone": "Тон", "link": "Связь с числами", "ending": "Финал и переход", "theme": "Тема", "truth": "Опора на правду",
+              "narrator": "Рассказчик"}
+    n = 0
+    for name in ORDER:
+        out.append(f"## {titles[name]}")
+        for e in AXES[name]:
+            n += 1
+            out.append(f"{n}. **{e[1]}**: {e[2]}")
+        if name == "voice":
+            out.append("Английский аккаунт: свои голоса (Seinfeld, Wilde, Twain, Wodehouse, Hedberg, Wright, Demetri Martin, Tim Vine, Bargatze, тёплый друг).")
+        out.append("")
+    out.append(f"Итого: {total_values('ru')} значений для русского аккаунта, {total_values('en')} для английского.")
+    return "\n".join(out)

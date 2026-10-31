@@ -28,7 +28,7 @@ from . import autoreply
 from . import text_mode
 from . import lang
 from .optimizer import optimize
-from . import art, attribution, costs, constraint, funnel, profit, reminders, performance, approved_post, zero_research, api_budget, tgchannel, brandvideo, instagram, sketch, zero_cleanup
+from . import art, attribution, physics, postmatrix, costs, constraint, funnel, profit, reminders, performance, approved_post, zero_research, api_budget, tgchannel, brandvideo, instagram, sketch, zero_cleanup
 from .config import Config
 from .generator import GenerationError, Generator
 from .storage import PgStorage, Post, Storage
@@ -990,6 +990,11 @@ def create_router(cfg: Config, plan: ContentPlan) -> Router:
     async def cleanup_handler(message: Message, db: Storage):
         await message.answer(await zero_cleanup.report(db, datetime.now(cfg.timezone)), parse_mode=None)
 
+    @router.message(Command("params"))
+    async def params_handler(message: Message, db: Storage):
+        code = "en" if lang.is_en() else "ru"
+        await message.answer("\n".join(await postmatrix.stats_lines(db, datetime.now(cfg.timezone), code)), parse_mode=None)
+
     @router.message(Command("rubrics"))
     async def rubrics_handler(message: Message, db: Storage):
         now = datetime.now(cfg.timezone)
@@ -1682,6 +1687,14 @@ async def post_next(
             name, ru, en = DAILY_FORMATS[n % len(DAILY_FORMATS)]
             slot = replace(slot, topic=slot.topic + f"\nФормат: «{name}». Образец тона (не копировать): "
                                                    + (en if lang.is_en() else ru))
+        profile = None
+        if slot.rubric.key.startswith("text_") and text_mode.enabled():  # профиль поста: 128 чередующихся параметров (postmatrix.py)
+            code = "en" if lang.is_en() else "ru"
+            profile = await postmatrix.pick(db, code, slot.rubric.key, rng)
+            extra = ""
+            if profile.get("genre") == "physics" and (slot.card_number or "").isdigit():
+                extra = physics.fact_for(int(slot.card_number), rng)  # проверенный факт для жанра «физика и образ»
+            slot = replace(slot, topic=slot.topic + "\n\n" + postmatrix.render(profile, code, extra))
         post_focus = await constraint.focus(db, "post_focus")  # обход по Голдратту: фокус на узкое звено
         if post_focus:
             slot = replace(slot, topic=slot.topic + "\n\nФокус на сегодня (узкое звено): " + post_focus)
@@ -1796,6 +1809,8 @@ async def post_next(
                 slot.card_cta_text or button or LINK_CARD_TEXT.get(link_mode or ""), palette, style, slot.card_dates,
             ).to_json()
         post_id = await db.add_draft(slot.topic, text, slot.rubric.key, first_comment, card_json)
+        if profile:
+            await postmatrix.record(db, post_id, profile)  # какие значения профиля дали какие комментарии — видно в /params
         if link_mode:
             await db.set_link_mode(post_id, link_mode)
         post = await db.get(post_id)

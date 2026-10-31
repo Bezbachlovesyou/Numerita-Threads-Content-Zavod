@@ -207,6 +207,11 @@ async def optimize(
             weights[key] = 0.0 if ratio < 0.6 else round(clamp(ratio, 0.6, 3.0), 2)
     for row in await db.custom_rubrics(("trial",)):
         weights[row["key"]] = 1.5
+    try:  # выучить веса значений профилей постов (жанр, голос, длина…) по комментариям и лайкам
+        from . import postmatrix
+        await postmatrix.learn(db, now)
+    except Exception:
+        log.exception("Веса профилей постов не выучены")
     try:  # слово владельца 31.10.2026: оптимизируем оплаты, а не только лайки — рубрики, приведшие к оплате, получают усиление
         from . import attribution, funnel
         out = await attribution.outcomes(db, funnel.own_language(await funnel.fetch_raw(14)))
