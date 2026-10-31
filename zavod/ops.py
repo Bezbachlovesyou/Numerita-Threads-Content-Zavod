@@ -11,6 +11,7 @@ Claude записывает поручение в ops/commands.json в main. Б�
   idea      — {"title": "...", "text": "..."|"file": "docs/ideas.md"}: записать идею владельца (напоминания раз в 7 дней) и прислать в Telegram.
   idea_done — {"idea_id": "..."}: снять идею с учёта.
   resend_clips — прислать владельцу 4 приветственных ролика заново с подписями и инструкцией для Instagram.
+  ig_carousel — {"set": "quarrel|ok|love", "publish": false}: карусель Instagram своего языка; без publish — превью только владельцу.
   send_assets — {"files": ["assets/cover/…"], "text": "..."}: файлы обложек владельцу документами (без пережатия).
   accounts_check — какие площадки подключены в Zernio (названия и числа), в том числе Facebook.
   tell      — {"text": "..."} или {"file": "knowledge/…"}: длинный текст только владельцу в Telegram (без Threads, $0).

@@ -14,7 +14,7 @@ from aiogram import Bot, F, Router
 from aiogram.exceptions import TelegramAPIError
 from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.filters.callback_data import CallbackData
-from aiogram.types import BufferedInputFile, CallbackQuery, Message
+from aiogram.types import BufferedInputFile, CallbackQuery, InputMediaPhoto, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from . import autopost
@@ -2074,6 +2074,35 @@ async def send_assets(bot: Bot, cfg: Config, files: list[str], text: str, tag: s
                     await bot.send_message(admin_id, f"⚠️ {Path(path).name} не отправился: {type(e).__name__}")
 
 
+async def ig_carousel(bot: Bot, cfg: Config, db: Storage, threads: ThreadsClient | None, key: str, publish: bool, tag: str) -> None:
+    """Карусель Instagram (igcarousel.py): превью только владельцу или публикация на аккаунт своего языка; «вышло» — по квитанции площадки."""
+    from . import igcarousel
+    code = "en" if lang.is_en() else "ru"
+    if key not in igcarousel.SETS:
+        await notify_admins(bot, cfg, f"{tag}⚠️ Нет такой карусели: {key}. Есть: {', '.join(igcarousel.SETS)}.")
+        return
+    slides = await asyncio.to_thread(igcarousel.render_set, key, code)
+    text = igcarousel.caption(key, code)
+    if not publish:
+        media = [InputMediaPhoto(media=BufferedInputFile(b, f"slide{i + 1}.jpg"),
+                                 caption=(f"{tag}📸 Превью карусели «{key}», нигде не выложено.\n\n{text}")[:1000] if i == 0 else None)
+                 for i, b in enumerate(slides)]
+        for admin_id in cfg.admin_ids:
+            await bot.send_media_group(admin_id, media)
+        return
+    if not await db.claim_slot(f"ig carousel {key} {code}"):
+        await notify_admins(bot, cfg, f"{tag}📸 Карусель «{key}» уже публиковалась — второй раз не выкладываю.")
+        return
+    account = await instagram.account_id(db, threads) if threads is not None else None
+    if not account:
+        await notify_admins(bot, cfg, f"{tag}⚠️ Instagram-аккаунт в Zernio не найден: карусель «{key}» не выложена.")
+        return
+    urls = [await threads.upload_image(b, f"ig_{key}_{code}_{i + 1}.jpg") for i, b in enumerate(slides)]
+    status, link = await instagram.post_images(threads, account, urls, text)
+    await notify_admins(bot, cfg, f"{tag}📸 Instagram: карусель «{key}» — {link}" if status == "published"
+                        else f"{tag}⚠️ Instagram ответил «{status}» по карусели «{key}»: не считаю её вышедшей.")
+
+
 async def accounts_check(bot: Bot, cfg: Config, threads: ThreadsClient, tag: str) -> None:
     """Какие площадки подключены в Zernio (только названия и количество, без номеров и ключей)."""
     _, payload = await threads._request("GET", "/accounts")
@@ -2193,6 +2222,8 @@ async def run_op(cmd: dict, db: Storage, threads: ThreadsClient | None, bot: Bot
         await notify_admins(bot, cfg, f"{tag}💡 Идея {'снята с учёта' if done else 'не найдена'}.")
     elif action == "resend_clips" and threads is not None:  # 4 приветственных ролика заново владельцу + что с ними делать ($0)
         asyncio.create_task(resend_clips(bot, cfg, db, tag))
+    elif action == "ig_carousel":  # {"set": "quarrel|ok|love", "publish": false} — превью владельцу или публикация в Instagram своего языка
+        asyncio.create_task(ig_carousel(bot, cfg, db, threads, str(cmd.get("set") or ""), bool(cmd.get("publish")), tag))
     elif action == "send_assets":  # файлы из assets/cover/ владельцу документами (обложки, баннеры), $0
         asyncio.create_task(send_assets(bot, cfg, [str(f) for f in cmd.get("files") or []], text, tag))
     elif action == "accounts_check" and threads is not None:

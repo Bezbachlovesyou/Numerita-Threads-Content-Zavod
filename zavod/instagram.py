@@ -88,6 +88,30 @@ async def post_video(client, account: str, url: str, caption: str) -> tuple[str,
     return status, link
 
 
+async def post_images(client, account: str, urls: list[str], text: str) -> tuple[str, str | None]:
+    """Карусель (2–10 картинок) в Instagram через Zernio; (статус, ссылка) — ждём квитанцию площадки до 5 минут."""
+    import asyncio
+    if not 2 <= len(urls) <= 10:
+        raise ThreadsError("В карусели Instagram от 2 до 10 картинок.")
+    _, payload = await client._request("POST", "/posts", json={
+        "content": text, "mediaItems": [{"type": "image", "url": u} for u in urls],
+        "platforms": [{"platform": "instagram", "accountId": account}], "publishNow": True})
+    post = payload.get("post") or payload
+    remote = post.get("_id") or post.get("id")
+    status, link = post.get("status") or "unknown", None
+    for _ in range(10):
+        if not remote:
+            break
+        await asyncio.sleep(30)
+        _, data = await client._request("GET", f"/posts/{remote}")
+        got = data.get("post") or data
+        target = next((p for p in got.get("platforms") or [] if p.get("platform") == "instagram"), {})
+        status, link = target.get("status") or got.get("status") or status, target.get("platformPostUrl")
+        if status in ("published", "failed", "partial"):
+            break
+    return status, link
+
+
 def caption(post) -> str:
     from .bot import LINK_LINE
     text = tgchannel.no_grid_word(strip_credits(post.text))
