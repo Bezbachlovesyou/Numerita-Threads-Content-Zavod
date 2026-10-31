@@ -2,6 +2,7 @@ import asyncio
 import contextlib
 import os
 import hashlib
+import html
 from pathlib import Path
 import json
 import logging
@@ -2047,11 +2048,10 @@ async def resend_clips(bot: Bot, cfg: Config, db: Storage, tag: str) -> None:
                 url = urls.get(f"{key}_{code}")
                 if not url:
                     continue
-                link_line = "\n\nСсылка — в шапке профиля ✨" if code == "ru" else "\n\nLink in bio ✨"
-                caption = re.sub(r"\n*t\.me/\S+", link_line, welcome.CLIPS[key]["post"][code])
+                caption = instagram.reel_caption(welcome.CLIPS[key]["post"][code], code)
                 account = "numerita.ai" if code == "ru" else "numerita.love"
                 order = "1-й" if key == "angel" else "2-й, через 3 часа"
-                head = f"{'🇷🇺' if code == 'ru' else '🇬🇧'} Для {account}: «{CLIP_NAMES[key]}» ({order}). Подпись — под видео, копируйте её целиком."
+                head = f"{'🇷🇺' if code == 'ru' else '🇬🇧'} Для {account}: «{CLIP_NAMES[key]}» ({order}). Подпись с хэштегами — отдельным сообщением ниже: нажмите на неё, она скопируется целиком."
                 for admin_id in cfg.admin_ids:
                     try:
                         await bot.send_message(admin_id, head)
@@ -2060,7 +2060,8 @@ async def resend_clips(bot: Bot, cfg: Config, db: Storage, tag: str) -> None:
                             await bot.send_message(admin_id, f"⚠️ Файл недоступен ({r.status_code}). Ссылка: {url}")
                             continue
                         await bot.send_video(admin_id, BufferedInputFile(r.content, f"numerita_{key}_{code}.mp4"),
-                                             caption=caption[:1000], width=welcome.W, height=welcome.H, supports_streaming=True)
+                                             width=welcome.W, height=welcome.H, supports_streaming=True)
+                        await bot.send_message(admin_id, f"<pre>{html.escape(caption)}</pre>", parse_mode="HTML")
                     except Exception as e:
                         log.exception("Ролик %s_%s не отправлен владельцу", key, code)
                         await bot.send_message(admin_id, f"⚠️ Ролик {key}_{code} не отправился: {type(e).__name__}")
@@ -2104,6 +2105,7 @@ async def ig_carousel(bot: Bot, cfg: Config, db: Storage, threads: ThreadsClient
                  for i, b in enumerate(slides)]
         for admin_id in cfg.admin_ids:
             await bot.send_media_group(admin_id, media)
+            await bot.send_message(admin_id, f"<pre>{html.escape(text)}</pre>", parse_mode="HTML")
         return
     if not await db.claim_slot(f"ig carousel {key} {code}"):
         await notify_admins(bot, cfg, f"{tag}📸 Карусель «{key}» уже публиковалась — второй раз не выкладываю.")
@@ -2116,6 +2118,31 @@ async def ig_carousel(bot: Bot, cfg: Config, db: Storage, threads: ThreadsClient
     status, link = await instagram.post_images(threads, account, urls, text)
     await notify_admins(bot, cfg, f"{tag}📸 Instagram: карусель «{key}» — {link}" if status == "published"
                         else f"{tag}⚠️ Instagram ответил «{status}» по карусели «{key}»: не считаю её вышедшей.")
+
+
+async def ig_reel(bot: Bot, cfg: Config, db: Storage, threads: ThreadsClient | None, key: str, tag: str) -> None:
+    """Ролик Instagram без участия владельца: приветственный клип (welcome:urls) → Reel на аккаунт своего языка, подпись с хэштегами
+    (instagram.reel_caption); один раз на ролик и язык; «вышло» — по квитанции площадки."""
+    from . import welcome
+    code = "en" if lang.is_en() else "ru"
+    if key not in welcome.CLIPS:
+        await notify_admins(bot, cfg, f"{tag}⚠️ Нет такого ролика: {key}. Есть: {', '.join(welcome.CLIPS)}.")
+        return
+    urls = json.loads(await db.kv_get("welcome:urls") or "{}")
+    url = urls.get(f"{key}_{code}")
+    if not url or threads is None:
+        await notify_admins(bot, cfg, f"{tag}⚠️ Ролик {key}_{code} не найден в базе: не выложен.")
+        return
+    if not await db.claim_slot(f"ig reel {key} {code}"):
+        await notify_admins(bot, cfg, f"{tag}🎬 Ролик «{key}» уже публиковался — второй раз не выкладываю.")
+        return
+    account = await instagram.account_id(db, threads)
+    if not account:
+        await notify_admins(bot, cfg, f"{tag}⚠️ Instagram-аккаунт в Zernio не найден: ролик «{key}» не выложен.")
+        return
+    status, link = await instagram.post_video(threads, account, url, instagram.reel_caption(welcome.CLIPS[key]["post"][code], code))
+    await notify_admins(bot, cfg, f"{tag}🎬 Instagram: ролик «{key}» — {link}" if status == "published"
+                        else f"{tag}⚠️ Instagram ответил «{status}» по ролику «{key}»: не считаю его вышедшим.")
 
 
 async def accounts_check(bot: Bot, cfg: Config, threads: ThreadsClient, tag: str) -> None:
@@ -2239,6 +2266,8 @@ async def run_op(cmd: dict, db: Storage, threads: ThreadsClient | None, bot: Bot
         asyncio.create_task(resend_clips(bot, cfg, db, tag))
     elif action == "ig_carousel":  # {"set": "quarrel|ok|love", "publish": false} — превью владельцу или публикация в Instagram своего языка
         asyncio.create_task(ig_carousel(bot, cfg, db, threads, str(cmd.get("set") or ""), bool(cmd.get("publish")), tag))
+    elif action == "ig_reel":  # {"clip": "angel|code"} — ролик в Instagram своего языка, подпись с хэштегами, по квитанции
+        asyncio.create_task(ig_reel(bot, cfg, db, threads, str(cmd.get("clip") or ""), tag))
     elif action == "send_assets":  # файлы из assets/cover/ владельцу документами (обложки, баннеры), $0
         asyncio.create_task(send_assets(bot, cfg, [str(f) for f in cmd.get("files") or []], text, tag))
     elif action == "accounts_check" and threads is not None:

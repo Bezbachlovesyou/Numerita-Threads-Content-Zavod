@@ -95,6 +95,7 @@ class Pult(unittest.IsolatedAsyncioTestCase):
     async def test_preview_goes_only_to_the_owner_and_publishes_nothing(self):
         bot = MagicMock()
         bot.send_media_group = AsyncMock()
+        bot.send_message = AsyncMock()
         threads = MagicMock()
         threads.upload_image = AsyncMock()
         await B.ig_carousel(bot, self.cfg, self.db, threads, "quarrel", False, "")
@@ -138,6 +139,7 @@ class Pult(unittest.IsolatedAsyncioTestCase):
     async def test_english_instance_renders_english_slides(self):
         bot = MagicMock()
         bot.send_media_group = AsyncMock()
+        bot.send_message = AsyncMock()
         with patch("zavod.lang.is_en", return_value=True):
             await B.ig_carousel(bot, self.cfg, self.db, None, "quarrel", False, "[EN] ")
         caption = bot.send_media_group.await_args.args[1][0].caption
@@ -147,3 +149,15 @@ class Pult(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ReelCaption(unittest.TestCase):
+    def test_caption_is_copy_ready_with_hashtags_and_no_link(self):
+        from zavod import instagram
+        ru = instagram.reel_caption("Привет\n\nt.me/Numeritabot?start=ad_th_code", "ru")
+        en = instagram.reel_caption("Hello\n\nt.me/Numeritabot?start=ad_en_th_code", "en")
+        self.assertNotIn("t.me", ru + en)
+        self.assertIn("#нумерология", ru)
+        self.assertIn("#numerology", en)
+        self.assertFalse(re.search("[А-Яа-яЁё]", en))
+        self.assertEqual(ru, ru.strip())

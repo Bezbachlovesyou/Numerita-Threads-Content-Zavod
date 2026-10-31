@@ -25,6 +25,8 @@ MIN_AGE, MAX_AGE = timedelta(hours=3), timedelta(hours=72)
 MIN_SCORE = 3
 BIO_LINK = "t.me/Numeritabot?start=ad_ig_bio"  # её владелец ставит в шапку профиля Instagram
 TAGS = "#нумерология #числосудьбы #астрология #нумерита #саморазвитие"
+TAGS_BY_LANG = {"ru": "#нумерология #числосудьбы #деньрождения #астрология #нумерита #саморазвитие",
+                "en": "#numerology #lifepathnumber #birthday #astrology #numerita #selfgrowth"}
 CTA = "✨ Твой разбор по дате рождения за 10 секунд — ссылка в шапке профиля @numerita.ai"
 
 
@@ -71,6 +73,36 @@ async def post_video(client, account: str, url: str, caption: str) -> tuple[str,
     import asyncio
     _, payload = await client._request("POST", "/posts", json={
         "content": caption, "mediaItems": [{"type": "video", "url": url}],
+        "platforms": [{"platform": "instagram", "accountId": account}], "publishNow": True})
+    post = payload.get("post") or payload
+    remote = post.get("_id") or post.get("id")
+    status, link = post.get("status") or "unknown", None
+    for _ in range(10):
+        if not remote:
+            break
+        await asyncio.sleep(30)
+        _, data = await client._request("GET", f"/posts/{remote}")
+        got = data.get("post") or data
+        target = next((p for p in got.get("platforms") or [] if p.get("platform") == "instagram"), {})
+        status, link = target.get("status") or got.get("status") or status, target.get("platformPostUrl")
+        if status in ("published", "failed", "partial"):
+            break
+    return status, link
+
+
+def reel_caption(text: str, code: str) -> str:
+    """Подпись ролика Instagram, готовая «скопировал и вставил»: без ссылки (она в шапке профиля), с хэштегами своего языка."""
+    import re
+    text = re.sub(r"\n*t\.me/\S+", "", text).strip()
+    tail = "Ссылка — в шапке профиля ✨" if code == "ru" else "Link in bio ✨"
+    return f"{text}\n\n{tail}\n\n{TAGS_BY_LANG[code]}".strip()[:2200]
+
+
+async def post_video(client, account: str, url: str, text: str) -> tuple[str, str | None]:
+    """Ролик (Reel) в Instagram через Zernio; (статус, ссылка) — «вышло» только по квитанции площадки, ждём до 5 минут."""
+    import asyncio
+    _, payload = await client._request("POST", "/posts", json={
+        "content": text, "mediaItems": [{"type": "video", "url": url}],
         "platforms": [{"platform": "instagram", "accountId": account}], "publishNow": True})
     post = payload.get("post") or payload
     remote = post.get("_id") or post.get("id")

@@ -90,7 +90,9 @@ class ResendClips(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Instagram", notified[0])
         self.assertIn("Языки не мешать", notified[0])
         self.assertEqual(bot.send_video.await_count, 4)
-        captions = [c.kwargs["caption"] for c in bot.send_video.await_args_list]
+        captions = [c.args[1] for c in bot.send_message.await_args_list if c.args[1].startswith("<pre>")]
+        self.assertEqual(len(captions), 4)  # подпись — отдельным сообщением для копирования, с хэштегами
+        self.assertTrue(all("#" in c for c in captions))
         for cap in captions:
             self.assertNotIn("t.me/", cap)  # в подписи Instagram ссылки нет
         en = [c for c in captions if "Your birthday" in c or "Born on" in c]
