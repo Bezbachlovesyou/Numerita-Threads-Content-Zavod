@@ -28,7 +28,7 @@ from . import autoreply
 from . import text_mode
 from . import lang
 from .optimizer import optimize
-from . import costs, constraint, funnel, performance, approved_post, zero_research, api_budget, tgchannel, brandvideo, instagram, sketch, zero_cleanup
+from . import costs, constraint, funnel, profit, performance, approved_post, zero_research, api_budget, tgchannel, brandvideo, instagram, sketch, zero_cleanup
 from .config import Config
 from .generator import GenerationError, Generator
 from .storage import PgStorage, Post, Storage
@@ -989,6 +989,12 @@ def create_router(cfg: Config, plan: ContentPlan) -> Router:
     @router.message(Command("cleanup"))
     async def cleanup_handler(message: Message, db: Storage):
         await message.answer(await zero_cleanup.report(db, datetime.now(cfg.timezone)), parse_mode=None)
+
+    @router.message(Command("profit"))
+    async def profit_handler(message: Message, db: Storage):
+        now = datetime.now(cfg.timezone)
+        st = await profit.state(db, now)
+        await message.answer("\n".join(profit.lines(st) + chain_lines(st["chain"])), parse_mode=None)
 
     @router.message(Command("reviews"))
     async def reviews_handler(message: Message, db: Storage):
@@ -1967,6 +1973,11 @@ async def autopost_tick(
     await db.kv_set("next_post_at", (now + delay).isoformat())
 
 
+def chain_lines(c: dict) -> list[str]:
+    from . import chain
+    return ["", *chain.lines(c)]
+
+
 async def op_ready(cmd: dict, db: Storage, cfg: Config) -> bool:
     """Пост/цепочка из пульта выходит не раньше обычной паузы после последнего поста (слово владельца: регулярность, не пачка):
     команда ждёт в очереди и уходит на следующем проходе (раз в 5 минут), остальные действия — сразу."""
@@ -2061,6 +2072,14 @@ async def run_op(cmd: dict, db: Storage, threads: ThreadsClient | None, bot: Bot
                     f"{note}\n\n✍️ Черновик поста (не опубликован):\n{draft}")
             for part in pack_blocks(body):
                 await notify_admins(bot, cfg, tag + part)
+    elif action == "approve_spend":  # «да» владельца: {"label": "...", "usd": 1.5} и/или {"loss_budget": 5} — для контролёра прибыли
+        if cmd.get("label") and float(cmd.get("usd") or 0) > 0:
+            await profit.authorize(db, str(cmd["label"]), float(cmd["usd"]))
+        if cmd.get("loss_budget") is not None:
+            await db.kv_set("profit:loss_budget", f"{float(cmd['loss_budget']):.2f}")
+        await notify_admins(bot, cfg, f"{tag}💰 Принято: " + ", ".join(
+            [f"на «{cmd['label']}» разрешено ${float(cmd['usd']):.2f}"] * bool(cmd.get("label") and cmd.get("usd"))
+            + [f"потолок убытка за неделю ${float(cmd['loss_budget']):.2f}"] * (cmd.get("loss_budget") is not None)))
     elif action == "circle_preview":  # ролик «Найди числа от 1 до 31» — только владельцу на проверку, нигде не выкладываем ($0)
         async def _circle_job():
             from . import circle31
@@ -2668,6 +2687,11 @@ async def run_scheduler(
                 await notify_admins(bot, cfg, notice)
         except Exception:
             log.exception("Review scheduler failed")
+        try:  # контролёр прибыли: отдельный проход без нейросети, три раза в день, свои квитанции
+            for notice in await profit.run_due(db, now, cfg.timezone):
+                await notify_admins(bot, cfg, notice)
+        except Exception:
+            log.exception("Profit controller failed")
         if threads is not None and cfg.autoreply and datetime.now() >= next_replies:
             # Первые 15–30 минут решают, покажет ли Threads пост шире: в первый час после поста отвечаем быстрее.
             last = await db.last_published_at()

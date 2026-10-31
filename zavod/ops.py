@@ -7,6 +7,7 @@ Claude записывает поручение в ops/commands.json в main. Б�
   grid      — {"shape": "spiral" | "heart" | "dna" | ...}: следующая живая матрица этой формы.
   unpublish — {"fragment": "..."}: снять пост Threads с этим куском текста.
   circle_preview — {"seed": "..."}: ролик «Найди числа от 1 до 31» только владельцу в Telegram, без публикации.
+  approve_spend — {"label": "...", "usd": 1.5} и/или {"loss_budget": 5}: «да» владельца на сумму опыта / потолок убытка (контролёр прибыли).
   tell      — {"text": "..."} или {"file": "knowledge/…"}: длинный текст только владельцу в Telegram (без Threads, $0).
 """
 
