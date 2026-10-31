@@ -458,5 +458,9 @@
   "action": "ig_carousel",
   "set": "love",
   "publish": true
+ },
+ {
+  "id": "resend-clips-hashtags-2026-10-31",
+  "action": "resend_clips"
  }
 ]
