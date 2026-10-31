@@ -324,5 +324,27 @@
   "id": "accounts-check-2026-10-31",
   "account": "ru",
   "action": "accounts_check"
+ },
+ {
+  "id": "fears-ru-2026-10-31",
+  "account": "ru",
+  "action": "thread",
+  "rubric": "text_fears",
+  "items": [
+   "КАКОЙ СТРАХ ПРЯЧЕТСЯ В ТВОЁМ ДНЕ РОЖДЕНИЯ? 💔\nЭто образ числа, а не диагноз. Читай и узнавай себя:\n\n1, 10, 19, 28 — боитесь критики, поэтому лучше быть правыми, чем близкими.\n2, 11, 20, 29 — боитесь, что вас не выберут, и ждёте знаков вместо слов.\n3, 12, 21, 30 — боитесь ошибиться при близких и поучаете вместо объятий.\n4, 13, 22, 31 — боитесь стать «как все» в любви и бежите за новым.\n5, 14, 23 — боитесь глубины и прячетесь в разговорах и делах.",
+   "Какая строчка кольнула? Дальше:\n\n6, 15, 24 — боитесь, что разлюбят, если перестанете быть удобными, и угождаете.\n7, 16, 25 — боитесь раствориться в другом и держите дистанцию.\n8, 17, 26 — боитесь довериться и проверяете: не подведут ли?\n9, 18, 27 — боитесь быть ненужными: отдаёте всё, а потом обижаетесь на тишину.",
+   "Страх — не изъян, а просьба. Что его смягчает:\n1 — слышать правду без обороны. 2 — говорить вслух, чего хочешь. 3 — позволять себе ошибаться при близких. 4 — любить обычный вечер. 5 — задержаться на глубине ещё минуту. 6 — любить себя без одобрения. 7 — сказать вслух хотя бы слово. 8 — довериться на один шаг. 9 — просить «спасибо» словами.\n\nНапиши день рождения числом — скажу, чего боится и чего просит твоё число. Год, время и пару лучше считать лично: ссылка в шапке профиля."
+  ]
+ },
+ {
+  "id": "fears-en-2026-10-31",
+  "account": "en",
+  "action": "thread",
+  "rubric": "text_fears",
+  "items": [
+   "WHAT FEAR HIDES IN YOUR BIRTH DAY? 💔\nAn image of the number, not a diagnosis. Find yourself:\n\n1, 10, 19, 28: you fear criticism, so you'd rather be right than close.\n2, 11, 20, 29: you fear not being chosen, so you wait for signs instead of words.\n3, 12, 21, 30: you fear being wrong in front of loved ones, so you lecture instead of hug.\n4, 13, 22, 31: you fear becoming ordinary in love, so you chase what's new.\n5, 14, 23: you fear depth, so you hide in talk and busyness.",
+   "Which line stung? Keep going:\n\n6, 15, 24: you fear being unloved once you stop being convenient, so you please.\n7, 16, 25: you fear dissolving into someone else, so you keep your distance.\n8, 17, 26: you fear trusting, so you keep testing: will they let me down?\n9, 18, 27: you fear being unneeded, so you give everything, then sulk at the silence.",
+   "A fear is not a flaw. It's a request. What softens it:\n1: hear truth without armor. 2: say aloud what you want. 3: be wrong near loved ones. 4: love an ordinary evening. 5: stay one minute deeper. 6: love yourself without approval. 7: say one word out loud. 8: trust one step. 9: ask for \"thank you\" in words.\n\nTell me your birth day as a number: I'll name what your number fears and what it asks of love. Year, birth time and partner are best done in private: link in my profile."
+  ]
  }
 ]

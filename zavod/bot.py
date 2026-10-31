@@ -703,7 +703,7 @@ PRIME_SHARE = (" Пиши так, чтобы читатель узнал себ�
 
 
 LIST_ROTATION = ["text_wealth", "text_success", "text_eras", "text_gifts", "text_loves", "text_secrets", "text_marriage", "text_battery", "text_roles", "text_outgrow",
-                 "text_aroma", "text_marry", "text_avoid"]  # форматы-списки по 9 группам дней рождения (референсы 30.10)
+                 "text_aroma", "text_marry", "text_avoid", "text_fears"]  # форматы-списки по 9 группам дней рождения (референсы 30.10)
 
 
 DAILY_FORMATS = [  # бытовые форматы (слово владельца 30.10.2026 через сессию основного бота)
