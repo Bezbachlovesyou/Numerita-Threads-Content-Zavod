@@ -236,5 +236,11 @@
   "account": "ru",
   "action": "tell",
   "file": "knowledge/research/birth_days_1_31.md"
+ },
+ {
+  "id": "circle31-preview-2026-10-31",
+  "account": "ru",
+  "action": "circle_preview",
+  "seed": "owner-preview-1"
  }
 ]
