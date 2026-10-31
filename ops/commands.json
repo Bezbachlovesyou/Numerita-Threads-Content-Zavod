@@ -242,5 +242,10 @@
   "account": "ru",
   "action": "circle_preview",
   "seed": "owner-preview-1"
+ },
+ {
+  "id": "stories-preview-2026-10-31",
+  "account": "ru",
+  "action": "stories_preview"
  }
 ]

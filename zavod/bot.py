@@ -1977,7 +1977,8 @@ async def op_ready(cmd: dict, db: Storage, cfg: Config) -> bool:
     return last is None or now - last >= min_gap(now)
 
 
-async def run_op(cmd: dict, db: Storage, threads: ThreadsClient | None, bot: Bot, cfg: Config) -> None:
+async def run_op(cmd: dict, db: Storage, threads: ThreadsClient | None, bot: Bot, cfg: Config,
+                 generator: Generator | None = None) -> None:
     """Одна команда пульта владельца (zavod/ops.py) — и одна строка-квитанция."""
     tag = "[EN] " if lang.is_en() else ""
     action, text = cmd.get("action"), (cmd.get("text") or "").strip()
@@ -2042,6 +2043,24 @@ async def run_op(cmd: dict, db: Storage, threads: ThreadsClient | None, bot: Bot
             await notify_admins(bot, cfg, f"{tag}⚠️ Команда {cmd['id']}: нечего отправить")
         for part in pack_blocks(body):
             await notify_admins(bot, cfg, tag + part)
+    elif action == "stories_preview":  # истории подписчиц и черновики постов — только владельцу, без публикации и отметок
+        from . import stories
+        batch = await stories.fetch() or []
+        if not batch:
+            await notify_admins(bot, cfg, f"{tag}📖 Новых историй нет (или /stories.json не ответил).")
+        for i, story in enumerate(batch[:5], 1):
+            ok = sum(1 for p in story.get("people", []) if p.get("soul") or p.get("destiny")) >= 2
+            draft = "—"
+            if ok and generator is not None:
+                draft, _ = split_card_hook(await generator.write_post(
+                    stories.STORY_RULES.format(text=story.get("text", "")[:2500], numbers=stories.numbers_line(story))
+                    + "\n\n" + text_mode.STYLE))
+                draft = await coherence_gate(generator, draft)
+            note = "" if ok else "\n⚠️ Чисел меньше чем у двух участников — в Threads не пойдёт."
+            body = (f"📖 История {i}/{len(batch)}\n{story.get('text', '')[:3000]}\n\nЧисла: {stories.numbers_line(story)}"
+                    f"{note}\n\n✍️ Черновик поста (не опубликован):\n{draft}")
+            for part in pack_blocks(body):
+                await notify_admins(bot, cfg, tag + part)
     elif action == "circle_preview":  # ролик «Найди числа от 1 до 31» — только владельцу на проверку, нигде не выкладываем ($0)
         async def _circle_job():
             from . import circle31
@@ -2499,7 +2518,7 @@ async def run_scheduler(
                     log.exception("Рилсы")
             try:  # пульт владельца: команды из ops/commands.json (без перезапуска)
                 from . import ops
-                await ops.tick(db, "en" if EN else "ru", lambda c: run_op(c, db, threads, bot, cfg),
+                await ops.tick(db, "en" if EN else "ru", lambda c: run_op(c, db, threads, bot, cfg, generator),
                                lambda c: op_ready(c, db, cfg))
             except Exception:
                 log.exception("Пульт")
