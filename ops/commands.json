@@ -378,5 +378,47 @@
    "assets/cover/numerita_fb_cover_loop.mp4"
   ],
   "text": "Новая обложка Facebook: настоящее фото телескопа Уэбба (NASA, ESA, CSA, STScI) и наша Нумерита. Видео-петля 24 с, ниже две картинки."
+ },
+ {
+  "id": "ig-pub-quarrel-ru-2026-10-31",
+  "account": "ru",
+  "action": "ig_carousel",
+  "set": "quarrel",
+  "publish": true
+ },
+ {
+  "id": "ig-pub-quarrel-en-2026-10-31",
+  "account": "en",
+  "action": "ig_carousel",
+  "set": "quarrel",
+  "publish": true
+ },
+ {
+  "id": "ig-prev-ok-ru-2026-10-31",
+  "account": "ru",
+  "action": "ig_carousel",
+  "set": "ok",
+  "publish": false
+ },
+ {
+  "id": "ig-prev-ok-en-2026-10-31",
+  "account": "en",
+  "action": "ig_carousel",
+  "set": "ok",
+  "publish": false
+ },
+ {
+  "id": "ig-prev-love-ru-2026-10-31",
+  "account": "ru",
+  "action": "ig_carousel",
+  "set": "love",
+  "publish": false
+ },
+ {
+  "id": "ig-prev-love-en-2026-10-31",
+  "account": "en",
+  "action": "ig_carousel",
+  "set": "love",
+  "publish": false
  }
 ]
