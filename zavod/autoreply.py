@@ -364,6 +364,13 @@ async def answer_comments(
             continue
         if given == free_per_day:
             mode = "paywall" if links_ok else "paywall_bio"
+        # Игра «Угадай число» (31.10.2026): под матрицей код проверяет ответ (нашёл k из N, пасхалка) и даёт расчёт для прочтения выбора как игры-зеркала
+        from . import game
+        grid = await game.grid_of(db, post_id)
+        if grid is not None:
+            chk = game.check(comment["message"], grid["hidden"], grid.get("egg"))
+            post_text += game.note(chk, grid.get("egg"))
+            await game.record(db, post_id, comment["id"], chk)
         # «Лестница личного» (31.10.2026): половина приглашений по-новому — дар, честное «чего не видно», приглашение; метка варианта
         # идёт в ссылку, воронка сравнит оба варианта по людям в боте и оплатам. Старый вариант — как был.
         from . import ladder
