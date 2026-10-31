@@ -39,7 +39,7 @@ Telegram-бот, который сам ведёт Threads Нумериты (RU @
   действия post / thread / grid / unpublish / ig / reels_on / reels_off / raw_clips / tell / idea / idea_done / resend_clips / approve_spend / circle_preview / ig_carousel / send_assets / accounts_check.
 - Английский экземпляр — тот же сервис, FACTORY_LANG=en, схема «en», свои лимиты прогрева.
 - Обходы constraint.py в 11/15/19 (Голдратт и теории роста): обратимые меры на 12 ч, необратимое — вопрос с ‼️.
-- Телеграм-канал: переносы из Threads на паузе (REPOSTS_PAUSED); суд/протоколы в канал не идут.
+- Телеграм-канал: переносы из Threads на паузе (REPOSTS_PAUSED); суд/протоколы в канал не идут; матрицы «Угадай число» в канал не идут (CHANNEL_GRIDS = False, слово владельца 31.10).
 
 ## Каркас атрибуции (attribution.py) — незыблемо
 - Всегда видно, какая рубрика на какой площадке сколько людей ведёт в бота («из скольки» постов и комментариев, пришли, «вау», оплатили): `/rubrics`

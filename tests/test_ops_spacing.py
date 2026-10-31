@@ -70,3 +70,26 @@ class OpsSpacingPostgres(OpsSpacing):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AsapAndChannel(unittest.IsolatedAsyncioTestCase):
+    async def test_owner_flagship_post_skips_the_pause(self):
+        tmp = tempfile.TemporaryDirectory()
+        db = Storage(tmp.name + "/t.db")
+        await db.init()
+        pid = await db.add_draft("x", "Пост", "text_seed")
+        await db.set_threads_id(pid, "z1")
+        await db.mark_published(pid)
+        cfg = SimpleNamespace(timezone=ZoneInfo("Europe/Moscow"))
+        self.assertFalse(await B.op_ready({"action": "post", "account": "ru"}, db, cfg))
+        self.assertTrue(await B.op_ready({"action": "post", "account": "ru", "asap": True}, db, cfg))
+        self.assertTrue(await B.op_ready({"action": "thread", "account": "en", "asap": True}, db, cfg))
+        tmp.cleanup()
+
+    def test_grids_never_go_to_the_telegram_channel(self):
+        from zavod import tgchannel
+        post = SimpleNamespace(rubric="grid", card="{}", image_url=None, text="Угадай число · выпуск 5" * 3)
+        self.assertFalse(tgchannel.CHANNEL_GRIDS)
+        self.assertFalse(tgchannel.standalone(post))  # матрица в канал не идёт, даже когда паузу переносов снимут
+        text_post = SimpleNamespace(rubric="text_loves", card=None, image_url=None, text="Живой самостоятельный текст про числа и людей. " * 3)
+        self.assertTrue(tgchannel.standalone(text_post))

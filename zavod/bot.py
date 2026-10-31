@@ -2124,8 +2124,8 @@ def chain_lines(c: dict) -> list[str]:
 async def op_ready(cmd: dict, db: Storage, cfg: Config) -> bool:
     """Пост/цепочка из пульта выходит не раньше обычной паузы после последнего поста (слово владельца: регулярность, не пачка):
     команда ждёт в очереди и уходит на следующем проходе (раз в 5 минут), остальные действия — сразу."""
-    if cmd.get("action") not in ("post", "thread") or cmd.get("account") == "tg":
-        return True
+    if cmd.get("action") not in ("post", "thread") or cmd.get("account") == "tg" or cmd.get("asap"):
+        return True  # asap: флагманский пост владельца выходит сразу, не дожидаясь паузы
     last = await db.last_published_at()
     now = datetime.now(cfg.timezone)
     return last is None or now - last >= min_gap(now)
