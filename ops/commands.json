@@ -420,5 +420,15 @@
   "action": "ig_carousel",
   "set": "love",
   "publish": false
+ },
+ {
+  "id": "fb-cover-sky-2026-10-31",
+  "action": "send_assets",
+  "files": [
+   "assets/cover/numerita_fb_cover_16x9.jpg",
+   "assets/cover/numerita_fb_cover_wide_1920x730.jpg",
+   "assets/cover/numerita_fb_cover_loop.mp4"
+  ],
+  "text": "Новая обложка Facebook без Нумериты: настоящий снимок МКС (NASA) — Млечный Путь, Солнце над краем Земли. Небо плавно вращается, звёзды мерцают, пролетают метеоры. Видео 24 с (петля) и две картинки."
  }
 ]
