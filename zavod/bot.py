@@ -2051,7 +2051,7 @@ async def resend_clips(bot: Bot, cfg: Config, db: Storage, tag: str) -> None:
                 caption = instagram.reel_caption(welcome.CLIPS[key]["post"][code], code)
                 account = "numerita.ai" if code == "ru" else "numerita.love"
                 order = "1-й" if key == "angel" else "2-й, через 3 часа"
-                head = f"{'🇷🇺' if code == 'ru' else '🇬🇧'} Для {account}: «{CLIP_NAMES[key]}» ({order}). Подпись с хэштегами — отдельным сообщением ниже: нажмите на неё, она скопируется целиком."
+                head = f"{'🇷🇺' if code == 'ru' else '🇬🇧'} Для {account}: «{CLIP_NAMES[key]}» ({order}). Подпись с хэштегами — под видео и ещё раз отдельным сообщением ниже: нажмите на неё, она скопируется целиком."
                 for admin_id in cfg.admin_ids:
                     try:
                         await bot.send_message(admin_id, head)
@@ -2060,7 +2060,7 @@ async def resend_clips(bot: Bot, cfg: Config, db: Storage, tag: str) -> None:
                             await bot.send_message(admin_id, f"⚠️ Файл недоступен ({r.status_code}). Ссылка: {url}")
                             continue
                         await bot.send_video(admin_id, BufferedInputFile(r.content, f"numerita_{key}_{code}.mp4"),
-                                             width=welcome.W, height=welcome.H, supports_streaming=True)
+                                             caption=caption[:1000], width=welcome.W, height=welcome.H, supports_streaming=True)
                         await bot.send_message(admin_id, f"<pre>{html.escape(caption)}</pre>", parse_mode="HTML")
                     except Exception as e:
                         log.exception("Ролик %s_%s не отправлен владельцу", key, code)
