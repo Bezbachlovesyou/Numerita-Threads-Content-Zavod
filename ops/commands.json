@@ -444,5 +444,19 @@
   "action": "ig_carousel",
   "set": "ok",
   "publish": true
+ },
+ {
+  "id": "ig-pub-love-ru-2026-10-31",
+  "account": "ru",
+  "action": "ig_carousel",
+  "set": "love",
+  "publish": true
+ },
+ {
+  "id": "ig-pub-love-en-2026-10-31",
+  "account": "en",
+  "action": "ig_carousel",
+  "set": "love",
+  "publish": true
  }
 ]
