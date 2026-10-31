@@ -70,6 +70,9 @@ def grid_image(post) -> bytes | None:
 REACTIONS = ["❤", "👍", "🔥", "🥰", "👏", "🙏", "💯", "🤩", "⚡", "😍"]  # только положительные
 
 
+REACTED: list[int] = []  # недавние свои посты: канал-обработчик не ставит вторую реакцию
+
+
 async def react(bot, channel: str, message_id: int, rng: random.Random | None = None) -> bool:
     """Каждый свой пост в канале — с положительной реакцией (слово владельца 28.10.2026), разной от поста к посту.
     Канал может не разрешать какую-то реакцию — пробуем следующую."""
@@ -79,6 +82,8 @@ async def react(bot, channel: str, message_id: int, rng: random.Random | None = 
     for emoji in choices[:4]:
         try:
             await bot.set_message_reaction(channel, message_id, [ReactionTypeEmoji(emoji=emoji)])
+            REACTED.append(message_id)
+            del REACTED[:-200]
             return True
         except TelegramAPIError as e:
             if "REACTION_INVALID" not in str(e) and "reaction" not in str(e).lower():

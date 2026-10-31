@@ -960,6 +960,17 @@ async def send_voice(bot: Bot, chat_id: int, post: Post, cfg: Config) -> None:
 
 def create_router(cfg: Config, plan: ContentPlan) -> Router:
     router = Router()
+
+    @router.channel_post()
+    async def channel_post_like(message: Message):
+        """Слово владельца 31.10.2026: бот-админ канала ставит положительную реакцию и на посты, выложенные другими (админом, основным ботом).
+        Свои посты уже с реакцией (tgchannel.react). Только наш канал; одна реакция на пост."""
+        if not cfg.telegram_channel or message.message_id in tgchannel.REACTED:
+            return
+        chat = message.chat
+        if str(chat.id) != str(cfg.telegram_channel) and f"@{chat.username}".lower() != str(cfg.telegram_channel).lower():
+            return
+        await tgchannel.react(message.bot, chat.id, message.message_id)
     router.message.filter(F.from_user.id.in_(cfg.admin_ids))
 
     @router.message(Command('safety'))
