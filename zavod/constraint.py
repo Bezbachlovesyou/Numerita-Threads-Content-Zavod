@@ -11,7 +11,7 @@ import logging
 import re
 from datetime import datetime, timedelta, timezone
 
-from . import art, chain, funnel, profit
+from . import art, attribution, chain, funnel, profit
 from .generator import GenerationError, Generator
 from .storage import Storage
 
@@ -116,6 +116,12 @@ async def metrics(db: Storage, now: datetime, tz) -> str:
             lines.append(f"расходы {day.astimezone(tz):%d.%m}: {spent}")
     lines += funnel.lines(await funnel.fetch(7))
     lines.append(art.stats_line())
+    try:  # какая рубрика сколько людей ведёт в бота (каркас атрибуции)
+        from .optimizer import RUBRIC_NAMES
+        raw = funnel.own_language(await funnel.fetch_raw(7))
+        lines += attribution.lines(await attribution.rubric_table(db, now, 7, raw), await attribution.outcomes(db, raw), RUBRIC_NAMES, top=8)
+    except Exception:
+        log.exception("Таблица рубрик не собрана")
     c = await chain.collect(db, now, 7)  # вся цепочка до оплаты, посчитанная кодом
     lines += chain.lines(c)
     lines += profit.lines(await profit.state(db, now, c))

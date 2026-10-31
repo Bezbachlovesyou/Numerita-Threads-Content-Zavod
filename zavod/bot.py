@@ -28,7 +28,7 @@ from . import autoreply
 from . import text_mode
 from . import lang
 from .optimizer import optimize
-from . import art, costs, constraint, funnel, profit, reminders, performance, approved_post, zero_research, api_budget, tgchannel, brandvideo, instagram, sketch, zero_cleanup
+from . import art, attribution, costs, constraint, funnel, profit, reminders, performance, approved_post, zero_research, api_budget, tgchannel, brandvideo, instagram, sketch, zero_cleanup
 from .config import Config
 from .generator import GenerationError, Generator
 from .storage import PgStorage, Post, Storage
@@ -990,6 +990,14 @@ def create_router(cfg: Config, plan: ContentPlan) -> Router:
     async def cleanup_handler(message: Message, db: Storage):
         await message.answer(await zero_cleanup.report(db, datetime.now(cfg.timezone)), parse_mode=None)
 
+    @router.message(Command("rubrics"))
+    async def rubrics_handler(message: Message, db: Storage):
+        now = datetime.now(cfg.timezone)
+        raw = funnel.own_language(await funnel.fetch_raw(7))
+        table = await attribution.rubric_table(db, now, 7, raw)
+        from .optimizer import RUBRIC_NAMES
+        await message.answer("\n".join(attribution.lines(table, await attribution.outcomes(db, raw), RUBRIC_NAMES, top=12)), parse_mode=None)
+
     @router.message(Command("profit"))
     async def profit_handler(message: Message, db: Storage):
         now = datetime.now(cfg.timezone)
@@ -1381,8 +1389,8 @@ FIRST_COMMENTS = [
 
 def first_comment_for(slot: Slot, tag: str | None = None) -> str:
     tag = tag or slot.tag
-    template = FIRST_COMMENTS[sum(map(ord, tag)) % len(FIRST_COMMENTS)]
-    return template.format(link=BOT_LINK + tag)
+    variants = attribution.FIRST_COMMENTS["en" if lang.is_en() else "ru"]  # язык не смешиваем: английский аккаунт — по-английски
+    return variants[sum(map(ord, tag)) % len(variants)].format(link=BOT_LINK + tag)
 
 
 # Эксперимент «где ставить ссылку» (prompts/threads_rules.md): в тексте поста, первым комментарием
@@ -1756,6 +1764,11 @@ async def post_next(
         except GenerationError as e:
             await notify_admins(bot, cfg, f"❌ Автопост не написан: {e}\nТема: {slot.topic}")
             return False
+        if first_comment is None and slot.rubric.cta != "link" and (slot.rubric.key.startswith("text_") or slot.rubric.key == "grid") \
+                and await attribution.needs_tracking(db, slot.rubric.key, now, max_share=float(await db.kv_get("tracking:share") or 0.3)):
+            # каркас атрибуции: у рубрики мало меченых постов — ссылка с меткой первым комментарием (измерение; польза поста та же)
+            first_comment = first_comment_for(slot, f"{slot.tag}_lc")
+            link_mode = link_mode or "comment"
         if not (grid and text_mode.enabled()):
             text = await hook_gate(generator, text)
         text = await antidupe_gate(db, generator, text, now)

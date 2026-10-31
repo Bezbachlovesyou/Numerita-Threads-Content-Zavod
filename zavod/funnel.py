@@ -30,6 +30,31 @@ async def fetch(days: int = 7) -> dict | None:
     return data
 
 
+_raw_cache: dict[int, tuple[float, dict | None]] = {}
+
+
+async def fetch_raw(days: int = 7) -> dict | None:
+    """Все метки как отдал бот (без фильтра по языку и площадке): основа каркаса атрибуции (attribution.py)."""
+    if not KEY:
+        return None
+    hit = _raw_cache.get(days)
+    if hit and time.monotonic() - hit[0] < 3600:
+        return hit[1]
+    data = await _fetch(days)
+    _raw_cache[days] = (time.monotonic(), data)
+    return data
+
+
+def own_language(raw: dict | None) -> dict | None:
+    """Только метки своего языка (русский экземпляр — ad_…, английский — ad_en_…), все площадки."""
+    if not raw:
+        return raw
+    from .lang import is_en
+    en = is_en()
+    keep = [r for r in raw.get("labels", []) if str(r.get("label", "")).lower().startswith("ad_en_") == en]
+    return {**raw, "labels": keep}
+
+
 def normalize(data: dict | None) -> dict | None:
     """Бот Нумериты отдаёт метки целиком («ad_th_soul8_2410», «ad_en_th_r12_o»), а завод считает по своему виду
     («th_…»). 30.10.2026: из-за этого расхождения обход неделю видел «никто не пришёл». Английскому экземпляру —

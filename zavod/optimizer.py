@@ -208,8 +208,14 @@ async def optimize(
     for row in await db.custom_rubrics(("trial",)):
         weights[row["key"]] = 1.5
     try:  # слово владельца 31.10.2026: оптимизируем оплаты, а не только лайки — рубрики, приведшие к оплате, получают усиление
-        from . import chain, funnel
-        weights = outcome_weights(weights, chain.by_rubric(await funnel.fetch(14)))
+        from . import attribution, funnel
+        out = await attribution.outcomes(db, funnel.own_language(await funnel.fetch_raw(14)))
+        stats: dict[str, dict] = {}
+        for (_, rubric), row in out["by_rubric"].items():  # рубрика на всех площадках вместе; привязка и по постам, и по ответам
+            agg = stats.setdefault(rubric, {"came": 0, "paid": 0})
+            agg["came"] += row["came"]
+            agg["paid"] += row["paid"]
+        weights = outcome_weights(weights, stats)
     except Exception:
         log.exception("Усиление рубрик по оплатам не применено")
     await db.kv_set("rubric_weights", json.dumps(weights))
