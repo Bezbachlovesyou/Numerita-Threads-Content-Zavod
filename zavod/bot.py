@@ -1967,6 +1967,16 @@ async def autopost_tick(
     await db.kv_set("next_post_at", (now + delay).isoformat())
 
 
+async def op_ready(cmd: dict, db: Storage, cfg: Config) -> bool:
+    """Пост/цепочка из пульта выходит не раньше обычной паузы после последнего поста (слово владельца: регулярность, не пачка):
+    команда ждёт в очереди и уходит на следующем проходе (раз в 5 минут), остальные действия — сразу."""
+    if cmd.get("action") not in ("post", "thread") or cmd.get("account") == "tg":
+        return True
+    last = await db.last_published_at()
+    now = datetime.now(cfg.timezone)
+    return last is None or now - last >= min_gap(now)
+
+
 async def run_op(cmd: dict, db: Storage, threads: ThreadsClient | None, bot: Bot, cfg: Config) -> None:
     """Одна команда пульта владельца (zavod/ops.py) — и одна строка-квитанция."""
     tag = "[EN] " if lang.is_en() else ""
@@ -2489,7 +2499,8 @@ async def run_scheduler(
                     log.exception("Рилсы")
             try:  # пульт владельца: команды из ops/commands.json (без перезапуска)
                 from . import ops
-                await ops.tick(db, "en" if EN else "ru", lambda c: run_op(c, db, threads, bot, cfg))
+                await ops.tick(db, "en" if EN else "ru", lambda c: run_op(c, db, threads, bot, cfg),
+                               lambda c: op_ready(c, db, cfg))
             except Exception:
                 log.exception("Пульт")
             if (not EN and threads is not None and now >= datetime(2026, 10, 30, 20, 0, tzinfo=now.tzinfo)

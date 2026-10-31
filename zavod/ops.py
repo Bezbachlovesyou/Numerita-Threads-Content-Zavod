@@ -32,8 +32,9 @@ async def fetch() -> list[dict]:
     return [c for c in data if isinstance(c, dict) and c.get("id")] if isinstance(data, list) else []
 
 
-async def tick(db, account: str, run) -> None:
-    """account — «ru» или «en» (канал tg выполняет русский экземпляр). run(command) -> строка квитанции."""
+async def tick(db, account: str, run, ready=None) -> None:
+    """account — «ru» или «en» (канал tg выполняет русский экземпляр). run(command) -> строка квитанции.
+    ready(command) -> False: команда пока ждёт (не занята), вернётся на следующем проходе — так посты из пульта не идут пачкой."""
     global _last
     if _last is not None and time.monotonic() - _last < EVERY:
         return
@@ -46,6 +47,8 @@ async def tick(db, account: str, run) -> None:
     for cmd in commands:
         target = cmd.get("account", "ru")
         if target != account and not (target == "tg" and account == "ru"):
+            continue
+        if ready is not None and not await ready(cmd):
             continue
         if not await db.claim_slot(f"ops:{cmd['id']}"):
             continue
