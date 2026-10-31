@@ -41,6 +41,13 @@ def _labels(seeds: np.ndarray, size: int) -> np.ndarray:
     return out
 
 
+def assign_numbers(seed: str) -> list[int]:
+    """Какое число в какой ячейке: все дни 1–31, каждый ровно один раз, порядок от зерна."""
+    numbers = list(range(1, CELLS + 1))
+    random.Random(seed + "numbers").shuffle(numbers)
+    return numbers
+
+
 def build_disc(seed: str) -> Image.Image:
     """Круг 2R×2R: 31 ячейка, в каждой своё число; ячейки разного размера, как в образце."""
     rng = random.Random(seed)
@@ -69,8 +76,7 @@ def build_disc(seed: str) -> Image.Image:
     rgb = np.stack([np.asarray(CREAM[c], np.float32) * shade for c in range(3)], axis=2).astype(np.uint8)
     disc = Image.fromarray(rgb, "RGB").convert("RGBA")
     disc.putalpha(Image.fromarray((solid * 255).astype(np.uint8)))
-    numbers = list(range(1, CELLS + 1))
-    rng.shuffle(numbers)
+    numbers = assign_numbers(seed)
     draw = ImageDraw.Draw(disc)
     for i, number in enumerate(numbers):
         ys, xs = np.nonzero(lab == i)
@@ -124,11 +130,13 @@ def frames(seed: str, seconds: float = SECONDS):
         img = Image.alpha_composite(img, g)
         spun = disc.rotate(-DEG_PER_SEC * t, resample=Image.BICUBIC)
         img.alpha_composite(spun, (CENTER[0] - R, CENTER[1] - R))
-        d = ImageDraw.Draw(img)  # тонкая полоска: сколько осталось до конца видео
+        bar = Image.new("RGBA", (W, H), (0, 0, 0, 0))  # тонкая полоска: сколько осталось до конца видео
+        bd = ImageDraw.Draw(bar)
         bar_y, bar_w = 1226, 640
         x0 = (W - bar_w) // 2
-        d.rounded_rectangle((x0, bar_y, x0 + bar_w, bar_y + 8), radius=4, fill=(255, 255, 255, 50))
-        d.rounded_rectangle((x0, bar_y, x0 + max(8, int(bar_w * t / seconds)), bar_y + 8), radius=4, fill=(255, 205, 120, 255))
+        bd.rounded_rectangle((x0, bar_y, x0 + bar_w, bar_y + 8), radius=4, fill=(255, 255, 255, 50))
+        bd.rounded_rectangle((x0, bar_y, x0 + max(8, int(bar_w * t / seconds)), bar_y + 8), radius=4, fill=(255, 205, 120, 255))
+        img = Image.alpha_composite(img, bar)
         _footer(img)
         yield img.convert("RGB").tobytes()
 

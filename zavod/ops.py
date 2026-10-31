@@ -6,6 +6,7 @@ Claude записывает поручение в ops/commands.json в main. Б�
   post      — {"text": "..."}: пост в Threads (ru/en) или в канал (tg); тексты проходят обычные проверки на границе.
   grid      — {"shape": "spiral" | "heart" | "dna" | ...}: следующая живая матрица этой формы.
   unpublish — {"fragment": "..."}: снять пост Threads с этим куском текста.
+  circle_preview — {"seed": "..."}: ролик «Найди числа от 1 до 31» только владельцу в Telegram, без публикации.
   tell      — {"text": "..."} или {"file": "knowledge/…"}: длинный текст только владельцу в Telegram (без Threads, $0).
 """
 

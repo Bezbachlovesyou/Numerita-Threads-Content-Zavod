@@ -1,4 +1,3 @@
-import random
 import unittest
 
 import numpy as np
@@ -26,9 +25,9 @@ class Circle31(unittest.TestCase):
 
     def test_numbers_are_exactly_one_to_max_day(self):
         self.assertEqual(C.CELLS, 31)
-        numbers = list(range(1, C.CELLS + 1))
-        random.Random("x").shuffle(numbers)
-        self.assertEqual(sorted(numbers), list(range(1, 32)))
+        for seed in ("a", "b", "2026-10-31"):
+            self.assertEqual(sorted(C.assign_numbers(seed)), list(range(1, 32)))
+        self.assertNotEqual(C.assign_numbers("a"), C.assign_numbers("b"))
 
 
 if __name__ == "__main__":

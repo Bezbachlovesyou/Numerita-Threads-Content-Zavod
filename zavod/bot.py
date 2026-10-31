@@ -2032,6 +2032,19 @@ async def run_op(cmd: dict, db: Storage, threads: ThreadsClient | None, bot: Bot
             await notify_admins(bot, cfg, f"{tag}⚠️ Команда {cmd['id']}: нечего отправить")
         for part in pack_blocks(body):
             await notify_admins(bot, cfg, tag + part)
+    elif action == "circle_preview":  # ролик «Найди числа от 1 до 31» — только владельцу на проверку, нигде не выкладываем ($0)
+        async def _circle_job():
+            from . import circle31
+            try:
+                data = await asyncio.to_thread(circle31.render_video, str(cmd.get("seed") or cmd["id"]))
+                for admin_id in cfg.admin_ids:
+                    await bot.send_video(admin_id, BufferedInputFile(data, "circle31.mp4"), width=circle31.W,
+                                         height=circle31.H, supports_streaming=True,
+                                         caption="🔢 Круг «Найди числа от 1 до 31» — превью, нигде не выложено")
+            except Exception as e:
+                log.exception("Круг 1–31 не собрался")
+                await notify_admins(bot, cfg, f"{tag}⚠️ Круг 1–31 не собрался: {type(e).__name__}: {e}")
+        asyncio.create_task(_circle_job())  # сборка минуты три — цикл бота не держим
     elif action == "raw_clips" and threads is not None:  # оплаченные исходники Kling/Grok без надписей — $0
         import httpx
         from . import welcome
