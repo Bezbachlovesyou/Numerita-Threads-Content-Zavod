@@ -8,6 +8,9 @@ Claude записывает поручение в ops/commands.json в main. Б�
   unpublish — {"fragment": "..."}: снять пост Threads с этим куском текста.
   circle_preview — {"seed": "..."}: ролик «Найди числа от 1 до 31» только владельцу в Telegram, без публикации.
   approve_spend — {"label": "...", "usd": 1.5} и/или {"loss_budget": 5}: «да» владельца на сумму опыта / потолок убытка (контролёр прибыли).
+  idea      — {"title": "...", "text": "..."|"file": "docs/ideas.md"}: записать идею владельца (напоминания раз в 7 дней) и прислать в Telegram.
+  idea_done — {"idea_id": "..."}: снять идею с учёта.
+  resend_clips — прислать владельцу 4 приветственных ролика заново с подписями и инструкцией для Instagram.
   tell      — {"text": "..."} или {"file": "knowledge/…"}: длинный текст только владельцу в Telegram (без Threads, $0).
 """
 

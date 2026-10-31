@@ -28,7 +28,7 @@ from . import autoreply
 from . import text_mode
 from . import lang
 from .optimizer import optimize
-from . import costs, constraint, funnel, profit, performance, approved_post, zero_research, api_budget, tgchannel, brandvideo, instagram, sketch, zero_cleanup
+from . import costs, constraint, funnel, profit, reminders, performance, approved_post, zero_research, api_budget, tgchannel, brandvideo, instagram, sketch, zero_cleanup
 from .config import Config
 from .generator import GenerationError, Generator
 from .storage import PgStorage, Post, Storage
@@ -1973,6 +1973,64 @@ async def autopost_tick(
     await db.kv_set("next_post_at", (now + delay).isoformat())
 
 
+async def repo_text(path: str) -> str:
+    """Текст файла из репозитория (main): только knowledge/… и docs/ideas.md; иначе пусто."""
+    if not (path.startswith("knowledge/") or path == "docs/ideas.md") or ".." in path:
+        return ""
+    import httpx
+    from . import ops
+    async with httpx.AsyncClient(timeout=30) as http:
+        r = await http.get(f"{ops.RAW}/{path}", params={"t": int(datetime.now().timestamp())})
+    return r.text.strip() if r.status_code == 200 else ""
+
+
+CLIP_HOWTO = """🎬 4 ролика для Instagram Reels — что с ними сделать
+
+1) Нажмите на видео в Telegram → «Сохранить» (попадёт в «Фото»).
+2) Instagram → «+» → «Reel» → выберите видео → «Далее» → вставьте подпись (она написана под каждым видео) → «Поделиться».
+3) Русские — в аккаунт numerita.ai, английские — в numerita.love. Языки не мешать.
+4) Порядок: сначала «Ангел», через 3 часа «Твой код». Лучше по одному ролику в день на аккаунт, чем все сразу.
+5) В подписи нет ссылки: ссылка на бота — в шапке профиля Instagram (RU: t.me/Numeritabot?start=ad_ig_bio).
+6) Через сутки пришлите скриншот статистики ролика (просмотры, лайки, ответы) — сравню с Threads.
+Автоматически они не выйдут, пока вы не скажете «выкладывай»."""
+CLIP_NAMES = {"angel": "Ангел чисел и звёзд", "code": "Твой код"}
+
+
+async def resend_clips(bot: Bot, cfg: Config, db: Storage, tag: str) -> None:
+    """Прислать владельцу 4 приветственных ролика заново: подпись под каждым и что делать (в Instagram руками)."""
+    import httpx
+    from . import welcome
+    urls = json.loads(await db.kv_get("welcome:urls") or "{}")
+    if not urls:
+        await notify_admins(bot, cfg, f"{tag}⚠️ Приветственных роликов в базе нет (сборка не завершена). Повторная съёмка платная — "
+                                      f"нужна смета и ваше «да».")
+        return
+    await notify_admins(bot, cfg, CLIP_HOWTO)
+    async with httpx.AsyncClient(timeout=180, follow_redirects=True) as http:
+        for key in welcome.ORDER:
+            for code in ("ru", "en"):
+                url = urls.get(f"{key}_{code}")
+                if not url:
+                    continue
+                link_line = "\n\nСсылка — в шапке профиля ✨" if code == "ru" else "\n\nLink in bio ✨"
+                caption = re.sub(r"\n*t\.me/\S+", link_line, welcome.CLIPS[key]["post"][code])
+                account = "numerita.ai" if code == "ru" else "numerita.love"
+                order = "1-й" if key == "angel" else "2-й, через 3 часа"
+                head = f"{'🇷🇺' if code == 'ru' else '🇬🇧'} Для {account}: «{CLIP_NAMES[key]}» ({order}). Подпись — под видео, копируйте её целиком."
+                for admin_id in cfg.admin_ids:
+                    try:
+                        await bot.send_message(admin_id, head)
+                        r = await http.get(url)
+                        if r.status_code != 200 or len(r.content) < 50_000:
+                            await bot.send_message(admin_id, f"⚠️ Файл недоступен ({r.status_code}). Ссылка: {url}")
+                            continue
+                        await bot.send_video(admin_id, BufferedInputFile(r.content, f"numerita_{key}_{code}.mp4"),
+                                             caption=caption[:1000], width=welcome.W, height=welcome.H, supports_streaming=True)
+                    except Exception as e:
+                        log.exception("Ролик %s_%s не отправлен владельцу", key, code)
+                        await bot.send_message(admin_id, f"⚠️ Ролик {key}_{code} не отправился: {type(e).__name__}")
+
+
 def chain_lines(c: dict) -> list[str]:
     from . import chain
     return ["", *chain.lines(c)]
@@ -2043,13 +2101,7 @@ async def run_op(cmd: dict, db: Storage, threads: ThreadsClient | None, bot: Bot
         await notify_admins(bot, cfg, f"{tag}📸 Instagram: {link}" if status == "published"
                             else f"{tag}⚠️ Instagram ответил «{status}»")
     elif action == "tell":  # длинный текст только владельцу: из команды или из файла knowledge/ (Threads не трогаем, $0)
-        body, path = text, str(cmd.get("file") or "")
-        if not body and path.startswith("knowledge/") and ".." not in path:
-            import httpx
-            from . import ops
-            async with httpx.AsyncClient(timeout=30) as http:
-                r = await http.get(f"{ops.RAW}/{path}", params={"t": int(datetime.now().timestamp())})
-            body = r.text.strip() if r.status_code == 200 else ""
+        body = text or await repo_text(str(cmd.get("file") or ""))
         if not body:
             await notify_admins(bot, cfg, f"{tag}⚠️ Команда {cmd['id']}: нечего отправить")
         for part in pack_blocks(body):
@@ -2072,6 +2124,19 @@ async def run_op(cmd: dict, db: Storage, threads: ThreadsClient | None, bot: Bot
                     f"{note}\n\n✍️ Черновик поста (не опубликован):\n{draft}")
             for part in pack_blocks(body):
                 await notify_admins(bot, cfg, tag + part)
+    elif action == "idea":  # записать идею владельца: база (напоминания раз в 7 дней) + Telegram со всем текстом
+        title = str(cmd.get("title") or "").strip()
+        body = text or await repo_text(str(cmd.get("file") or ""))
+        if not title:
+            await notify_admins(bot, cfg, f"{tag}⚠️ Идея без названия: команда {cmd['id']} не выполнена.")
+            return
+        fresh = await reminders.add_idea(db, str(cmd.get("idea_id") or cmd["id"]), title, datetime.now(cfg.timezone))
+        await notify_admins(bot, cfg, f"{tag}💡 Идея {'записана' if fresh else 'уже была записана'}: {title}\n\n{body}".strip())
+    elif action == "idea_done":
+        done = await reminders.close_idea(db, str(cmd.get("idea_id") or ""))
+        await notify_admins(bot, cfg, f"{tag}💡 Идея {'снята с учёта' if done else 'не найдена'}.")
+    elif action == "resend_clips" and threads is not None:  # 4 приветственных ролика заново владельцу + что с ними делать ($0)
+        asyncio.create_task(resend_clips(bot, cfg, db, tag))
     elif action == "approve_spend":  # «да» владельца: {"label": "...", "usd": 1.5} и/или {"loss_budget": 5} — для контролёра прибыли
         if cmd.get("label") and float(cmd.get("usd") or 0) > 0:
             await profit.authorize(db, str(cmd["label"]), float(cmd["usd"]))
@@ -2687,6 +2752,11 @@ async def run_scheduler(
                 await notify_admins(bot, cfg, notice)
         except Exception:
             log.exception("Review scheduler failed")
+        try:  # напоминания владельцу: идеи и масштаб цивилизации (только днём)
+            for notice in await reminders.run_due(db, now, cfg.timezone):
+                await notify_admins(bot, cfg, notice)
+        except Exception:
+            log.exception("Reminders failed")
         try:  # контролёр прибыли: отдельный проход без нейросети, три раза в день, свои квитанции
             for notice in await profit.run_due(db, now, cfg.timezone):
                 await notify_admins(bot, cfg, notice)

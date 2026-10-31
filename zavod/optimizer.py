@@ -117,6 +117,22 @@ def valid_rubric_text(text: str) -> bool:
     return 40 <= len(text) <= 600 and used <= PLACEHOLDERS and "\n" not in text.strip() and "{LINK}" not in text
 
 
+MIN_CAME = 10  # меньше пришедших по метке рубрики — выборка мала, оплаты не считаем сигналом
+
+
+def outcome_weights(weights: dict[str, float], stats: dict[str, dict]) -> dict[str, float]:
+    """Рубрика с подтверждённой оплатой (и достаточной выборкой пришедших) усиливается: ×1,3, при двух и более оплатах ×1,6.
+    Только усиление и только потолок 3,0: оплата — редкое событие, по одной нельзя выключать рубрики. Не трогает выключенные (0)."""
+    from .autopost import BOOST
+    out = dict(weights)
+    for key, row in stats.items():
+        if row["came"] < MIN_CAME or row["paid"] < 1 or out.get(key) == 0.0:
+            continue
+        base = out.get(key, BOOST.get(key, 1.0))
+        out[key] = round(clamp(base * (1.6 if row["paid"] >= 2 else 1.3), 0.6, 3.0), 2)
+    return out
+
+
 def clamp(value: float, low: float, high: float) -> float:
     return max(low, min(high, value))
 
@@ -191,6 +207,11 @@ async def optimize(
             weights[key] = 0.0 if ratio < 0.6 else round(clamp(ratio, 0.6, 3.0), 2)
     for row in await db.custom_rubrics(("trial",)):
         weights[row["key"]] = 1.5
+    try:  # слово владельца 31.10.2026: оптимизируем оплаты, а не только лайки — рубрики, приведшие к оплате, получают усиление
+        from . import chain, funnel
+        weights = outcome_weights(weights, chain.by_rubric(await funnel.fetch(14)))
+    except Exception:
+        log.exception("Усиление рубрик по оплатам не применено")
     await db.kv_set("rubric_weights", json.dumps(weights))
     strong = [k for k, w in weights.items() if w >= 1.3]
     weak = [k for k, w in weights.items() if 0 < w <= 0.7]

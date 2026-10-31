@@ -7,6 +7,7 @@
 Срез каждого обхода сохраняется в базе (история для сравнения недель)."""
 
 import json
+import re
 from datetime import datetime, timedelta, timezone
 
 from . import funnel
@@ -14,6 +15,23 @@ from . import funnel
 # Минимум людей/событий в знаменателе, чтобы считать звено узким (иначе это шум).
 MIN_BASE = {"views": 300, "people": 10, "came": 10, "new": 5, "wow": 5, "returned": 3}
 TOTAL_KEYS = ("came", "new", "wow", "returned", "paid", "stars")
+# Необязательные поля, которые основной бот может отдавать по меткам (docs/handoff-main-bot-threads-map.md): выручка и подписки.
+EXTRA_KEYS = ("subs_new", "subs_active", "renewed", "refunds")
+TAG_RE = re.compile(r"^th_(?P<rubric>[a-z_]+?)\d_\d{4}")  # метка поста: рубрика + число души + ДДММ (+ способ подачи ссылки)
+
+
+def by_rubric(data: dict | None) -> dict[str, dict]:
+    """Итоги по рубрикам из меток постов (th_<рубрика><цифра>_<ДДММ>…); ответы, шапка и прочее сюда не входят."""
+    out: dict[str, dict] = {}
+    for r in (data or {}).get("labels", []):
+        m = TAG_RE.match(str(r.get("label", "")))
+        if not m:
+            continue
+        row = out.setdefault(m["rubric"], {"came": 0, "new": 0, "paid": 0, "stars": 0})
+        for k in row:
+            row[k] += int(r.get(k) or 0)
+    return out
+
 # Ориентиры доли по звеньям — ДОПУЩЕНИЯ (не измерения), чтобы сравнивать звено с ожидаемым, а не звенья друг с другом:
 # наверху воронки доли всегда малы, внизу большие. Уточняются по истории срезов (chain:<дата>:<час>), когда накопится выборка.
 REF = {"views_people": 0.005, "views_came": 0.001, "came_new": 0.8, "new_wow": 0.5, "wow_returned": 0.3, "returned_paid": 0.1}
@@ -41,9 +59,12 @@ async def collect(db, now: datetime, days: int = 7) -> dict:
         bot = {k: sum(int(r.get(k) or 0) for r in rows) for k in TOTAL_KEYS}
         bot["usd"] = sum(float(r.get("usd") or 0) for r in rows)  # если основной бот отдаёт выручку в долларах (см. записку для бота)
         bot["rub"] = sum(float(r.get("rub") or 0) for r in rows)
+        for k in EXTRA_KEYS:  # подписки и возвраты, если бот их отдаёт; нет поля — None (неизвестно, не ноль)
+            bot[k] = sum(int(r.get(k) or 0) for r in rows) if any(k in r for r in rows) else None
     v = int(views[0]["v"] or 0) if views and views[0]["k"] else None
     return {"days": days, "posts": int(posts[0]["n"]), "views": v, "views_posts": int(views[0]["k"] or 0) if views else 0,
-            "people": int(people[0]["n"]), "replies": int(replies[0]["n"]), "linked": int(linked[0]["n"]), "bot": bot}
+            "people": int(people[0]["n"]), "replies": int(replies[0]["n"]), "linked": int(linked[0]["n"]), "bot": bot,
+            "rubrics": by_rubric(data)}
 
 
 def transitions(c: dict) -> list[dict]:
@@ -98,7 +119,14 @@ def lines(c: dict) -> list[str]:
     if bot:
         out.append(f"в боте: пришли {bot['came']}, новые {bot['new']}, «вау» {bot['wow']}, вернулись {bot['returned']}, "
                    f"оплатили {bot['paid']}" + (f" ({bot['stars']} ⭐)" if bot["stars"] else ""))
+    if bot and bot.get("subs_active") is not None:
+        out.append(f"подписки: новых {bot.get('subs_new') or 0}, активных {bot['subs_active']}, продлений {bot.get('renewed') or 0}"
+                   + (f", возвратов {bot['refunds']}" if bot.get("refunds") else ""))
     out += [f"  {t['name']}: {_pct(t)}" for t in transitions(c)]
+    top = sorted((c.get("rubrics") or {}).items(), key=lambda kv: (-kv[1]["paid"], -kv[1]["came"]))[:4]
+    if top:
+        out.append("по рубрикам с ссылкой (метка поста): " + ", ".join(
+            f"{k} — пришли {v['came']}, оплатили {v['paid']}" for k, v in top))
     w = weakest(c)
     out.append("узкое звено по цифрам: " + w["link"] + (f" — {w['rate'] * 100:.1f}% при ориентире {w['ref'] * 100:g}%" if w.get("rate") is not None else ""))
     if c["replies"]:
