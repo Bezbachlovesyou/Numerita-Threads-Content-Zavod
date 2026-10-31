@@ -28,7 +28,7 @@ from . import autoreply
 from . import text_mode
 from . import lang
 from .optimizer import optimize
-from . import costs, constraint, funnel, profit, reminders, performance, approved_post, zero_research, api_budget, tgchannel, brandvideo, instagram, sketch, zero_cleanup
+from . import art, costs, constraint, funnel, profit, reminders, performance, approved_post, zero_research, api_budget, tgchannel, brandvideo, instagram, sketch, zero_cleanup
 from .config import Config
 from .generator import GenerationError, Generator
 from .storage import PgStorage, Post, Storage
@@ -1516,7 +1516,7 @@ async def post_from_bank(
     palette, style = plan.choose_card(rng)
     card = Card(hook, item.number, label, "reply", None, palette, style,
                 birth_days(digit) if digit and digit <= 9 and not item.label else None)
-    text = await hook_gate(generator, item.text) if generator else item.text
+    text = (await hook_gate(generator, item.text) if generator else item.text) or item.text
     post = await db.get(await db.add_draft(f"Банк: {lines[0]}", text, "jackpot", None, card.to_json()))
     post = await publish(post, db, threads, bot, "", cfg.cards)
     if post.status == "failed":
@@ -1818,9 +1818,11 @@ COHERENCE_SYSTEM = (
     "Ты — литературный редактор Нумериты. Проверь короткий пост на цельность (knowledge/research/coherence.md): "
     "одна главная мысль; каждая фраза вырастает из предыдущей и работает на эту мысль; переход от науки к символу — "
     "через общий образ, а не «кстати»; финальный вопрос продолжает тот же образ и спрашивает о нём в жизни читателя; "
-    "нет фактов, которые можно вычеркнуть без потери смысла. Если всё так — верни ровно OK. Если нет — перепиши пост "
-    "цельно: завязка → развитие → кульминация (перенос образа на жизнь читателя) → вопрос из того же образа. Сохрани "
-    "факты, числа, дни рождения и язык автора, не добавляй новых фактов, длина не больше исходной. Верни только текст.")
+    "нет фактов, которые можно вычеркнуть без потери смысла. Если всё так — верни ровно OK. Если мысль рассыпается — "
+    "исправь МИНИМАЛЬНО, только то, что мешает цельности. Не превращай текст в шаблон «завязка → развитие → кульминация → "
+    "вопрос»: это подсказка, а не обязательная схема. Сохрани голос автора, яркие образы, острые и необычные слова, юмор, рифму "
+    "и интонацию; не сглаживай, не добавляй осторожных оговорок и общих фраз. Сохрани факты, числа, дни рождения и язык автора, "
+    "не добавляй новых фактов, длина не больше исходной. Верни только текст.")
 
 
 async def coherence_gate(generator: Generator, text: str) -> str:
@@ -1859,23 +1861,26 @@ async def en_editor_gate(generator: Generator, text: str) -> str:
     return result if len(result) <= MAX_LENGTH else text
 
 
-async def hook_gate(generator: Generator, text: str) -> str:
-    """Каждый пост перед выходом проходит проверку крючка: не цепляет — переписываем один раз.
-    Ссылки с меткой сохраняем как были. Затем — проверка цельности (coherence_gate)."""
+async def hook_gate(generator: Generator, text: str) -> str | None:
+    """Каждый пост перед выходом проходит планку «арт-объект» (art.py; слово владельца 31.10.2026: усреднённого текста быть не
+    должно): хук, интрига, юмор, факт или история, живость. Не дотянул — поднимаем по слабому месту; всё равно ниже — None
+    (пост не выходит). Ссылки с меткой сохраняем. Перед оценкой — проверки цельности и безопасности."""
     text = await safe_gate(generator, await coherence_gate(generator, text))
     if lang.is_en():
         text = await en_editor_gate(generator, text)
     links = SCRIPT_LINK_LINE.findall(text)
     body = SCRIPT_LINK_LINE.sub("", text).strip()
     try:
-        score, why = await generator.hook_score(body)
-        if score >= HOOK_MIN:
-            return text
-        log.info("Пост без крючка (%s/10: %s) — переписываю", score, why)
-        better = strip_credits(SCRIPT_LINK_LINE.sub("", (await generator.strengthen(body, why)).strip()).strip())
+        better = await art.art_gate(generator, body, english=lang.is_en())
     except GenerationError as e:
-        log.warning("Проверка крючка не удалась, пост выходит как есть: %s", e)
+        log.warning("Планка арт-объекта не проверена, пост выходит как есть: %s", e)
         return text
+    if better is None:
+        return None
+    if better != body:
+        better = strip_credits(SCRIPT_LINK_LINE.sub("", better).strip())
+        if lang.is_en():
+            better = await en_editor_gate(generator, better)  # после подъёма — ещё раз глазами носителя
     result = "\n".join([better] + links)
     return result if better and len(result) <= MAX_LENGTH else text
 
@@ -1885,6 +1890,8 @@ async def antidupe_gate(db: Storage, generator: Generator, text: str, now: datet
     первая строка или вопрос в конце > 80% общих слов, служебный мусор. Похож — переписываем один раз;
     не вышло — пост не выпускаем (следующий слот выберет другой формат)."""
     from .textguard import post_problem
+    if text is None:  # планка арт-объекта не взята — выпускать нечего
+        return None
     recent = [p.text for p in sorted(await db.recent_published(now - timedelta(days=30)),
                                      key=lambda p: p.id, reverse=True)][:300]
     problem = post_problem(text, recent)
@@ -1896,7 +1903,7 @@ async def antidupe_gate(db: Storage, generator: Generator, text: str, now: datet
     try:
         better = strip_credits(SCRIPT_LINK_LINE.sub("", (await generator.strengthen(
             body, f"{problem}. Перепиши по-новому: другой заход, другая первая строка и другой вопрос в конце, "
-                  "смысл и числа сохрани")).strip()).strip())
+                  "смысл и числа сохрани; остроту, юмор, образы и рифму сохрани, не сглаживай")).strip()).strip())
     except GenerationError:
         better = ""
     result = "\n".join([better] + links) if better else ""
@@ -1916,7 +1923,7 @@ async def safe_gate(generator: Generator, text: str) -> str:
     body = SCRIPT_LINK_LINE.sub("", text).strip()
     try:
         body = strip_credits(SCRIPT_LINK_LINE.sub("", (await generator.strengthen(
-            body, "убери мат и слова о смерти, вреде себе, еде, весе, похудении и нехватке сил; смысл и юмор сохрани"
+            body, "убери мат и слова о смерти, вреде себе, еде, весе, похудении и нехватке сил; смысл, остроту, юмор, образы и рифму сохрани"
         )).strip()).strip()) or body
     except GenerationError as e:
         log.warning("Безопасная переписка не удалась: %s", e)

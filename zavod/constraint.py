@@ -11,7 +11,7 @@ import logging
 import re
 from datetime import datetime, timedelta, timezone
 
-from . import chain, funnel, profit
+from . import art, chain, funnel, profit
 from .generator import GenerationError, Generator
 from .storage import Storage
 
@@ -115,6 +115,7 @@ async def metrics(db: Storage, now: datetime, tz) -> str:
             spent = ", ".join(f"{k} ${v[1]:.2f} ({v[0]} запр.)" for k, v in ledger.items())
             lines.append(f"расходы {day.astimezone(tz):%d.%m}: {spent}")
     lines += funnel.lines(await funnel.fetch(7))
+    lines.append(art.stats_line())
     c = await chain.collect(db, now, 7)  # вся цепочка до оплаты, посчитанная кодом
     lines += chain.lines(c)
     lines += profit.lines(await profit.state(db, now, c))

@@ -10,7 +10,7 @@ import os
 import re
 
 LANG = (os.getenv("FACTORY_LANG", "ru").strip().lower() or "ru")
-PUBLIC_KINDS = {"post", "reply", "coherence", "sharpen", "strengthen", "note"}
+PUBLIC_KINDS = {"post", "reply", "coherence", "sharpen", "strengthen", "note", "elevate"}
 EN_SKIP_RUBRICS = {"news", "text_hype", "text_note", "text_story", "text_story_call", "text_court",
                    "text_protocol", "jackpot", "video", "carousel"}
 EN_RULE = (
@@ -27,7 +27,10 @@ EN_RULE = (
     "Native-level English, as if written by a sharp English-speaking columnist: correct articles, tenses and "
     "prepositions; no word-for-word translations of Russian idioms or calques ('make a conclusion', 'on the photo', "
     "'it is necessary to', 'dear friends'); no clumsy or inappropriate jokes. First line — a hook with intrigue; "
-    "then real value (a recognisable insight, a useful idea); topical humour of today's best comedians and writers."
+    "then real value (a recognisable insight, a useful idea); topical humour of today's best comedians and writers. "
+    "Every text is a small work of art: alive, soulful, with intrigue and a sharp hook, razor-sharp humour, an interesting "
+    "verified science fact or a real story about numbers; never averaged filler, never tabloid clickbait. Where it comes naturally, "
+    "land the punch in rhyme (a couplet, a rhymed last line) — never forced, meaning beats rhyme."
 )
 CYRILLIC = re.compile(r"[\u0400-\u04FF«»]")
 EN_EDITOR = (
