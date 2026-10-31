@@ -86,19 +86,22 @@ def build_disc(seed: str) -> Image.Image:
     return disc
 
 
-def _footer(img: Image.Image) -> None:
-    """Внизу: значок Telegram и @Numeritabot (канон, 30.10.2026)."""
+def _footer() -> Image.Image:
+    """Внизу: значок Telegram и @Numeritabot на мягкой тёмной плашке, чтобы дождь из цифр не мешал читать (канон, 30.10.2026)."""
+    img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
     font = _font("Montserrat.ttf", 34, "SemiBold")
     tw = d.textlength(FOOTER, font=font)
     size, cx, y = 44, W / 2, H - 68
     x0 = cx - (tw + size + 14) / 2
+    d.rounded_rectangle((x0 - 26, y - 34, x0 + size + 14 + tw + 26, y + 34), radius=34, fill=(8, 6, 26, 170))
     try:
         logo = Image.open(LOGO).convert("RGBA").resize((size, size), Image.LANCZOS)
         img.paste(logo, (int(x0), int(y - size / 2)), logo)
     except Exception:
         d.ellipse((x0, y - size / 2, x0 + size, y + size / 2), fill=(42, 171, 238, 255))
-    d.text((x0 + size + 14, y), FOOTER, font=font, fill=(255, 255, 255, 235), anchor="lm")
+    d.text((x0 + size + 14, y), FOOTER, font=font, fill=(255, 255, 255, 240), anchor="lm")
+    return img
 
 
 def frames(seed: str, seconds: float = SECONDS):
@@ -113,6 +116,7 @@ def frames(seed: str, seconds: float = SECONDS):
     ImageDraw.Draw(glow).ellipse((CENTER[0] - R - 24, CENTER[1] - R - 24, CENTER[0] + R + 24, CENTER[1] + R + 24),
                                  fill=(255, 205, 120, 255))
     glow = glow.filter(ImageFilter.GaussianBlur(46))
+    footer = _footer()
     total = int(seconds * FPS)
     for k in range(total):
         t = k / FPS
@@ -136,8 +140,7 @@ def frames(seed: str, seconds: float = SECONDS):
         x0 = (W - bar_w) // 2
         bd.rounded_rectangle((x0, bar_y, x0 + bar_w, bar_y + 8), radius=4, fill=(255, 255, 255, 50))
         bd.rounded_rectangle((x0, bar_y, x0 + max(8, int(bar_w * t / seconds)), bar_y + 8), radius=4, fill=(255, 205, 120, 255))
-        img = Image.alpha_composite(img, bar)
-        _footer(img)
+        img = Image.alpha_composite(Image.alpha_composite(img, bar), footer)
         yield img.convert("RGB").tobytes()
 
 
@@ -150,7 +153,7 @@ def render_video(seed: str, seconds: float = SECONDS) -> bytes:
         if MUSIC.exists():
             args += ["-stream_loop", "-1", "-i", str(MUSIC), "-af",
                      f"afade=in:st=0:d=1,afade=out:st={seconds - 1.8}:d=1.8", "-c:a", "aac", "-b:a", "128k"]
-        args += ["-t", str(seconds), "-c:v", "libx264", "-preset", "veryfast", "-crf", "22", "-pix_fmt", "yuv420p",
+        args += ["-t", str(seconds), "-c:v", "libx264", "-preset", "veryfast", "-crf", "27", "-pix_fmt", "yuv420p",
                  "-movflags", "+faststart", str(out)]
         proc = subprocess.Popen(args, stdin=subprocess.PIPE)
         try:
