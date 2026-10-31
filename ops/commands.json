@@ -295,5 +295,18 @@
   "action": "post",
   "rubric": "text_unknown",
   "text": "WHAT NO GENERAL POST KNOWS ABOUT YOU ✨\n\nA general post knows one thing about you: your birthday. That's knowing someone by the nameplate on the door, not by what's inside the apartment.\n\nThree things make a reading personal: your year (destiny number), your birth time and city (in the tradition the day begins at sunrise, so it can shift), and your partner (two dates).\n\nTell me your day as a number and I'll name your soul number. The rest is private: link in my profile."
+ },
+ {
+  "id": "idea-twin-2026-10-31",
+  "account": "ru",
+  "action": "idea",
+  "idea_id": "digital-twin",
+  "title": "Цифровой двойник ушедшего близкого (подписка)",
+  "file": "docs/ideas.md"
+ },
+ {
+  "id": "clips-resend-2026-10-31",
+  "account": "ru",
+  "action": "resend_clips"
  }
 ]
