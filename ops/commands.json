@@ -247,5 +247,11 @@
   "id": "stories-preview-2026-10-31",
   "account": "ru",
   "action": "stories_preview"
+ },
+ {
+  "id": "physics-draft-2026-10-31",
+  "account": "ru",
+  "action": "tell",
+  "file": "knowledge/research/draft_physics_thread_8.md"
  }
 ]
