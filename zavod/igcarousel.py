@@ -157,6 +157,55 @@ SETS = {
                        "#numerology #birthday #love #astrology #zodiac #relationships #lifepathnumber",
         },
     },
+    "goals": {
+        "palette": 1,
+        "ru": {
+            "cover": "КАК ТЫ ИДЁШЬ К ЦЕЛИ, ПО ДНЮ РОЖДЕНИЯ",
+            "sub": "Листай. И запиши свою цель от руки",
+            "note": "Образы чисел, шутка и символика, не диагноз и не прогноз",
+            "lines": [
+                "Хочет быть первым. Запишет цель крупно и пойдёт делать, пока вы дочитываете этот пост.",
+                "Идёт к цели вдвоём. Цель без человека рядом для него — только полцели.",
+                "Расскажет о цели всем. Записать её рукой труднее, чем рассказать, поэтому полезнее.",
+                "Разложит цель по шагам и таблицам. Бумагу любит больше любого приложения.",
+                "Меняет цель каждую неделю. Запись от руки нужна, чтобы хоть одна дожила до пятницы.",
+                "Цель ради близких. А свою строчку «я хочу» писать забывает.",
+                "Думает о цели полгода. Запишите — и мысль станет делом.",
+                "Цель с цифрой и сроком. Запишет без лишних слов, как договор с собой.",
+                "Цель большая, ради мира. Начните с одной строчки на сегодня, от руки.",
+            ],
+            "bridge": "Узнал(а) себя? Тогда возьми лист и ручку",
+            "ask": "Запиши цель рукой как решение: «Я буду…». Напиши день рождения числом — скажу, с какого шага начать",
+            "private": "Год, время рождения и пару считаем лично: ссылка в шапке профиля",
+            "caption": "Как ты идёшь к цели — по дню рождения 🎯\n\nЛистай и узнавай себя. А потом возьми бумагу и ручку и запиши свою цель рукой, как решение: «Я буду…». "
+                       "Запись от руки — маленький якорь: цель перестаёт быть мыслью. Это не обещание, это первый шаг.\n\nНапиши день рождения числом в комментариях — скажу, с какого шага "
+                       "начать именно тебе. Год, время и пару считаем лично: ссылка в шапке профиля.\n\n"
+                       "#нумерология #цели #деньрождения #числосудьбы #астрология #нумерита #саморазвитие",
+        },
+        "en": {
+            "cover": "HOW YOU CHASE A GOAL, BY BIRTH DAY",
+            "sub": "Swipe. Then write your goal by hand",
+            "note": "Images of numbers, humor and symbolism, not a diagnosis or a forecast",
+            "lines": [
+                "Wants to be first. Writes the goal in big letters and is already doing it while you finish this post.",
+                "Chases a goal together. A goal without someone beside them is half a goal.",
+                "Tells everyone about the goal. Writing it by hand is harder than telling, which is why it helps.",
+                "Breaks the goal into steps and spreadsheets. Loves paper more than any app.",
+                "Changes the goal every week. Handwriting is how one of them survives till Friday.",
+                "A goal for the family. Forgets to write their own \"I want\" line.",
+                "Thinks about the goal for six months. Write it down and the thought becomes action.",
+                "A goal with a number and a date. Writes it without extra words, like a contract with oneself.",
+                "A big goal, for the world. Start with one line for today, by hand.",
+            ],
+            "bridge": "Found yourself? Then grab a pen and paper",
+            "ask": "Write your goal by hand as a decision: \"I will...\". Tell me your birth day as a number: I'll say which step to start with",
+            "private": "Year, birth time and partner are best done in private: link in bio",
+            "caption": "How you chase a goal, by birth day 🎯\n\nSwipe and spot yourself. Then take a pen and paper and write your goal by hand, as a decision: \"I will...\". "
+                       "Handwriting is a small anchor: the goal stops being just a thought. It's not a promise, it's a first step.\n\nTell me your birth day as a number in the comments and I'll say "
+                       "which step to start with. Year, birth time and partner are best done in private: link in bio.\n\n"
+                       "#numerology #goals #birthday #lifepathnumber #astrology #numerita #selfgrowth",
+        },
+    },
 }
 
 
