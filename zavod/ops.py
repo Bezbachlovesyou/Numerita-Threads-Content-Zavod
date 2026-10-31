@@ -6,6 +6,7 @@ Claude записывает поручение в ops/commands.json в main. Б�
   post      — {"text": "..."}: пост в Threads (ru/en) или в канал (tg); тексты проходят обычные проверки на границе.
   grid      — {"shape": "spiral" | "heart" | "dna" | ...}: следующая живая матрица этой формы.
   unpublish — {"fragment": "..."}: снять пост Threads с этим куском текста.
+  tell      — {"text": "..."} или {"file": "knowledge/…"}: длинный текст только владельцу в Telegram (без Threads, $0).
 """
 
 import json
@@ -15,7 +16,8 @@ import time
 import httpx
 
 log = logging.getLogger(__name__)
-URL = "https://raw.githubusercontent.com/bezbachlovesyou/numerita-threads-content-zavod/main/ops/commands.json"
+RAW = "https://raw.githubusercontent.com/bezbachlovesyou/numerita-threads-content-zavod/main"
+URL = f"{RAW}/ops/commands.json"
 EVERY = 300
 _last: float | None = None
 

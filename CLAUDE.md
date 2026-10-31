@@ -33,7 +33,7 @@ Telegram-бот, который сам ведёт Threads Нумериты (RU @
 - Промпты: brand_voice.md, reply_voice.md, playbook.md (хуки, цельность, юмор), threads_rules.md, content_plan.md
   (все рубрики), abundance.md, threads_script.md.
 - Пульт: ops/commands.json в main (репозиторий публичный — ни ключей, ни личных данных); бот читает раз в 5 мин,
-  действия post / thread / grid / unpublish / ig / reels_on / reels_off / raw_clips.
+  действия post / thread / grid / unpublish / ig / reels_on / reels_off / raw_clips / tell.
 - Английский экземпляр — тот же сервис, FACTORY_LANG=en, схема «en», свои лимиты прогрева.
 - Обходы constraint.py в 11/15/19 (Голдратт и теории роста): обратимые меры на 12 ч, необратимое — вопрос с ‼️.
 - Телеграм-канал: переносы из Threads на паузе (REPOSTS_PAUSED); суд/протоколы в канал не идут.

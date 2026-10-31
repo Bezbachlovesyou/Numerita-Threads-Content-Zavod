@@ -1286,6 +1286,20 @@ async def day_review(db, now: datetime) -> str:
     return "\n\n".join(parts)[:4000]
 
 
+def pack_blocks(text: str, limit: int = 3400, sep: str = "━━━━━━━━━━━━━━") -> list[str]:
+    """Длинный текст — на сообщения по границам блоков (разделитель sep на отдельной строке), чтобы группа не рвалась."""
+    parts, cur = [], ""
+    for block in (b.strip() for b in text.split(f"\n{sep}\n")):
+        if block and cur and len(cur) + len(block) + len(sep) + 2 > limit:
+            parts.append(cur)
+            cur = ""
+        if block:
+            cur = f"{cur}\n{sep}\n{block}" if cur else block
+    if cur:
+        parts.append(cur)
+    return parts
+
+
 def report_chunks(text: str, limit: int = 3500) -> list[str]:
     """Preserve all text and stay below Telegram's limit, including emoji."""
     chunks = []
@@ -2006,6 +2020,18 @@ async def run_op(cmd: dict, db: Storage, threads: ThreadsClient | None, bot: Bot
         status, link = await instagram.post_video(threads, account, url, cmd.get("caption", ""))
         await notify_admins(bot, cfg, f"{tag}📸 Instagram: {link}" if status == "published"
                             else f"{tag}⚠️ Instagram ответил «{status}»")
+    elif action == "tell":  # длинный текст только владельцу: из команды или из файла knowledge/ (Threads не трогаем, $0)
+        body, path = text, str(cmd.get("file") or "")
+        if not body and path.startswith("knowledge/") and ".." not in path:
+            import httpx
+            from . import ops
+            async with httpx.AsyncClient(timeout=30) as http:
+                r = await http.get(f"{ops.RAW}/{path}", params={"t": int(datetime.now().timestamp())})
+            body = r.text.strip() if r.status_code == 200 else ""
+        if not body:
+            await notify_admins(bot, cfg, f"{tag}⚠️ Команда {cmd['id']}: нечего отправить")
+        for part in pack_blocks(body):
+            await notify_admins(bot, cfg, tag + part)
     elif action == "raw_clips" and threads is not None:  # оплаченные исходники Kling/Grok без надписей — $0
         import httpx
         from . import welcome
