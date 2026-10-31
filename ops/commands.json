@@ -430,5 +430,19 @@
    "assets/cover/numerita_fb_cover_loop.mp4"
   ],
   "text": "Новая обложка Facebook без Нумериты: настоящий снимок МКС (NASA) — Млечный Путь, Солнце над краем Земли. Небо плавно вращается, звёзды мерцают, пролетают метеоры. Видео 24 с (петля) и две картинки."
+ },
+ {
+  "id": "ig-pub-ok-ru-2026-10-31",
+  "account": "ru",
+  "action": "ig_carousel",
+  "set": "ok",
+  "publish": true
+ },
+ {
+  "id": "ig-pub-ok-en-2026-10-31",
+  "account": "en",
+  "action": "ig_carousel",
+  "set": "ok",
+  "publish": true
  }
 ]
