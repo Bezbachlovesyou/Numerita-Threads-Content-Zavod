@@ -20,6 +20,23 @@ EXTRA_KEYS = ("subs_new", "subs_active", "renewed", "refunds")
 TAG_RE = re.compile(r"^th_(?P<rubric>[a-z_]+?)\d_\d{4}")  # метка поста: рубрика + число души + ДДММ (+ способ подачи ссылки)
 
 
+REPLY_RE = re.compile(r"^th_r\d+_(?P<letter>[aowlm])")  # метка ответа: th_r<номер поста>_<режим>[ветка A/B]
+
+
+def by_reply_variant(data: dict | None) -> dict[str, dict]:
+    """Итоги по вариантам приглашения в ответах: old (o, w), ladder («лестница личного»: l, m), link (a — человек сам спросил)."""
+    names = {"o": "old", "w": "old", "l": "ladder", "m": "ladder", "a": "link"}
+    out: dict[str, dict] = {}
+    for r in (data or {}).get("labels", []):
+        m = REPLY_RE.match(str(r.get("label", "")))
+        if not m:
+            continue
+        row = out.setdefault(names[m["letter"]], {"came": 0, "new": 0, "wow": 0, "returned": 0, "paid": 0})
+        for k in row:
+            row[k] += int(r.get(k) or 0)
+    return out
+
+
 def by_rubric(data: dict | None) -> dict[str, dict]:
     """Итоги по рубрикам из меток постов (th_<рубрика><цифра>_<ДДММ>…); ответы, шапка и прочее сюда не входят."""
     out: dict[str, dict] = {}
@@ -64,7 +81,7 @@ async def collect(db, now: datetime, days: int = 7) -> dict:
     v = int(views[0]["v"] or 0) if views and views[0]["k"] else None
     return {"days": days, "posts": int(posts[0]["n"]), "views": v, "views_posts": int(views[0]["k"] or 0) if views else 0,
             "people": int(people[0]["n"]), "replies": int(replies[0]["n"]), "linked": int(linked[0]["n"]), "bot": bot,
-            "rubrics": by_rubric(data)}
+            "rubrics": by_rubric(data), "variants": by_reply_variant(data)}
 
 
 def transitions(c: dict) -> list[dict]:
@@ -123,6 +140,14 @@ def lines(c: dict) -> list[str]:
         out.append(f"подписки: новых {bot.get('subs_new') or 0}, активных {bot['subs_active']}, продлений {bot.get('renewed') or 0}"
                    + (f", возвратов {bot['refunds']}" if bot.get("refunds") else ""))
     out += [f"  {t['name']}: {_pct(t)}" for t in transitions(c)]
+    v = c.get("variants") or {}
+    if v.get("old") or v.get("ladder"):
+        def part(name, label):
+            row = v.get(name) or {"came": 0, "wow": 0, "paid": 0}
+            return f"{label}: пришли {row['came']}, «вау» {row['wow']}, оплатили {row['paid']}"
+        out.append("приглашение в ответах — " + "; ".join([part("old", "прежнее"), part("ladder", "«лестница личного»")])
+                   + ("" if min((v.get("old") or {}).get("came", 0), (v.get("ladder") or {}).get("came", 0)) >= 10
+                      else " (мало данных для выбора)"))
     top = sorted((c.get("rubrics") or {}).items(), key=lambda kv: (-kv[1]["paid"], -kv[1]["came"]))[:4]
     if top:
         out.append("по рубрикам с ссылкой (метка поста): " + ", ".join(

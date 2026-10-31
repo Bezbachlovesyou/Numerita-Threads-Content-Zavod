@@ -364,6 +364,13 @@ async def answer_comments(
             continue
         if given == free_per_day:
             mode = "paywall" if links_ok else "paywall_bio"
+        # «Лестница личного» (31.10.2026): половина приглашений по-новому — дар, честное «чего не видно», приглашение; метка варианта
+        # идёт в ссылку, воронка сравнит оба варианта по людям в боте и оплатам. Старый вариант — как был.
+        from . import ladder
+        variant = ladder.variant_for(comment["id"], float(await db.kv_get("ladder:share") or ladder.DEFAULT_SHARE)) \
+            if mode in ("offer", "paywall") else "base"
+        if variant == "ladder":
+            post_text += ladder.note(mode, comment["message"])
         # 25.10.2026 (слово владельца): дата или день рождения без вопроса — ответ кодом по базе, без нейросети ($0)
         kb = getattr(getattr(generator, "knowledge", None), "data", None)
         arm = smart_arm(author) if (find_birth(comment["message"]) or find_pair(comment["message"])) \
@@ -425,7 +432,7 @@ async def answer_comments(
             continue
         if mode in ("link", "paywall", "offer"):
             text = (f"{text[: MAX_REPLY_LENGTH - 45]}\n{BOT_LINK}r{post_id or 0}_"
-                    f"{ {'link': 'a', 'paywall': 'w', 'offer': 'o'}[mode] }"
+                    f"{ladder.letter(mode, variant)}"
                     + (arm[0] if arm else ""))  # метка ветки A/B: …_pc — ответ кодом, …_pi — ответ нейросети
         if sent:
             await asyncio.sleep(random.uniform(*PAUSE))
