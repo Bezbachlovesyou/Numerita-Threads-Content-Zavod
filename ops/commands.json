@@ -482,5 +482,41 @@
    "YOUR BIRTH DATE GIVES AWAY YOUR MOST UNEXPECTED REACTION 👀\nImages of numbers, humor and symbolism, not a diagnosis.\n\n1, 10, 19, 28: when doubted, you quietly do three times more.\n2, 11, 20, 29: when overlooked, you notice everything. And remember.\n3, 12, 21, 30: when underrated, you deliver a lecture with examples.\n4, 13, 22, 31: when plans collapse, you are already drawing a new spreadsheet.\nNext 👇",
    "5, 14, 23: when boxed in, you find a window, not a door.\n6, 15, 24: when unappreciated, you ask yourself: did I really need to try that hard?\n7, 16, 25: when interrogated, you answer with one look.\n8, 17, 26: when you lose, you study the rules of the game.\n9, 18, 27: when disappointed, you quietly grew.\n\nWhich line hit? Tell me your birth day as a number and I'll say how your reaction helps and how it gets in the way."
   ]
+ },
+ {
+  "id": "goals-thread-ru-2026-11-01",
+  "account": "ru",
+  "action": "thread",
+  "rubric": "text_free",
+  "items": [
+   "КАК ТЫ ИДЁШЬ К ЦЕЛИ, ПО ДНЮ РОЖДЕНИЯ 🎯\nОбраз числа, шутка и символика, не прогноз.\n\n1, 10, 19, 28 — запишет цель крупно и пойдёт делать, пока вы читаете.\n2, 11, 20, 29 — идёт к цели вдвоём: цель без человека рядом для него полцели.\n3, 12, 21, 30 — расскажет всем. Записать рукой труднее, поэтому полезнее.\nДальше 👇",
+   "4, 13, 22, 31 — разложит цель по шагам и таблицам, бумагу любит больше приложений.\n5, 14, 23 — меняет цель каждую неделю. Запись рукой нужна, чтобы хоть одна дожила до пятницы.\n6, 15, 24 — цель ради близких, а свою строчку «я хочу» забывает.\nДальше 👇",
+   "7, 16, 25 — думает о цели полгода. Запишите, и мысль станет делом.\n8, 17, 26 — цель с цифрой и сроком, как договор с собой.\n9, 18, 27 — цель большая, ради мира. Начните с одной строчки на сегодня.\n\nА теперь возьмите бумагу и ручку и запишите одну цель рукой, как решение: «Я буду…». Не в телефоне, а от руки. Это не обещание, это первый шаг. Напишите день рождения числом — скажу, с какого шага начать именно вам."
+  ]
+ },
+ {
+  "id": "ig-pub-goals-ru-2026-11-01",
+  "account": "ru",
+  "action": "ig_carousel",
+  "set": "goals",
+  "publish": true
+ },
+ {
+  "id": "goals-thread-en-2026-11-01",
+  "account": "en",
+  "action": "thread",
+  "rubric": "text_free",
+  "items": [
+   "HOW YOU CHASE A GOAL, BY BIRTH DAY 🎯\nImages of numbers, humor and symbolism, not a forecast.\n\n1, 10, 19, 28: writes the goal in big letters and is already doing it while you read.\n2, 11, 20, 29: chases a goal together. A goal without someone beside them is half a goal.\n3, 12, 21, 30: tells everyone. Writing it by hand is harder, which is why it helps.\nNext 👇",
+   "4, 13, 22, 31: breaks the goal into steps and spreadsheets. Loves paper more than apps.\n5, 14, 23: changes the goal every week. Handwriting is how one of them survives till Friday.\n6, 15, 24: a goal for the family, forgets their own \"I want\" line.\nNext 👇",
+   "7, 16, 25: thinks about the goal for six months. Write it down and the thought becomes action.\n8, 17, 26: a goal with a number and a date, like a contract with oneself.\n9, 18, 27: a big goal, for the world. Start with one line for today.\n\nNow take a pen and paper and write one goal by hand, as a decision: \"I will...\". Not on your phone, by hand. It's not a promise, it's a first step. Tell me your birth day as a number and I'll say which step to start with."
+  ]
+ },
+ {
+  "id": "ig-pub-goals-en-2026-11-01",
+  "account": "en",
+  "action": "ig_carousel",
+  "set": "goals",
+  "publish": true
  }
 ]
