@@ -290,7 +290,9 @@ class Generator:
                 message = (f"ключ не принят ({message}). Проверьте OPENROUTER_API_KEY на Railway: "
                            f"сейчас бот видит {mask_key(self.api_key)}")
             elif response.status_code == 402:
-                message = "закончились деньги на балансе OpenRouter"
+                # 402 бывает не только при пустом балансе: лимит самого ключа или запрос дороже остатка («can only afford …»).
+                # Настоящий ответ OpenRouter показываем как есть, чтобы причина была видна, а не угадана.
+                message = f"OpenRouter ответил 402 (оплата): {message}. Проверьте баланс, лимит самого ключа (Keys → Limit) и модель"
             raise GenerationError(f"Ошибка OpenRouter: {message}")
 
         await self._record_cost(f"{kind}·{model.split('/')[-1]}" if kind in ("reply", "summary") else kind,
