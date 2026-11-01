@@ -77,6 +77,9 @@ def complete_sentences(text: str) -> str:
     return text[: match[-1].start() + 1].strip() if match else ""
 
 
+DEFAULT_MAX_TOKENS = 8000
+
+
 class GenerationError(Exception):
     pass
 
@@ -265,7 +268,8 @@ class Generator:
                     },
                     json={
                         "model": model,
-                        **({"max_tokens": max_tokens} if max_tokens is not None else {}),
+                        # Без потолка OpenRouter резервирует максимум модели (65536 токенов) и отказывает 402 при малом остатке на ключе.
+                        "max_tokens": max_tokens if max_tokens is not None else DEFAULT_MAX_TOKENS,
                         "usage": {"include": True},
                         # Короткие ответы без «размышлений»: рассуждения — это оплачиваемые токены выхода.
                         **({"reasoning": {"enabled": False}} if kind in ("reply", "summary", "hookcheck")
