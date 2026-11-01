@@ -1,0 +1,302 @@
+[
+ {
+  "ru": "Альберт Эйнштейн",
+  "en": "Albert Einstein",
+  "born": "1879-03-14",
+  "field_ru": "физик",
+  "field_en": "physicist",
+  "fact_ru": "Нобелевскую премию 1921 года он получил за объяснение фотоэффекта, а не за теорию относительности.",
+  "fact_en": "He won the 1921 Nobel Prize for explaining the photoelectric effect, not for relativity.",
+  "audience": "both"
+ },
+ {
+  "ru": "Мария Склодовская-Кюри",
+  "en": "Marie Curie",
+  "born": "1867-11-07",
+  "field_ru": "физик и химик",
+  "field_en": "physicist and chemist",
+  "fact_ru": "Единственная, кто получила Нобелевскую премию в двух разных науках: по физике (1903) и по химии (1911).",
+  "fact_en": "She is the only person to win Nobel Prizes in two different sciences: physics (1903) and chemistry (1911).",
+  "audience": "both"
+ },
+ {
+  "ru": "Никола Тесла",
+  "en": "Nikola Tesla",
+  "born": "1856-07-10",
+  "field_ru": "изобретатель",
+  "field_en": "inventor",
+  "fact_ru": "Единица магнитной индукции в системе СИ названа теслой в его честь.",
+  "fact_en": "The SI unit of magnetic flux density is named the tesla in his honour.",
+  "audience": "both"
+ },
+ {
+  "ru": "Леонардо да Винчи",
+  "en": "Leonardo da Vinci",
+  "born": "1452-04-15",
+  "field_ru": "художник и изобретатель",
+  "field_en": "artist and inventor",
+  "fact_ru": "Сохранились тысячи страниц его записных книжек: рисунки, схемы машин, анатомия, зеркальный почерк.",
+  "fact_en": "Thousands of pages of his notebooks survive: sketches, machine designs, anatomy, mirror writing.",
+  "audience": "both"
+ },
+ {
+  "ru": "Вольфганг Амадей Моцарт",
+  "en": "Wolfgang Amadeus Mozart",
+  "born": "1756-01-27",
+  "field_ru": "композитор",
+  "field_en": "composer",
+  "fact_ru": "Первые сочинения он записал в пять лет.",
+  "fact_en": "He wrote his first compositions at the age of five.",
+  "audience": "both"
+ },
+ {
+  "ru": "Лев Толстой",
+  "en": "Leo Tolstoy",
+  "born": "1828-09-09",
+  "field_ru": "писатель",
+  "field_en": "writer",
+  "fact_ru": "В 1859 году он открыл в Ясной Поляне школу для крестьянских детей и сам в ней преподавал.",
+  "fact_en": "In 1859 he opened a school for peasant children at Yasnaya Polyana and taught there himself.",
+  "audience": "both"
+ },
+ {
+  "ru": "Фёдор Достоевский",
+  "en": "Fyodor Dostoevsky",
+  "born": "1821-11-11",
+  "field_ru": "писатель",
+  "field_en": "writer",
+  "fact_ru": "Роман «Игрок» он продиктовал стенографистке Анне Сниткиной за 26 дней; позже она стала его женой.",
+  "fact_en": "He dictated the novel The Gambler to stenographer Anna Snitkina in 26 days; she later became his wife.",
+  "audience": "both"
+ },
+ {
+  "ru": "Александр Пушкин",
+  "en": "Alexander Pushkin",
+  "born": "1799-06-06",
+  "field_ru": "поэт",
+  "field_en": "poet",
+  "fact_ru": "Роман в стихах «Евгений Онегин» он писал около семи лет, с 1823 по 1830 год.",
+  "fact_en": "He wrote the verse novel Eugene Onegin over about seven years, from 1823 to 1830.",
+  "audience": "ru"
+ },
+ {
+  "ru": "Дмитрий Менделеев",
+  "en": "Dmitri Mendeleev",
+  "born": "1834-02-08",
+  "field_ru": "химик",
+  "field_en": "chemist",
+  "fact_ru": "В 1869 году его таблица элементов оставила пустые клетки: он предсказал галлий, скандий и германий, и их потом нашли.",
+  "fact_en": "In 1869 his table left gaps: he predicted gallium, scandium and germanium, and they were found later.",
+  "audience": "ru"
+ },
+ {
+  "ru": "Михаил Ломоносов",
+  "en": "Mikhail Lomonosov",
+  "born": "1711-11-19",
+  "field_ru": "учёный",
+  "field_en": "scientist",
+  "fact_ru": "В 1755 году по его проекту открыли Московский университет.",
+  "fact_en": "Moscow University was founded in 1755 following his proposal.",
+  "audience": "ru"
+ },
+ {
+  "ru": "Пётр Чайковский",
+  "en": "Pyotr Tchaikovsky",
+  "born": "1840-05-07",
+  "field_ru": "композитор",
+  "field_en": "composer",
+  "fact_ru": "Балет «Щелкунчик» впервые показали в 1892 году.",
+  "fact_en": "His ballet The Nutcracker premiered in 1892.",
+  "audience": "both"
+ },
+ {
+  "ru": "Сергей Рахманинов",
+  "en": "Sergei Rachmaninoff",
+  "born": "1873-04-01",
+  "field_ru": "композитор и пианист",
+  "field_en": "composer and pianist",
+  "fact_ru": "Второй фортепианный концерт он написал в 1901 году после долгого творческого кризиса.",
+  "fact_en": "He wrote his Second Piano Concerto in 1901 after a long creative crisis.",
+  "audience": "both"
+ },
+ {
+  "ru": "Галилео Галилей",
+  "en": "Galileo Galilei",
+  "born": "1564-02-15",
+  "field_ru": "учёный",
+  "field_en": "scientist",
+  "fact_ru": "В 1610 году он в телескоп увидел четыре крупнейших спутника Юпитера.",
+  "fact_en": "In 1610 he saw the four largest moons of Jupiter through a telescope.",
+  "audience": "both"
+ },
+ {
+  "ru": "Чарлз Дарвин",
+  "en": "Charles Darwin",
+  "born": "1809-02-12",
+  "field_ru": "натуралист",
+  "field_en": "naturalist",
+  "fact_ru": "Пять лет, с 1831 по 1836 год, он плыл на корабле «Бигль» и собирал наблюдения, из которых выросла его теория.",
+  "fact_en": "For five years, 1831 to 1836, he sailed on HMS Beagle gathering the observations behind his theory.",
+  "audience": "both"
+ },
+ {
+  "ru": "Стивен Хокинг",
+  "en": "Stephen Hawking",
+  "born": "1942-01-08",
+  "field_ru": "физик",
+  "field_en": "physicist",
+  "fact_ru": "Его книга «Краткая история времени» вышла в 1988 году и стала мировым бестселлером о космосе.",
+  "fact_en": "His book A Brief History of Time came out in 1988 and became a worldwide bestseller about the cosmos.",
+  "audience": "both"
+ },
+ {
+  "ru": "Винсент Ван Гог",
+  "en": "Vincent van Gogh",
+  "born": "1853-03-30",
+  "field_ru": "художник",
+  "field_en": "painter",
+  "fact_ru": "«Звёздную ночь» он написал в 1889 году.",
+  "fact_en": "He painted The Starry Night in 1889.",
+  "audience": "both"
+ },
+ {
+  "ru": "Пабло Пикассо",
+  "en": "Pablo Picasso",
+  "born": "1881-10-25",
+  "field_ru": "художник",
+  "field_en": "painter",
+  "fact_ru": "С 1901 по 1904 год у него был «голубой период»: картины почти целиком в оттенках синего.",
+  "fact_en": "From 1901 to 1904 he had his Blue Period: paintings almost entirely in shades of blue.",
+  "audience": "both"
+ },
+ {
+  "ru": "Уолт Дисней",
+  "en": "Walt Disney",
+  "born": "1901-12-05",
+  "field_ru": "мультипликатор",
+  "field_en": "animator",
+  "fact_ru": "«Белоснежка и семь гномов» (1937) стала первым полнометражным рисованным мультфильмом.",
+  "fact_en": "Snow White and the Seven Dwarfs (1937) was the first full-length cel-animated feature film.",
+  "audience": "both"
+ },
+ {
+  "ru": "Коко Шанель",
+  "en": "Coco Chanel",
+  "born": "1883-08-19",
+  "field_ru": "модельер",
+  "field_en": "fashion designer",
+  "fact_ru": "В 1926 году она показала «маленькое чёрное платье», которое стало классикой.",
+  "fact_en": "In 1926 she introduced the little black dress, which became a classic.",
+  "audience": "both"
+ },
+ {
+  "ru": "Стив Джобс",
+  "en": "Steve Jobs",
+  "born": "1955-02-24",
+  "field_ru": "предприниматель",
+  "field_en": "entrepreneur",
+  "fact_ru": "В январе 2007 года он представил первый iPhone.",
+  "fact_en": "In January 2007 he unveiled the first iPhone.",
+  "audience": "both"
+ },
+ {
+  "ru": "Ада Лавлейс",
+  "en": "Ada Lovelace",
+  "born": "1815-12-10",
+  "field_ru": "математик",
+  "field_en": "mathematician",
+  "fact_ru": "Она написала алгоритм для аналитической машины Бэббиджа; его считают первой компьютерной программой.",
+  "fact_en": "She wrote an algorithm for Babbage's Analytical Engine, often called the first computer program.",
+  "audience": "both"
+ },
+ {
+  "ru": "Мария Монтессори",
+  "en": "Maria Montessori",
+  "born": "1870-08-31",
+  "field_ru": "педагог",
+  "field_en": "educator",
+  "fact_ru": "В 1907 году она открыла в Риме первый «Дом ребёнка», с которого началась её система обучения.",
+  "fact_en": "In 1907 she opened her first Casa dei Bambini in Rome, where her teaching method began.",
+  "audience": "both"
+ },
+ {
+  "ru": "Рабиндранат Тагор",
+  "en": "Rabindranath Tagore",
+  "born": "1861-05-07",
+  "field_ru": "поэт",
+  "field_en": "poet",
+  "fact_ru": "В 1913 году он стал первым неевропейцем, получившим Нобелевскую премию по литературе.",
+  "fact_en": "In 1913 he became the first non-European to win the Nobel Prize in Literature.",
+  "audience": "both"
+ },
+ {
+  "ru": "Шриниваса Рамануджан",
+  "en": "Srinivasa Ramanujan",
+  "born": "1887-12-22",
+  "field_ru": "математик",
+  "field_en": "mathematician",
+  "fact_ru": "В 1913 году самоучка из Индии отправил письмо математику Харди, и тот пригласил его в Кембридж.",
+  "fact_en": "In 1913 the self-taught Indian mathematician wrote to G. H. Hardy, who invited him to Cambridge.",
+  "audience": "both"
+ },
+ {
+  "ru": "Антон Чехов",
+  "en": "Anton Chekhov",
+  "born": "1860-01-29",
+  "field_ru": "писатель и врач",
+  "field_en": "writer and doctor",
+  "fact_ru": "Он всю жизнь совмещал врачебную практику и писательство.",
+  "fact_en": "He combined medical practice and writing throughout his life.",
+  "audience": "ru"
+ },
+ {
+  "ru": "Иван Павлов",
+  "en": "Ivan Pavlov",
+  "born": "1849-09-26",
+  "field_ru": "физиолог",
+  "field_en": "physiologist",
+  "fact_ru": "В 1904 году он получил Нобелевскую премию по физиологии за работы о пищеварении.",
+  "fact_en": "In 1904 he won the Nobel Prize in Physiology or Medicine for his work on digestion.",
+  "audience": "both"
+ },
+ {
+  "ru": "Константин Циолковский",
+  "en": "Konstantin Tsiolkovsky",
+  "born": "1857-09-17",
+  "field_ru": "учёный",
+  "field_en": "scientist",
+  "fact_ru": "В 1903 году он опубликовал расчёты полёта в космос на ракете.",
+  "fact_en": "In 1903 he published calculations for space flight by rocket.",
+  "audience": "both"
+ },
+ {
+  "ru": "Софья Ковалевская",
+  "en": "Sofya Kovalevskaya",
+  "born": "1850-01-15",
+  "field_ru": "математик",
+  "field_en": "mathematician",
+  "fact_ru": "В 1884 году она стала профессором математики в Стокгольме, одной из первых женщин в Европе.",
+  "fact_en": "In 1884 she became a professor of mathematics in Stockholm, one of the first women in Europe to do so.",
+  "audience": "both"
+ },
+ {
+  "ru": "Василий Кандинский",
+  "en": "Wassily Kandinsky",
+  "born": "1866-12-16",
+  "field_ru": "художник",
+  "field_en": "painter",
+  "fact_ru": "Его считают одним из создателей абстрактной живописи.",
+  "fact_en": "He is regarded as one of the pioneers of abstract painting.",
+  "audience": "both"
+ },
+ {
+  "ru": "Анна Павлова",
+  "en": "Anna Pavlova",
+  "born": "1881-02-12",
+  "field_ru": "балерина",
+  "field_en": "ballerina",
+  "fact_ru": "В 1905 году для неё поставили номер «Умирающий лебедь», с которым она объехала мир.",
+  "fact_en": "In 1905 The Dying Swan was choreographed for her, and she toured the world with it.",
+  "audience": "both"
+ }
+]
