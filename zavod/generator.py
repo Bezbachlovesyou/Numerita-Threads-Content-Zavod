@@ -249,9 +249,10 @@ class Generator:
         return await self._complete(self.system, prompt, kind="sharpen")
 
     async def _complete(self, system: str, prompt: str, max_tokens: int | None = None, _retry: bool = False,
-                        kind: str = "other", model: str | None = None) -> str:
+                        kind: str = "other", model: str | None = None, _pay: int = 0) -> str:
         from .honesty import apply
         from .lang import public_rule
+        orig_system = system
         system = apply(system) + public_rule(kind)
         model = model or self.model
         try:
@@ -290,6 +291,14 @@ class Generator:
                 message = (f"ключ не принят ({message}). Проверьте OPENROUTER_API_KEY на Railway: "
                            f"сейчас бот видит {mask_key(self.api_key)}")
             elif response.status_code == 402:
+                import asyncio
+                import re as _re
+                afford = _re.search(r"can only afford (\d+)", str(message))
+                if afford and int(afford.group(1)) >= 300 and _pay < 2:  # дорогой запрос при малом остатке: просим короче
+                    return await self._complete(orig_system, prompt, max_tokens=int(afford.group(1)) - 20, _retry=_retry, kind=kind, model=model, _pay=_pay + 1)
+                if _pay < 2:  # сбой оплаты бывает временным (работы на стороне OpenRouter): подождём и повторим дважды
+                    await asyncio.sleep(30 * (_pay + 1))
+                    return await self._complete(orig_system, prompt, max_tokens=max_tokens, _retry=_retry, kind=kind, model=model, _pay=_pay + 1)
                 # 402 бывает не только при пустом балансе: лимит самого ключа или запрос дороже остатка («can only afford …»).
                 # Настоящий ответ OpenRouter показываем как есть, чтобы причина была видна, а не угадана.
                 message = f"OpenRouter ответил 402 (оплата): {message}. Проверьте баланс, лимит самого ключа (Keys → Limit) и модель"
