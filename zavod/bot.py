@@ -1700,7 +1700,7 @@ async def post_next(
             slot = replace(slot, topic=slot.topic + f"\nФормат: «{name}». Образец тона (не копировать): "
                                                    + (en if lang.is_en() else ru))
         profile = None
-        if slot.rubric.key.startswith("text_") and text_mode.enabled():  # профиль поста: 128 чередующихся параметров (postmatrix.py)
+        if slot.rubric.key.startswith("text_") and text_mode.enabled():  # профиль поста: 138 чередующихся параметров (postmatrix.py)
             code = "en" if lang.is_en() else "ru"
             profile = await postmatrix.pick(db, code, slot.rubric.key, rng)
             extra = ""
