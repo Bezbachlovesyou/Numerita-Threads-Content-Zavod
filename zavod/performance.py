@@ -142,3 +142,70 @@ async def grid_ab(db, posts):
             "картинка — постов {}, лайков {}, комментариев {}.").format(
         len(groups[True]), avg(groups[True], 0), avg(groups[True], 1),
         len(groups[False]), avg(groups[False], 0), avg(groups[False], 1))
+
+
+def _find_followers(obj, depth=0):
+    """Число подписчиков из ответа аналитики Zernio: ищем поле с «follower» (формат не закреплён, не угадываем — нет поля, нет числа)."""
+    if depth > 4:
+        return None
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            if 'follower' in str(k).lower() and number(v) is not None:
+                return number(v)
+        for v in obj.values():
+            got = _find_followers(v, depth + 1)
+            if got is not None:
+                return got
+    elif isinstance(obj, list):
+        for v in obj:
+            got = _find_followers(v, depth + 1)
+            if got is not None:
+                return got
+    return None
+
+
+async def daily_summary(db, client, now):
+    """Ежедневная сводка (слово владельца 02.11.2026): подписчики и посты без реакций. Подписчики — снимок раз в сутки из аналитики Zernio, сравнение со вчера и неделей назад;
+    нет поля в ответе — так и пишем. Посты без лайков и комментариев — по последним замерам; почему они ещё висят — по причинам (молодые, нет данных, лимит удалений)."""
+    from . import zero_cleanup
+    lines = ['📈 Ежедневно: подписчики и посты без реакций']
+    followers = None
+    try:
+        stats = await client.account_stats(limit=1)
+        followers = _find_followers(stats)
+    except Exception:
+        followers = None
+    today = now.date().isoformat()
+    if followers is None:
+        lines.append('Подписчики: Zernio не отдал число (поле не найдено) — пришлите скриншот профиля, посчитаю по нему.')
+    else:
+        await db.kv_set(f'followers:{today}', str(followers))
+        parts = [f'Подписчики: {followers}']
+        for days, name in ((1, 'вчера'), (7, 'неделю назад')):
+            old = await db.kv_get(f'followers:{(now.date() - timedelta(days=days)).isoformat()}')
+            if old and old.isdigit():
+                parts.append(f'{followers - int(old):+d} к {name}')
+        lines.append(', '.join(parts))
+    posts = await db.recent_published(now - timedelta(days=7))
+    zero, nodata, young, total = [], 0, 0, 0
+    for post in posts:
+        total += 1
+        if not post.published_at or now - post.published_at < zero_cleanup.MIN_AGE:
+            young += 1
+            continue
+        sample = json.loads(await db.kv_get(f'performance:{post.id}:latest') or '{}')
+        if sample.get('likes') is None or sample.get('comments') is None:
+            nodata += 1
+        elif sample['likes'] == 0 and sample['comments'] == 0:
+            zero.append(post)
+    removed = 0
+    for i in range(7):
+        removed += int(await db.kv_get('zero_cleanup:day:' + (now.date() - timedelta(days=i)).isoformat()) or 0)
+    share = f'{100 * len(zero) // max(1, total - young)}%' if total - young else '—'
+    lines.append(f'За 7 дней опубликовано {total}; без лайков и комментариев висят {len(zero)} ({share} зрелых), нет данных {nodata}, ещё молодых {young}; снято за 7 дней: {removed}.')
+    if zero:
+        by = {}
+        for post in zero:
+            by[post.rubric or 'без рубрики'] = by.get(post.rubric or 'без рубрики', 0) + 1
+        lines.append('Чаще всего пустые рубрики: ' + ', '.join(f'{k} ({v})' for k, v in sorted(by.items(), key=lambda kv: -kv[1])[:5]))
+    return '\n'.join(lines)

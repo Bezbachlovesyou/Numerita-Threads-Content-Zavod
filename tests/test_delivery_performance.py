@@ -117,3 +117,25 @@ class DeliveryTests(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class DailySummary(DeliveryTests):
+    async def test_followers_snapshot_delta_and_zero_posts(self):
+        a, b, c = await self.published(30), await self.published(30), await self.published(2)
+        await self.db.kv_set(f'performance:{a}:latest', json.dumps({'likes': 0, 'comments': 0}))
+        await self.db.kv_set(f'performance:{b}:latest', json.dumps({'likes': 3, 'comments': 0}))
+        yesterday = (self.now.date() - timedelta(days=1)).isoformat()
+        await self.db.kv_set(f'followers:{yesterday}', '100')
+        client = AsyncMock()
+        client.account_stats.return_value = {'overview': {'totalFollowers': 97}}
+        text = await performance.daily_summary(self.db, client, self.now)
+        self.assertIn('Подписчики: 97', text)
+        self.assertIn('-3 к вчера', text)
+        self.assertIn('висят 1', text)
+        self.assertIn('ещё молодых 1', text)
+
+    async def test_missing_followers_field_is_stated_not_guessed(self):
+        client = AsyncMock()
+        client.account_stats.return_value = {'overview': {'views': 5}}
+        text = await performance.daily_summary(self.db, client, self.now)
+        self.assertIn('не отдал число', text)

@@ -54,6 +54,7 @@ COMMANDS = [
     ("queue", "черновики и запланированные посты"),
     ("stats", "статистика в Threads"),
     ("performance", "лайки и комментарии каждого поста"),
+    ("daily", "подписчики и посты без реакций"),
     ("safety", "квоты API и ограничения автоответов"),
     ("reviews", "квитанции трёх ежедневных обходов"),
     ("cleanup", "квитанции удаления нулевых постов"),
@@ -1028,6 +1029,13 @@ def create_router(cfg: Config, plan: ContentPlan) -> Router:
     @router.message(Command("performance"))
     async def performance_handler(message: Message, db: Storage):
         await message.answer(await performance.report(db, datetime.now(timezone.utc)), parse_mode=None)
+
+    @router.message(Command("daily"))
+    async def daily_handler(message: Message, db: Storage, threads: ThreadsClient | None = None):
+        if threads is None:
+            await message.answer("Threads не подключён.", parse_mode=None)
+            return
+        await message.answer(await performance.daily_summary(db, threads, datetime.now(timezone.utc)), parse_mode=None)
 
     router.callback_query.filter(F.from_user.id.in_(cfg.admin_ids))
 
@@ -2887,6 +2895,8 @@ async def run_scheduler(
                 report = await optimize(db, threads, generator, plan, now)
                 await notify_admins(bot, cfg, "🧠 Отчёт за сутки: что я узнал и что поменял\n\n" + "\n".join(report))
                 await notify_admins(bot, cfg, await performance.report(db, now))
+                if threads is not None:
+                    await notify_admins(bot, cfg, await performance.daily_summary(db, threads, now))
                 await notify_admins(bot, cfg, await costs.report(db, generator, cfg.timezone))
                 tuned = await costs.tune_code_share(db, now)
                 if tuned:
