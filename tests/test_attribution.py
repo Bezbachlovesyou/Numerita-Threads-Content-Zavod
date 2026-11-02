@@ -144,9 +144,16 @@ class WithDb(unittest.IsolatedAsyncioTestCase):
         out = await A.outcomes(self.db, raw)
         self.assertNotIn("УЗКОЕ ЗВЕНО ИЗМЕРЕНИЯ", "\n".join(A.lines(await A.rubric_table(self.db, NOW + timedelta(minutes=1), 7, raw), out)))
 
+    async def test_links_in_posts_not_more_often_than_every_two_days(self):
+        link = "Посчитать своё число души: t.me/Numeritabot?start=ad_th_text_year3_3110_lc"
+        await self.post("text_year", first_comment=link)
+        await self.post("text_other")  # последний пост без ссылки — «два подряд» не мешает, мешает только интервал
+        self.assertFalse(await A.needs_tracking(self.db, "text_new_one", NOW + timedelta(hours=10)))  # слово владельца 02.11: не чаще раза в двое суток
+        self.assertTrue(await A.needs_tracking(self.db, "text_new_one", NOW + timedelta(hours=49), max_share=0.9))
+
     async def test_needs_tracking_gives_each_rubric_a_measured_sample_without_flooding(self):
         link = "Посчитать своё число души: t.me/Numeritabot?start=ad_th_text_year3_3110_lc"
-        later = NOW + timedelta(minutes=1)
+        later = NOW + timedelta(days=3)  # прошло больше двух суток после последнего меченого поста
         self.assertTrue(await A.needs_tracking(self.db, "text_year", NOW))  # постов нет — нужна выборка
         await self.post("text_year", first_comment=link)
         for _ in range(5):

@@ -80,11 +80,32 @@ async def tracked_count(db, rubric: str, now: datetime, days: int = 14) -> int:
     return int(rows[0]["n"])
 
 
+LINK_POST_GAP = timedelta(hours=48)  # слово владельца 02.11.2026: ссылка в посте (в тексте или первым комментарием) — не чаще раза в двое суток
+
+
+async def last_link_post_at(db):
+    """Когда вышел последний пост со ссылкой на бота (в тексте или первым комментарием) — или None."""
+    rows = await db._rows("SELECT published_at FROM posts WHERE status='published' AND (first_comment LIKE '%t.me/%' OR text LIKE '%t.me/%')"
+                          " ORDER BY id DESC LIMIT 1")
+    if not rows or not rows[0]["published_at"]:
+        return None
+    value = rows[0]["published_at"]
+    dt = datetime.fromisoformat(value) if isinstance(value, str) else value
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+async def link_post_allowed(db, now: datetime) -> bool:
+    last = await last_link_post_at(db)
+    return last is None or now - last >= LINK_POST_GAP
+
+
 async def needs_tracking(db, rubric: str, now: datetime, minimum: int = 2, max_share: float = 0.3) -> bool:
     """Нужна ли этому посту ссылка с меткой первым комментарием: у рубрики мало меченых постов за 14 дней, а общая доля меченых
     среди последних 10 постов не выше max_share. Это измерительная выборка, а не реклама: польза поста та же."""
     if await tracked_count(db, rubric, now) >= minimum:
         return False
+    if not await link_post_allowed(db, now):
+        return False  # ссылок в постах не чаще раза в двое суток
     rows = await db._rows("SELECT first_comment FROM posts WHERE status='published' ORDER BY id DESC LIMIT 10")
     if not rows:
         return True
