@@ -196,13 +196,13 @@ async def daily_summary(db, client, now):
         sample = json.loads(await db.kv_get(f'performance:{post.id}:latest') or '{}')
         if sample.get('likes') is None or sample.get('comments') is None:
             nodata += 1
-        elif sample['likes'] == 0 and sample['comments'] == 0:
+        elif sample['likes'] <= zero_cleanup.MAX_LIKES and sample['comments'] == 0:
             zero.append(post)
     removed = 0
     for i in range(7):
         removed += int(await db.kv_get('zero_cleanup:day:' + (now.date() - timedelta(days=i)).isoformat()) or 0)
     share = f'{100 * len(zero) // max(1, total - young)}%' if total - young else '—'
-    lines.append(f'За 7 дней опубликовано {total}; без лайков и комментариев висят {len(zero)} ({share} зрелых), нет данных {nodata}, ещё молодых {young}; снято за 7 дней: {removed}.')
+    lines.append(f'За 7 дней опубликовано {total}; без реакции (до 2 лайков, без комментариев) висят {len(zero)} ({share} зрелых), нет данных {nodata}, ещё молодых {young}; снято за 7 дней: {removed}.')
     if zero:
         by = {}
         for post in zero:

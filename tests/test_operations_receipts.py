@@ -108,7 +108,7 @@ class OperationsTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_cleanup_preserves_unknown_stale_reacting_and_foreign_posts(self):
         ident=await self.candidate()
-        for payload in (None, self.metrics(likes=1),self.metrics(likes=.2),
+        for payload in (None, self.metrics(likes=3),self.metrics(likes=.2),
                         self.metrics(lastUpdated=(self.now-timedelta(hours=7)).isoformat())):
             await self.db.kv_set('zero_cleanup:last_scan','')
             c=self.client();c.post_stats.return_value=payload
@@ -120,6 +120,17 @@ class OperationsTests(unittest.IsolatedAsyncioTestCase):
             await zero_cleanup.tick(self.db,c,self.now)
             c.unpublish.assert_not_awaited()
         self.assertEqual((await self.db.get(ident)).status,'published')
+
+    async def test_one_or_two_likes_without_comments_count_as_no_reaction(self):
+        # слово владельца 02.11.2026: 1–2 лайка без комментариев — «нет реакции» (часть лайков ставит сам владелец)
+        for likes in (2,):  # у кандидата общий remote-id: защёлка снятия срабатывает один раз; случай 1 лайка — тот же код
+            ident=await self.candidate()
+            await self.db.kv_set(f'performance:{ident}:latest',json.dumps({'likes':likes,'comments':0}))
+            await self.db.kv_set('zero_cleanup:last_scan','')
+            c=self.client();c.post_stats.return_value=self.metrics(likes=likes)
+            await zero_cleanup.tick(self.db,c,self.now)
+            c.unpublish.assert_awaited_once_with('remote')
+            self.assertEqual((await self.db.get(ident)).status,'deleted')
 
     async def test_cleanup_preserves_new_comments_and_bounded_daily_mutations(self):
         await self.candidate();c=self.client()

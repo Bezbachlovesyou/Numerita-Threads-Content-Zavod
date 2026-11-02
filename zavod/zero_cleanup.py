@@ -14,6 +14,8 @@ LOOKBACK = timedelta(days=60)
 DAILY_CAP = 30  # 30.10: владелец просит убрать все пустые посты — быстрее разбираем накопленное
 SCAN_EVERY = timedelta(minutes=10)
 FRESH = timedelta(hours=6)
+# Слово владельца 02.11.2026: 1–2 лайка без комментариев — тоже «нет реакции» (часть лайков он ставит сам на автомате): такие посты снимаем как нулевые.
+MAX_LIKES = 2
 
 log = logging.getLogger(__name__)
 
@@ -43,7 +45,9 @@ def fresh_zero(payload, now):
     if len(parts) != 1 or parts[0].get('platform') != 'threads' or parts[0].get('syncStatus') != 'synced':
         return False
     metrics = parts[0].get('analytics') or {}
-    if any(type(metrics.get(k)) not in (int, float) or metrics[k] != 0 for k in ('likes', 'comments')):
+    if any(type(metrics.get(k)) not in (int, float) for k in ('likes', 'comments')):
+        return False
+    if metrics['comments'] != 0 or metrics['likes'] != int(metrics['likes']) or not 0 <= metrics['likes'] <= MAX_LIKES:
         return False
     try:
         age = now - performance.stamp(metrics['lastUpdated'])
@@ -84,7 +88,7 @@ async def tick(db, client, now):
             if not post.published_at or now-post.published_at < MIN_AGE:
                 continue
             sample = json.loads(await db.kv_get(f'performance:{post.id}:latest') or '{}')
-            if sample.get('likes') != 0 or sample.get('comments') != 0:
+            if sample.get('likes') is None or sample.get('comments') != 0 or not 0 <= sample['likes'] <= MAX_LIKES or sample['likes'] != int(sample['likes']):
                 continue
         await db.kv_set('zero_cleanup:last_scan', now.isoformat())
         await db.kv_set(f'zero_cleanup:checked:{post.id}', now.isoformat())
