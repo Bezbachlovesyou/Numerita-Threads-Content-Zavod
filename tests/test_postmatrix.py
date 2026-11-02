@@ -15,7 +15,7 @@ class Catalog(unittest.TestCase):
     def test_at_least_a_hundred_parameters_with_unique_ids(self):
         self.assertGreaterEqual(P.total_values("ru"), 100)
         self.assertGreaterEqual(P.total_values("en"), 100)
-        self.assertEqual(P.total_values("ru"), 138)
+        self.assertEqual(P.total_values("ru"), 146)
         for name in P.ORDER:
             ids = [e[0] for e in P.axis(name)]
             self.assertEqual(len(ids), len(set(ids)), name)
