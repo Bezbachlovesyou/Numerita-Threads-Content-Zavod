@@ -412,6 +412,43 @@ async def run_stories(db: Storage, threads: ThreadsClient, generator: Generator,
             await db.kv_set("stories:last_call", now.isoformat())
 
 
+NOTES_ENABLED = False  # слово владельца 02.11.2026: «объяснительные» больше не делаем — людям не нравится, видно, что писал ИИ
+BANNED_FORMAT = re.compile(r"^\W*(объяснительная|жалоба|заявление|расписка|претензия|характеристика|записка от|explanatory note|letter of explanation|complaint from|statement from|memo from)", re.I)
+
+
+def banned_format(text: str) -> bool:
+    """Первая строка поста — «Объяснительная от шестёрки», «Жалоба от…» и подобное: формат снят по слову владельца 02.11.2026."""
+    first = next((line for line in (text or "").splitlines() if line.strip()), "")
+    return bool(BANNED_FORMAT.match(first))
+
+
+async def retire_banned(db: Storage, threads: ThreadsClient, bot: Bot, cfg: Config, now: datetime) -> None:
+    """Снять уже вышедшие посты снятого формата, у которых подтверждённо нет реакции (0–2 лайка, без комментариев). «Снят» — только по статусу площадки.
+    Посты с реакцией (3+ лайков или комментарий) не трогаем. Каждый пост — один раз."""
+    from . import zero_cleanup
+    for post in await db.recent_published(now - timedelta(days=3)):
+        if not banned_format(post.text) or await db.kv_get(f"retire:{post.id}") == "done":
+            continue
+        try:
+            metrics = await threads.post_stats(post.threads_id)
+            if not zero_cleanup.fresh_zero(metrics, now):
+                continue  # данных нет или есть реакция — не трогаем
+            _, comments = await threads._request("GET", f"/inbox/comments/{post.threads_id}", params={"accountId": threads.account_id, "limit": 50})
+            if comments.get("comments"):
+                continue
+            await threads.unpublish(post.threads_id)
+            status, _, _ = await threads.post_status(post.threads_id)
+        except ThreadsError as e:
+            log.warning("Снятие формата-«объяснительной» %s не удалось: %s", post.id, e)
+            continue
+        if status not in ("published", "publishing", "partial"):
+            await db.kv_set(f"retire:{post.id}", "done")
+            await db.delete(post.id)
+            await notify_admins(bot, cfg, f"🗑 Снят пост #{post.id} («{post.text.strip().splitlines()[0][:70]}») — формат-объяснительная без реакции. Статус площадки: {status}.")
+        else:
+            await notify_admins(bot, cfg, f"⚠️ Пост #{post.id} не снялся: Threads всё ещё показывает «{status}». Пробую ещё.")
+
+
 async def note_post(db: Storage, threads: ThreadsClient, generator: Generator, bot: Bot, cfg: Config,
                     now: datetime) -> None:
     """Рукописная записка от лица числа (zavod/note.py): числа по кругу, один пост в день."""
@@ -1807,6 +1844,9 @@ async def post_next(
             # каркас атрибуции: у рубрики мало меченых постов — ссылка с меткой первым комментарием (измерение; польза поста та же)
             first_comment = first_comment_for(slot, f"{slot.tag}_lc")
             link_mode = link_mode or "comment"
+        if banned_format(text):  # снятый формат (02.11): пост не выходит, слот возьмёт другой
+            log.info("Формат «объяснительная» снят по слову владельца — пост отброшен")
+            return False
         if not (grid and text_mode.enabled()):
             text = await hook_gate(generator, text)
         text = await antidupe_gate(db, generator, text, now)
@@ -2687,6 +2727,7 @@ async def run_scheduler(
             try:
                 await performance.collect(db, threads, now)
                 await zero_cleanup.tick(db, threads, now)
+                await retire_banned(db, threads, bot, cfg, now)
             except Exception:
                 log.exception("Post performance collection failed")
             try:
@@ -2743,7 +2784,7 @@ async def run_scheduler(
                 except Exception:
                     log.exception("Объяснительная от восьмёрки не вышла")
             note_hour = 13 + int(hashlib.md5(f"{now:%Y-%m-%d}".encode()).hexdigest(), 16) % 7
-            if not EN and now.hour == note_hour and await db.claim_slot(f"note {now:%Y-%m-%d}"):
+            if NOTES_ENABLED and not EN and now.hour == note_hour and await db.claim_slot(f"note {now:%Y-%m-%d}"):
                 try:  # рукописная записка от лица числа — раз в день (формат «Жалоба от отца ученика»)
                     await note_post(db, threads, generator, bot, cfg, now)
                 except Exception:
