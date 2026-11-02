@@ -194,6 +194,7 @@ class ContentPlan:
         by_key = {r.key: r for r in self.all_rubrics()}
         recent_ctas = [by_key[k].cta for k in recent[:5] if k in by_key]
         pool = [r for r in self.all_rubrics() if not recent or r.key != recent[0]]
+        pool = [r for r in pool if r.key != "text_pair_week"] or pool  # «Пара недели» выходит только по расписанию (pairweek.due), не по жребию
         if _is_en():  # английский аккаунт: без русских лент новостей/хайпа, картинок с русским текстом
             from .lang import EN_SKIP_RUBRICS
             pool = [r for r in pool if r.key not in EN_SKIP_RUBRICS] or pool

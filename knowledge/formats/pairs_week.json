@@ -1,0 +1,114 @@
+[
+ {
+  "a": {
+   "ru": "Пьер Кюри",
+   "en": "Pierre Curie",
+   "born": "1859-05-15"
+  },
+  "b": {
+   "ru": "Мария Склодовская-Кюри",
+   "en": "Marie Curie",
+   "born": "1867-11-07"
+  },
+  "fact_ru": "В 1903 году они вместе получили Нобелевскую премию по физике за исследование радиоактивности (премию разделил с ними и Анри Беккерель).",
+  "fact_en": "In 1903 they shared the Nobel Prize in Physics for work on radioactivity (with Henri Becquerel).",
+  "year": "1895",
+  "audience": "both"
+ },
+ {
+  "a": {
+   "ru": "Джон Леннон",
+   "en": "John Lennon",
+   "born": "1940-10-09"
+  },
+  "b": {
+   "ru": "Йоко Оно",
+   "en": "Yoko Ono",
+   "born": "1933-02-18"
+  },
+  "fact_ru": "В 1969 году они провели «Bed-In за мир» — неделю в постели с открытыми дверями для журналистов, чтобы говорить о мире.",
+  "fact_en": "In 1969 they held their Bed-In for Peace — a week in bed, doors open to journalists, to talk about peace.",
+  "year": "1969",
+  "audience": "both"
+ },
+ {
+  "a": {
+   "ru": "Александр Пушкин",
+   "en": "Alexander Pushkin",
+   "born": "1799-06-06"
+  },
+  "b": {
+   "ru": "Наталья Гончарова",
+   "en": "Natalia Goncharova",
+   "born": "1812-09-08"
+  },
+  "fact_ru": "Они поженились в 1831 году в Москве; у них было четверо детей.",
+  "fact_en": "They married in 1831 in Moscow and had four children.",
+  "year": "1831",
+  "audience": "ru"
+ },
+ {
+  "a": {
+   "ru": "Пол Ньюман",
+   "en": "Paul Newman",
+   "born": "1925-01-26"
+  },
+  "b": {
+   "ru": "Джоанн Вудворд",
+   "en": "Joanne Woodward",
+   "born": "1930-02-27"
+  },
+  "fact_ru": "Они поженились в 1958 году и были вместе больше полувека; вместе основали благотворительный лагерь для детей.",
+  "fact_en": "They married in 1958 and stayed together for over fifty years; together they founded a camp for seriously ill children.",
+  "year": "1958",
+  "audience": "both"
+ },
+ {
+  "a": {
+   "ru": "Том Хэнкс",
+   "en": "Tom Hanks",
+   "born": "1956-07-09"
+  },
+  "b": {
+   "ru": "Рита Уилсон",
+   "en": "Rita Wilson",
+   "born": "1956-10-26"
+  },
+  "fact_ru": "Они поженились в 1988 году, а познакомились на съёмках сериала.",
+  "fact_en": "They married in 1988; they had met while working on a TV series.",
+  "year": "1988",
+  "audience": "both"
+ },
+ {
+  "a": {
+   "ru": "Бейонсе",
+   "en": "Beyoncé",
+   "born": "1981-09-04"
+  },
+  "b": {
+   "ru": "Jay-Z",
+   "en": "Jay-Z",
+   "born": "1969-12-04"
+  },
+  "fact_ru": "Они поженились в 2008 году; у пары трое детей.",
+  "fact_en": "They married in 2008 and have three children.",
+  "year": "2008",
+  "audience": "both"
+ },
+ {
+  "a": {
+   "ru": "Владимир Высоцкий",
+   "en": "Vladimir Vysotsky",
+   "born": "1938-01-25"
+  },
+  "b": {
+   "ru": "Марина Влади",
+   "en": "Marina Vlady",
+   "born": "1938-05-10"
+  },
+  "fact_ru": "Они поженились в 1970 году; Высоцкий посвящал ей песни.",
+  "fact_en": "They married in 1970; Vysotsky dedicated songs to her.",
+  "year": "1970",
+  "audience": "ru"
+ }
+]

@@ -29,7 +29,7 @@ from . import autoreply
 from . import text_mode
 from . import lang
 from .optimizer import optimize
-from . import art, attribution, rework, physics, postmatrix, costs, constraint, funnel, profit, reminders, performance, approved_post, zero_research, api_budget, tgchannel, brandvideo, instagram, sketch, zero_cleanup
+from . import art, attribution, pairweek, rework, physics, postmatrix, costs, constraint, funnel, profit, reminders, performance, approved_post, zero_research, api_budget, tgchannel, brandvideo, instagram, sketch, zero_cleanup
 from .config import Config
 from .generator import GenerationError, Generator
 from .storage import PgStorage, Post, Storage
@@ -1726,6 +1726,9 @@ async def post_next(
                 dead = None
             else:
                 rubric = plan.effective(original)
+        pair_rubric = next((r for r in plan.all_rubrics() if r.key == "text_pair_week"), None)  # «Пара недели»: раз в неделю в дневное окно, со ссылкой не чаще раза в двое суток
+        if pair_rubric and not dead and text_mode.enabled() and await pairweek.due(db, now) and await attribution.link_post_allowed(db, now):
+            rubric = plan.effective(pair_rubric)
         daily = next((r for r in plan.all_rubrics() if r.key == "text_daily"), None)
         if daily and not dead and not en_grid_first and rubric.key != "grid" and "text_daily" not in recent[:2]:
             rubric = daily  # 30.10 слово владельца: каждый третий пост — бытовой и простой
@@ -1736,6 +1739,9 @@ async def post_next(
             await db.kv_set("list:fmt", str(n + 1))
             rubric = have[keys[n % len(keys)]]
         slot = plan.render(rubric, now, rng)
+        if "[[PAIR]]" in slot.topic:  # данные пары недели посчитаны кодом (pairweek.py)
+            week_pair = await pairweek.take(db, now, lang.is_en())
+            slot = replace(slot, topic=slot.topic.replace("[[PAIR]]", pairweek.block(week_pair, lang.is_en())))
         if now.hour in autopost.PRIME_HOURS and slot.rubric.key != "grid":  # вечер: каждый пост — новый приём
             n = int(await db.kv_get("prime:angle") or 0)
             await db.kv_set("prime:angle", str(n + 1))
@@ -1839,6 +1845,8 @@ async def post_next(
         except GenerationError as e:
             await notify_admins(bot, cfg, f"❌ Автопост не написан: {e}\nТема: {slot.topic}")
             return False
+        if slot.rubric.key == "text_pair_week" and first_comment is None:  # ссылка «проверь свою пару» — первым комментарием, метка ad_[en_]th_pair
+            first_comment = ("Check your own pair in a minute: " if lang.is_en() else "Проверь свою пару за минуту: ") + BOT_LINK + "pair"
         if first_comment is None and slot.rubric.cta != "link" and (slot.rubric.key.startswith("text_") or slot.rubric.key == "grid") \
                 and await attribution.needs_tracking(db, slot.rubric.key, now, max_share=float(await db.kv_get("tracking:share") or 0.3)):
             # каркас атрибуции: у рубрики мало меченых постов — ссылка с меткой первым комментарием (измерение; польза поста та же)
