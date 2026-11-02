@@ -3,7 +3,7 @@ import json
 import logging
 from datetime import timedelta
 
-from . import performance, reply_cooldown
+from . import performance, reply_cooldown, rework
 from .threads_api import ThreadsError
 
 # Слово владельца 29.10.2026: пост без лайков и комментариев через 6 ч — «мертвечина», снимаем (было 24 ч).
@@ -102,6 +102,7 @@ async def tick(db, client, now):
                 if target.get('status') == 'cancelled':
                     saved.update(status='deleted_confirmed', reconciled_at=now.isoformat())
                     await db.kv_set(key, json.dumps(saved, ensure_ascii=False))
+                    await rework.record_removed(db, saved, now)
                     await db.delete(post.id)
                 else:
                     saved['status'] = 'requires_review'
@@ -136,6 +137,7 @@ async def tick(db, client, now):
             saved['status'] = 'deleted_confirmed' if confirmed else 'unknown'
             await db.kv_set(key, json.dumps(saved, ensure_ascii=False))
             if confirmed:
+                await rework.record_removed(db, saved, now)
                 await db.delete(post.id)
                 log.info('Zero-reaction removal confirmed local_post=%s', post.id)
             return

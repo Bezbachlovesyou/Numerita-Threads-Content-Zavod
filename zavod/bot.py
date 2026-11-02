@@ -29,7 +29,7 @@ from . import autoreply
 from . import text_mode
 from . import lang
 from .optimizer import optimize
-from . import art, attribution, physics, postmatrix, costs, constraint, funnel, profit, reminders, performance, approved_post, zero_research, api_budget, tgchannel, brandvideo, instagram, sketch, zero_cleanup
+from . import art, attribution, rework, physics, postmatrix, costs, constraint, funnel, profit, reminders, performance, approved_post, zero_research, api_budget, tgchannel, brandvideo, instagram, sketch, zero_cleanup
 from .config import Config
 from .generator import GenerationError, Generator
 from .storage import PgStorage, Post, Storage
@@ -1560,10 +1560,10 @@ async def post_from_bank(
 # «Второй шанс»: пост без реакций не удаляем (удаления и копии вредят аккаунту), а через несколько часов
 # выпускаем ту же идею заново — короче, с сильнее первой строкой и в другое время. Не чаще раза в 8 часов.
 DEAD_AFTER = timedelta(hours=6)
-RETRY_EVERY = timedelta(hours=8)
+RETRY_EVERY = timedelta(hours=2)
 NO_RETRY = {"script", "video", "grid", "jackpot", "carousel", "one_portrait"}
 RETRY_TOPIC = (
-    "Этот наш пост не собрал ни одного ответа. Напиши на ту же идею НОВЫЙ пост, совсем другими словами:\n"
+    "Этот наш пост не собрал ни одного ответа (его сняли). Напиши на ту же идею НОВЫЙ пост, совсем другими словами и другой подачей: другой жанр, голос и хук (профиль поста ниже), не повторяй форму и ход старого:\n"
     "- первая строка — сильный крючок про конкретных людей («Родился 9, 18 или 27?», «Есть тут…»), до 60 знаков;\n"
     "- всего 2–4 короткие строки, без лекции и длинной истории;\n"
     "- в конце вопрос, на который легко ответить одним словом или числом.\n"
@@ -1572,7 +1572,10 @@ RETRY_TOPIC = (
 
 
 async def find_dead_post(db: Storage, now: datetime, skip: set[str] = frozenset()) -> dict | None:
-    """Пост, на который за 6+ часов никто не ответил, — кандидат на «второй шанс»."""
+    """Пост, на который за 6+ часов никто не ответил, — кандидат на «второй шанс». Сначала — снятые чисткой (rework.py: очередь, 2 ч между, до 6 в сутки)."""
+    queued = await rework.next_candidate(db, now, skip | NO_RETRY)
+    if queued:
+        return queued
     last = await db.kv_get("last_retry")
     if last and now - datetime.fromisoformat(last) < RETRY_EVERY:
         return None
@@ -1710,7 +1713,7 @@ async def post_next(
         profile = None
         if slot.rubric.key.startswith("text_") and text_mode.enabled():  # профиль поста: 146 чередующихся параметров (postmatrix.py)
             code = "en" if lang.is_en() else "ru"
-            profile = await postmatrix.pick(db, code, slot.rubric.key, rng)
+            profile = await postmatrix.pick(db, code, slot.rubric.key, rng, {"avoid": (dead or {}).get("profile") or {}})
             extra = ""
             if profile.get("genre") == "physics" and (slot.card_number or "").isdigit():
                 extra = physics.fact_for(int(slot.card_number), rng)  # проверенный факт для жанра «физика и образ»
@@ -1724,6 +1727,8 @@ async def post_next(
             retried = json.loads(await db.kv_get("retried_posts") or "[]")
             await db.kv_set("retried_posts", json.dumps((retried + [dead["id"]])[-200:]))
             await db.kv_set("last_retry", now.isoformat())
+            if dead.get("queued"):
+                await rework.mark_done(db, dead["id"], now)
             slot = replace(slot, topic=RETRY_TOPIC.format(old=dead["text"]) + "\n\nИсходное задание рубрики: " + slot.topic)
             log.info("Второй шанс для поста #%s", dead["id"])
         if slot.rubric.key == "jackpot" and await post_from_bank(cfg, db, threads, bot, plan, slot, rng, generator):

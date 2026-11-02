@@ -234,6 +234,8 @@ def sample(rng: random.Random, lang: str, rubric_key: str, recent: list[dict], w
         if allowed:
             options = [o for o in options if o in allowed] or options
         options = [o for o in options if flags.get("real_story") or (name, o) not in REAL_ONLY]
+        failed = (flags.get("avoid") or {}).get(name)  # профиль снятого поста: его значение не повторяем, пока есть из чего выбирать
+        options = [o for o in options if o != failed] or options
         window = [r.get(name) for r in recent[:AVOID.get(name, 2)]]
         fresh = [o for o in options if o not in window or (name, o) == ("visual", "none")]  # недавние значения исключаем, пока есть из чего выбирать
         options = fresh or options
@@ -282,20 +284,33 @@ async def record(db, post_id: int, profile: dict) -> None:
 
 async def learn(db, now: datetime, days: int = 14, min_posts: int = 3) -> dict:
     """Выучить веса значений: среднее «комментарии + 0,2·лайки» поста с этим значением против среднего по всем постам с профилем.
-    Вес в пределах 0,5–2,0 (среднее по значению / среднее по всем постам), только при достаточной выборке; одно значение не выключает ось."""
-    rows = []
+    Снятые посты (rework.py) считаются постами с нулевой реакцией — иначе слабое незаметно. Вес в пределах 0,3–2,0; значение, у которого
+    80%+ постов пустые (до 2 лайков, без комментариев) при 5+ постах, почти уходит из выдачи (0,1): слово владельца 02.11.2026 «убрать то, что не стреляет»."""
+    from . import rework
+    rows = []  # (профиль, очки, пустой ли)
     for p in await db.engagement(now - timedelta(days=days)):
         raw = await db.kv_get(f"pm:post:{p['id']}")
         if raw:
-            rows.append((json.loads(raw), int(p["comments"] or 0) + 0.2 * int(p["likes"] or 0)))
+            comments, likes = int(p["comments"] or 0), int(p["likes"] or 0)
+            rows.append((json.loads(raw), comments + 0.2 * likes, comments == 0 and likes <= 2))
+    for r in await rework.removed_rows(db, now - timedelta(days=days)):
+        if r["profile"]:
+            rows.append((r["profile"], 0.0, True))
     if len(rows) < 8:
         return {}
-    mean = (sum(s for _, s in rows) / len(rows)) or 0.5
-    stats: dict[str, list[float]] = {}
-    for prof, s in rows:
+    mean = (sum(s for _, s, _ in rows) / len(rows)) or 0.5
+    stats: dict[str, list[tuple[float, bool]]] = {}
+    for prof, s, empty in rows:
         for name, vid in prof.items():
-            stats.setdefault(f"{name}:{vid}", []).append(s)
-    learned = {k: round(max(0.5, min(2.0, (sum(v) / len(v)) / mean)), 2) for k, v in stats.items() if len(v) >= min_posts}
+            stats.setdefault(f"{name}:{vid}", []).append((s, empty))
+    learned = {}
+    for k, v in stats.items():
+        if len(v) < min_posts:
+            continue
+        w = round(max(0.3, min(2.0, (sum(s for s, _ in v) / len(v)) / mean)), 2)
+        if len(v) >= rework.ZERO_MIN_POSTS and sum(1 for _, e in v if e) / len(v) >= rework.ZERO_RATE:
+            w = 0.1
+        learned[k] = w
     await db.kv_set("pm:weights", json.dumps(learned))
     return learned
 

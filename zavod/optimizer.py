@@ -158,7 +158,9 @@ async def optimize(
     if threads is not None:
         await refresh_metrics(db, threads, now)
     rows = await performance.comparable(db, now - WINDOW)
-    scores = score_rubrics([r for r in rows if r["rubric"] != "script"])
+    from . import rework
+    removed = await rework.removed_rows(db, now - WINDOW)  # снятые без реакции — тоже посты, иначе слабые рубрики кажутся сильными
+    scores = score_rubrics([r for r in rows + removed if r["rubric"] != "script"])
     by_key = {r.key: r for r in plan.all_rubrics()}
     ranked = sorted(((k, v) for k, v in scores.items() if k in by_key), key=lambda item: -item[1][1])
     name = lambda key: rubric_name(key, plan)  # noqa: E731

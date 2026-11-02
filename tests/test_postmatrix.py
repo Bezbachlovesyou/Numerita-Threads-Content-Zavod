@@ -127,7 +127,8 @@ class WithDb(unittest.IsolatedAsyncioTestCase):
         learned = await P.learn(self.db, NOW)
         self.assertGreater(learned["genre:guess"], 1.0)
         self.assertLess(learned["genre:monolog"], 1.0)
-        self.assertTrue(0.5 <= learned["genre:monolog"] <= learned["genre:guess"] <= 2.0)
+        self.assertEqual(learned["genre:monolog"], 0.1)  # 6 постов из 6 пустые — почти уходит из выдачи (слово владельца 02.11)
+        self.assertTrue(0.1 <= learned["genre:monolog"] <= learned["genre:guess"] <= 2.0)
         lines = "\n".join(await P.stats_lines(self.db, NOW))
         self.assertIn("лучше: genre — угадай", lines)
 
