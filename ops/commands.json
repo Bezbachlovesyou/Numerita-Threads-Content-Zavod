@@ -518,5 +518,9 @@
   "action": "ig_carousel",
   "set": "goals",
   "publish": true
+ },
+ {
+  "id": "accounts-check-2026-11-02",
+  "action": "accounts_check"
  }
 ]
