@@ -29,7 +29,7 @@ from . import autoreply
 from . import text_mode
 from . import lang
 from .optimizer import optimize
-from . import art, attribution, pairweek, rework, series, physics, postmatrix, costs, constraint, funnel, profit, reminders, performance, approved_post, zero_research, api_budget, tgchannel, brandvideo, instagram, sketch, zero_cleanup
+from . import art, attribution, fromcomments, pairweek, rework, series, physics, postmatrix, costs, constraint, funnel, profit, reminders, performance, approved_post, zero_research, api_budget, tgchannel, brandvideo, instagram, sketch, zero_cleanup
 from .config import Config
 from .generator import GenerationError, Generator
 from .storage import PgStorage, Post, Storage
@@ -1728,6 +1728,8 @@ async def post_next(
                 rubric = plan.effective(grid_rubric)
         # Рубрики со ссылкой не повторяем: у ссылок свои лимиты (prompts/threads_rules.md).
         dead = await find_dead_post(db, now, {r.key for r in plan.all_rubrics() if r.cta == "link"})
+        if not dead and text_mode.enabled():  # нет слабого — развиваем удачное (rework.scan_hits): другой угол и формат на ту же идею
+            dead = await rework.next_hit(db, now, {r.key for r in plan.all_rubrics() if r.cta == "link"} | NO_RETRY)
         if dead:
             original = {r.key: r for r in plan.all_rubrics()}.get(dead["rubric"])
             if original is None or original.cta == "link" or (text_mode.enabled() and not text_mode.allowed(original)):
@@ -1741,6 +1743,9 @@ async def post_next(
         pair_rubric = next((r for r in plan.all_rubrics() if r.key == "text_pair_week"), None)  # «Пара недели»: раз в неделю в дневное окно, со ссылкой не чаще раза в двое суток
         if pair_rubric and not dead and text_mode.enabled() and await pairweek.due(db, now) and await attribution.link_post_allowed(db, now):
             rubric = plan.effective(pair_rubric)
+        comments_rubric = next((r for r in plan.all_rubrics() if r.key == "text_from_comments"), None)  # темы из комментариев читателей, раз в сутки днём
+        if comments_rubric and not dead and rubric.key != "text_pair_week" and text_mode.enabled() and await fromcomments.due(db, now):
+            rubric = plan.effective(comments_rubric)
         daily = next((r for r in plan.all_rubrics() if r.key == "text_daily"), None)
         if daily and not dead and not en_grid_first and rubric.key != "grid" and "text_daily" not in recent[:2]:
             rubric = daily  # 30.10 слово владельца: каждый третий пост — бытовой и простой
@@ -1751,6 +1756,8 @@ async def post_next(
             await db.kv_set("list:fmt", str(n + 1))
             rubric = have[keys[n % len(keys)]]
         slot = plan.render(rubric, now, rng)
+        if "[[COMMENTS]]" in slot.topic:  # настоящие недавние комментарии (без имён и ссылок)
+            slot = replace(slot, topic=slot.topic.replace("[[COMMENTS]]", await fromcomments.take(db, now)))
         if "[[PAIR]]" in slot.topic:  # данные пары недели посчитаны кодом (pairweek.py)
             week_pair = await pairweek.take(db, now, lang.is_en())
             slot = replace(slot, topic=slot.topic.replace("[[PAIR]]", pairweek.block(week_pair, lang.is_en())))
@@ -1784,7 +1791,9 @@ async def post_next(
             await db.kv_set("last_retry", now.isoformat())
             if dead.get("queued"):
                 await rework.mark_done(db, dead["id"], now)
-            slot = replace(slot, topic=RETRY_TOPIC.format(old=dead["text"]) + "\n\nИсходное задание рубрики: " + slot.topic)
+            if dead.get("hit"):
+                await rework.mark_hit_done(db, dead["id"], now)
+            slot = replace(slot, topic=(rework.HIT_TOPIC if dead.get("hit") else RETRY_TOPIC).format(old=dead["text"]) + "\n\nИсходное задание рубрики: " + slot.topic)
             log.info("Второй шанс для поста #%s", dead["id"])
         if slot.rubric.key == "jackpot" and await post_from_bank(cfg, db, threads, bot, plan, slot, rng, generator):
             return True
@@ -2753,6 +2762,7 @@ async def run_scheduler(
                 await performance.collect(db, threads, now)
                 await zero_cleanup.tick(db, threads, now)
                 await retire_banned(db, threads, bot, cfg, now)
+                await rework.scan_hits(db, now)
             except Exception:
                 log.exception("Post performance collection failed")
             try:
