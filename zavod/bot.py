@@ -416,6 +416,14 @@ NOTES_ENABLED = False  # слово владельца 02.11.2026: «объяс�
 BANNED_FORMAT = re.compile(r"^\W*(объяснительная|жалоба|заявление|расписка|претензия|характеристика|записка от|explanatory note|letter of explanation|complaint from|statement from|memo from)", re.I)
 
 
+COMPAT_PERCENT = re.compile(r"(совместим\w*|compatib\w*)[^.\n]{0,60}\d{1,3}\s?%|\d{1,3}\s?%[^.\n]{0,40}(совместим|compatib)", re.I)
+
+
+def has_compat_percent(text: str) -> bool:
+    """Слово владельца 03.11.2026: проценты совместимости не рисуем нигде — совместимость образ, а не измерение."""
+    return bool(COMPAT_PERCENT.search(text or ""))
+
+
 def banned_format(text: str) -> bool:
     """Первая строка поста — «Объяснительная от шестёрки», «Жалоба от…» и подобное: формат снят по слову владельца 02.11.2026."""
     first = next((line for line in (text or "").splitlines() if line.strip()), "")
@@ -1852,6 +1860,9 @@ async def post_next(
             # каркас атрибуции: у рубрики мало меченых постов — ссылка с меткой первым комментарием (измерение; польза поста та же)
             first_comment = first_comment_for(slot, f"{slot.tag}_lc")
             link_mode = link_mode or "comment"
+        if has_compat_percent(text):  # 03.11: никаких процентов совместимости — пост не выходит
+            log.info("Проценты совместимости в тексте — пост отброшен")
+            return False
         if banned_format(text):  # снятый формат (02.11): пост не выходит, слот возьмёт другой
             log.info("Формат «объяснительная» снят по слову владельца — пост отброшен")
             return False

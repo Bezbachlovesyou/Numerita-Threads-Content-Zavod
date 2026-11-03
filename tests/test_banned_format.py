@@ -72,3 +72,11 @@ class Banned(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CompatPercent(unittest.TestCase):
+    def test_percent_of_compatibility_is_caught(self):
+        for text in ("Совместимость — 82%: высокая", "Совместимость пары 82 %", "Compatibility: 82%", "82% совместимости"):
+            self.assertTrue(B.has_compat_percent(text), text)
+        for text in ("Совместимость в процентах не измерить", "Скидка 20% на всё", "Это образ двух чисел"):
+            self.assertFalse(B.has_compat_percent(text), text)
