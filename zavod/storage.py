@@ -525,8 +525,9 @@ class PgStorage(Storage):
     SQL общий с SQLite: плейсхолдеры `?` переводятся в `$1, $2, …`.
     """
 
-    def __init__(self, dsn: str):
+    def __init__(self, dsn: str, schema: str | None = None):
         self.dsn = dsn
+        self.schema = schema  # явная схема (русский процесс открывает «en» для передачи запросов английскому); иначе из DB_SCHEMA
         self.pool: asyncpg.Pool | None = None
 
     @staticmethod
@@ -537,7 +538,7 @@ class PgStorage(Storage):
     async def init(self) -> None:
         import os
         import re as _re
-        schema = os.getenv("DB_SCHEMA", "").strip()  # английский аккаунт живёт в той же базе, в своей схеме
+        schema = (self.schema if self.schema is not None else os.getenv("DB_SCHEMA", "")).strip()  # английский аккаунт живёт в той же базе, в своей схеме
         if schema and _re.fullmatch(r"[a-z_][a-z0-9_]{0,30}", schema):
             conn = await asyncpg.connect(self.dsn)
             try:

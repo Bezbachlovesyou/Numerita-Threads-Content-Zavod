@@ -132,6 +132,12 @@ class PostAction(CallbackData, prefix="post"):
     post_id: int
 
 
+class EnPostAction(CallbackData, prefix="enpost"):
+    """Кнопки под английским постом: нажатие принимает русский процесс (он читает Telegram) и передаёт английскому заводу через его схему «en»."""
+    action: str  # publish | in1h | tomorrow | redo | delete
+    post_id: int
+
+
 def post_card(post: Post, cfg: Config) -> str:
     header = f"{STATUS_LABELS[post.status]} #{post.id}"
     if post.status == "scheduled" and post.scheduled_at:
@@ -190,20 +196,21 @@ def format_account_stats(payload: dict) -> str:
     return "\n".join(lines)
 
 
-def post_keyboard(post: Post):
+def post_keyboard(post: Post, action_cls=PostAction):
     kb = InlineKeyboardBuilder()
 
     def button(text: str, action: str) -> None:
-        kb.button(text=text, callback_data=PostAction(action=action, post_id=post.id))
+        kb.button(text=text, callback_data=action_cls(action=action, post_id=post.id))
 
     if post.status in ("draft", "failed"):
         button("✅ Опубликовать", "publish")
         button("🕒 Через час", "in1h")
         button("🕒 Завтра 10:00", "tomorrow")
         button("🔄 Переписать", "redo")
-    if post.status == "published" and post.threads_id:
-        button("📊 Статистика", "stats")
-    button("🔊 Озвучить", "voice")
+    if action_cls is PostAction:  # у английского поста статистики и озвучки в кнопках нет
+        if post.status == "published" and post.threads_id:
+            button("📊 Статистика", "stats")
+        button("🔊 Озвучить", "voice")
     if post.status in ("draft", "failed", "scheduled"):
         button("🗑 Удалить", "delete")
     kb.adjust(1, 2, 2, 1)
@@ -455,6 +462,85 @@ async def retire_banned(db: Storage, threads: ThreadsClient, bot: Bot, cfg: Conf
             await notify_admins(bot, cfg, f"🗑 Снят пост #{post.id} («{post.text.strip().splitlines()[0][:70]}») — формат-объяснительная без реакции. Статус площадки: {status}.")
         else:
             await notify_admins(bot, cfg, f"⚠️ Пост #{post.id} не снялся: Threads всё ещё показывает «{status}». Пробую ещё.")
+
+
+def is_english_text(text: str) -> bool:
+    """Слово владельца 03.11.2026: написал по-английски — пост по-английски в английский Threads; по-русски — по-русски. Латиница есть, кириллицы нет."""
+    return bool(re.search(r"[A-Za-z]", text or "")) and not lang.has_cyrillic(text)
+
+
+_EN_STORE: Storage | None = None
+
+
+async def en_store(cfg: Config) -> Storage | None:
+    """Хранилище английского завода (схема «en» в общей базе Postgres) — только в русском процессе; без Postgres передать запрос нельзя."""
+    global _EN_STORE
+    if lang.is_en() or not cfg.database_url:
+        return None
+    if _EN_STORE is None:
+        store = PgStorage(cfg.database_url, schema="en")
+        await store.init()
+        _EN_STORE = store
+    return _EN_STORE
+
+
+async def en_queue_push(en_db: Storage, key: str, item: dict) -> None:
+    items = json.loads(await en_db.kv_get(key) or "[]")
+    await en_db.kv_set(key, json.dumps((items + [item])[-30:], ensure_ascii=False))
+
+
+async def en_queue_pop(db: Storage, key: str) -> list[dict]:
+    items = json.loads(await db.kv_get(key) or "[]")
+    if items:
+        await db.kv_set(key, "[]")
+    return items
+
+
+async def en_owner_tick(bot: Bot, cfg: Config, db: Storage, threads: ThreadsClient | None, generator: Generator) -> None:
+    """Английский завод: принимает слово владельца из очереди (owner:inbox), пишет английский пост и присылает с кнопками; исполняет нажатия (owner:actions)."""
+    for req in await en_queue_pop(db, "owner:inbox"):
+        try:
+            text = await generator.write_post(req["topic"])
+        except GenerationError as e:
+            await bot.send_message(req["chat_id"], f"[EN] ❌ {e}")
+            continue
+        post = await db.get(await db.add_draft(req["topic"], text))
+        await bot.send_message(req["chat_id"], "[EN] " + post_card(post, cfg), reply_markup=post_keyboard(post, EnPostAction))
+    for act in await en_queue_pop(db, "owner:actions"):
+        post = await db.get(act["post_id"])
+        chat, msg = act["chat_id"], act.get("message_id")
+        if post is None or post.status == "deleted":
+            await bot.send_message(chat, "[EN] Пост не найден или удалён.")
+            continue
+        action = act["action"]
+        try:
+            if action == "publish":
+                since = datetime.now(timezone.utc)
+                post = await publish(post, db, threads, bot, "", cfg.cards)
+                if post.status != "failed" and threads is not None:
+                    asyncio.create_task(post_receipt(bot, cfg, db, threads, since))  # «вышло» — по квитанции площадки
+            elif action in ("in1h", "tomorrow"):
+                now = datetime.now(cfg.timezone)
+                when = now + timedelta(hours=1) if action == "in1h" else datetime.combine(now.date() + timedelta(days=1), time(10, 0), cfg.timezone)
+                await db.schedule(post.id, when)
+                post = await db.get(post.id)
+            elif action == "redo":
+                await db.update_text(post.id, await generator.write_post(post.topic, previous=post.text))
+                post = await db.get(post.id)
+            elif action == "delete":
+                await db.delete(post.id)
+                post = await db.get(post.id)
+        except (GenerationError, ThreadsError) as e:
+            await bot.send_message(chat, f"[EN] ❌ {e}")
+            continue
+        card = "[EN] " + post_card(post, cfg)
+        try:
+            if msg:
+                await bot.edit_message_text(card, chat_id=chat, message_id=msg, reply_markup=post_keyboard(post, EnPostAction))
+            else:
+                await bot.send_message(chat, card, reply_markup=post_keyboard(post, EnPostAction))
+        except TelegramAPIError:
+            await bot.send_message(chat, card, reply_markup=post_keyboard(post, EnPostAction))
 
 
 MANUAL_TEST_UNTIL = datetime(2026, 11, 10, 23, 59)  # слово владельца 03.11.2026: неделя теста «руками против Zernio» (русский и английский аккаунты), потом сравниваем охват
@@ -1300,10 +1386,26 @@ def create_router(cfg: Config, plan: ContentPlan) -> Router:
         if forced:
             await new_post(message, text[forced.end():].strip(), db, generator)
             return
+        if is_english_text(text) and not forced:  # английское слово — английский пост в английский Threads (через английский завод)
+            en_db = await en_store(cfg)
+            if en_db is not None:
+                await en_queue_push(en_db, "owner:inbox", {"topic": text, "chat_id": message.chat.id})
+                await message.answer("🇬🇧 Принял: английский завод пишет пост в numerita.love, пришлёт с кнопками (≈1 минута).")
+                return
         if is_owner_question(text):  # вопрос владельца о заводе — ответ, а не пост (замечание 29.10.2026)
             await message.answer(await answer_owner(text, db, generator))
             return
         await new_post(message, text, db, generator)
+
+    @router.callback_query(EnPostAction.filter())
+    async def on_en_action(callback: CallbackQuery, callback_data: EnPostAction) -> None:
+        en_db = await en_store(cfg)
+        if en_db is None:
+            await callback.answer("Английский завод недоступен (нет общей базы).", show_alert=True)
+            return
+        await en_queue_push(en_db, "owner:actions", {"action": callback_data.action, "post_id": callback_data.post_id,
+                                                      "chat_id": callback.message.chat.id, "message_id": callback.message.message_id})
+        await callback.answer("🇬🇧 Передал английскому заводу…")
 
     @router.callback_query(PostAction.filter())
     async def on_action(
@@ -2788,6 +2890,11 @@ async def run_scheduler(
         except Exception:
             log.exception("Scheduler iteration failed")
         now = datetime.now(cfg.timezone)
+        if lang.is_en():
+            try:  # слова владельца с английского: пост, кнопки (передаёт русский процесс)
+                await en_owner_tick(bot, cfg, db, threads, generator)
+            except Exception:
+                log.exception("Очередь владельца в английском заводе не сработала")
         if threads is not None:
             try:
                 await performance.collect(db, threads, now)
