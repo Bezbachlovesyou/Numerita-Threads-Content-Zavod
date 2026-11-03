@@ -42,3 +42,14 @@ class ReplyTo(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Diagnostics(ReplyTo):
+    async def test_not_found_says_what_was_seen(self):
+        await B.reply_to_comment(self.db, self.t, self.bot, self.cfg, "nobody", "жалпы", "Привет")
+        self.assertTrue(any("постов с комментариями: 1" in n and "комментариев: 2" in n for n in self.notes))
+
+    async def test_author_missing_in_zernio_answer_falls_back_to_unique_text(self):
+        self.t.comments = AsyncMock(return_value=[{"id": "c9", "message": "Не дедің жалпы", "from": {}}])
+        await B.reply_to_comment(self.db, self.t, self.bot, self.cfg, "abdrakhman1414", "жалпы", "Давайте проще")
+        self.t.reply.assert_awaited_once_with("zp1", "c9", "Давайте проще")
