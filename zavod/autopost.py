@@ -103,7 +103,7 @@ def strip_credits(text: str) -> str:
 # Слово владельца 03.11.2026 (аудитория Threads: Dating Threads 269, психология 178, Book Threads 221, AI Threads 161): пост уходит в ленты этих тем.
 # Данные Threads 03.11.2026: «сценки», «протоколы», «суд», ситкомы дают 4–60 просмотров и нули лайков — почти не выпускаем (×0,15), остальные форматы держат охват.
 SUPPRESSED = {"text_court", "text_protocol", "text_chat", "text_office", "text_venus", "text_tag_family", "text_review", "text_choices"}
-DATING_RUBRICS = {"text_loves", "text_marriage", "text_marry", "text_heaven_pairs", "text_pair", "text_pair_week", "text_tag_pair", "text_seek", "love", "pair", "ex"}
+DATING_RUBRICS = {"text_loves", "text_marriage", "text_marry", "text_heaven_pairs", "text_pair", "text_pair_week", "text_tag_pair", "love", "pair", "ex"}  # только настоящие рубрики про любовь и пары: «Ищу тех, кто родился…» (text_seek) — продажа, не про отношения (03.11)
 PSYCH_RUBRICS = {"text_lessons", "text_fears", "text_reaction", "text_outgrow", "text_success", "text_levels", "text_gifts", "text_battery", "text_roles", "text_avoid", "text_great", "text_unknown"}
 
 
@@ -172,7 +172,7 @@ def load_rubrics(path: Path) -> list[Rubric]:
 
 
 # Новые форматы по слову владельца — чаще, пока оптимизатор не наберёт по ним данных.
-BOOST = {"text_baza": 2.5, "text_rollcall": 2.5, "text_one_digit": 2.0, "text_howto": 1.5, "text_myth": 2.0, "text_insight": 1.5, "text_who_told": 2.5, "text_heaven_pairs": 3.0, "text_what_next": 2.0, "text_tag_pair": 2.0, "text_hype": 3.0, "text_secrets": 3.0, "text_marry": 3.0, "text_celeb": 4.0, "text_aroma": 2.5, "text_roles": 2.5, "text_avoid": 2.5, "text_sunrise": 4.5, "text_seek": 4.0, "text_physics": 3.0, "text_year": 4.0, "text_fears": 3.0, "text_reaction": 3.0, "text_lessons": 3.0, "text_free": 30.0, "text_pair": 4.0, "text_unknown": 3.0, "text_battery": 2.5, "text_outgrow": 2.5, "text_marriage": 2.5, "text_loves": 2.5, "text_gifts": 2.5, "text_eras": 2.5, "text_success": 2.5, "text_wealth": 2.5, "text_levels": 2.5, "grid": 8.0, "text_great": 2.0, "text_science": 2.0, "text_dna": 1.5, "text_sky": 1.5}  # не чаще раза в день — следит post_next
+BOOST = {"text_baza": 2.5, "text_rollcall": 2.5, "text_one_digit": 2.0, "text_howto": 1.5, "text_myth": 2.0, "text_insight": 1.5, "text_who_told": 2.5, "text_heaven_pairs": 3.0, "text_what_next": 2.0, "text_tag_pair": 2.0, "text_hype": 3.0, "text_secrets": 3.0, "text_marry": 3.0, "text_celeb": 4.0, "text_aroma": 2.5, "text_roles": 2.5, "text_avoid": 2.5, "text_sunrise": 4.5, "text_seek": 4.0, "text_physics": 3.0, "text_year": 4.0, "text_fears": 3.0, "text_reaction": 3.0, "text_lessons": 3.0, "text_free": 30.0, "text_pair": 4.0, "text_unknown": 3.0, "text_battery": 2.5, "text_outgrow": 2.5, "text_marriage": 4.0, "text_loves": 2.5, "text_gifts": 2.5, "text_eras": 2.5, "text_success": 2.5, "text_wealth": 2.5, "text_levels": 2.5, "grid": 8.0, "text_great": 2.0, "text_science": 2.0, "text_dna": 1.5, "text_sky": 1.5}  # не чаще раза в день — следит post_next
 
 
 class ContentPlan:
