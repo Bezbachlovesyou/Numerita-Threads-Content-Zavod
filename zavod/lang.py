@@ -51,3 +51,29 @@ def public_rule(kind: str) -> str:
 
 def has_cyrillic(text: str | None) -> bool:
     return bool(text) and bool(CYRILLIC.search(text))
+
+
+# Слово владельца 03.11.2026: комментатору из Казахстана, Украины, Беларуси приятно получить ответ на его языке. Определяем по буквам, которых нет в русском.
+LOCAL_LANGS = (
+    ("казахском", re.compile(r"[әғқңөұүһӘҒҚҢӨҰҮҺ]|(?<!\w)(?:жалпы|рахмет|сәлем|қайырлы|мен|сен|бар|жоқ|иә)(?!\w)", re.I)),
+    ("белорусском", re.compile(r"[ўЎ]|(?<!\w)(?:дзякуй|прывітанне|вельмі|гэта|што|ёсць)(?!\w)", re.I)),
+    ("украинском", re.compile(r"[їєґЇЄҐ]|(?<!\w)(?:дякую|привіт|будь ласка|дуже|це|що|який)(?!\w)", re.I)),
+)
+
+
+def local_language(comment: str | None) -> str | None:
+    """«казахском» / «белорусском» / «украинском» — если комментарий явно на одном из этих языков (русскому аккаунту), иначе None."""
+    if is_en() or not comment:
+        return None
+    for name, rx in LOCAL_LANGS:
+        if rx.search(comment):
+            return name
+    return None
+
+
+def local_language_rule(comment: str | None) -> str:
+    name = local_language(comment)
+    if not name:
+        return ""
+    return (f"\n\nЯЗЫК ОТВЕТА: человек написал на {name} языке — ответь ему на {name} языке, правильно и тепло (носитель не должен морщиться); "
+            "числа, имя и смысл те же, русских слов в ответе не оставляй. Если сомневаешься в слове — проще и короче, но на его языке.")

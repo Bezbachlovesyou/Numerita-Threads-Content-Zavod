@@ -9,6 +9,7 @@ from pathlib import Path
 
 import httpx
 
+from . import lang
 from .codereply import numbers_note
 from .knowledge import KnowledgeBase
 
@@ -159,6 +160,7 @@ class Generator:
             numbers_note(comment)  # числа уже посчитаны кодом (слово владельца 25.10.2026)
             + f"Наш пост:\n{post}\n\nКомментарий от @{author}:\n{comment}\n\n"
             + "Сам не пиши никаких ссылок, адресов и @упоминаний. " + endings[mode]
+            + lang.local_language_rule(comment)  # ответ на языке комментатора (казахский, украинский, белорусский)
         )
         if careful:  # прошлый вариант задел фильтр Threads (самоповреждение, РПП, мат)
             prompt += ("\n\nПерепиши бережно: не повторяй мат и ругательства собеседника даже с многоточием, не пиши "
