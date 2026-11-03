@@ -161,3 +161,19 @@ class ReelCaption(unittest.TestCase):
         self.assertIn("#numerology", en)
         self.assertFalse(re.search("[А-Яа-яЁё]", en))
         self.assertEqual(ru, ru.strip())
+
+
+class HashtagLimit(unittest.TestCase):
+    def test_no_caption_has_more_than_five_hashtags(self):
+        from zavod import instagram, welcome
+        for key in C.SETS:
+            for code in ("ru", "en"):
+                self.assertLessEqual(len(re.findall(r"#\w+", C.caption(key, code))), 5, (key, code))
+        for k in welcome.ORDER:
+            for code in ("ru", "en"):
+                self.assertEqual(len(re.findall(r"#\w+", instagram.reel_caption(welcome.CLIPS[k]["post"][code], code))), 5)
+
+    def test_limit_keeps_first_five_and_text(self):
+        from zavod import instagram
+        out = instagram.limit_hashtags("Текст\n\n#a #b #c #d #e #f #g")
+        self.assertEqual(out, "Текст\n\n#a #b #c #d #e")

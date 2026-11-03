@@ -376,4 +376,5 @@ def render_set(set_key: str, lang: str) -> list[bytes]:
 
 
 def caption(set_key: str, lang: str) -> str:
-    return SETS[set_key][lang]["caption"]
+    from .instagram import limit_hashtags  # Instagram принимает не больше 5 хэштегов (03.11.2026)
+    return limit_hashtags(SETS[set_key][lang]["caption"])

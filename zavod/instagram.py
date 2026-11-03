@@ -25,8 +25,21 @@ MIN_AGE, MAX_AGE = timedelta(hours=3), timedelta(hours=72)
 MIN_SCORE = 3
 BIO_LINK = "t.me/Numeritabot?start=ad_ig_bio"  # её владелец ставит в шапку профиля Instagram
 TAGS = "#нумерология #числосудьбы #астрология #нумерита #саморазвитие"
-TAGS_BY_LANG = {"ru": "#нумерология #числосудьбы #деньрождения #астрология #нумерита #саморазвитие",
-                "en": "#numerology #lifepathnumber #birthday #astrology #numerita #selfgrowth"}
+MAX_HASHTAGS = 5  # слово владельца 03.11.2026: Instagram принимает не больше 5 хэштегов, лишние не проходят (в подписи остаются обычными словами)
+TAGS_BY_LANG = {"ru": "#нумерология #числосудьбы #деньрождения #астрология #нумерита",
+                "en": "#numerology #lifepathnumber #birthday #astrology #numerita"}
+
+
+def limit_hashtags(text: str, n: int = MAX_HASHTAGS) -> str:
+    """Оставить в подписи не больше n хэштегов (первые n); лишние убираем целиком, чтобы не висели «голыми словами»."""
+    import re
+    seen = [0]
+
+    def keep(m):
+        seen[0] += 1
+        return m.group(0) if seen[0] <= n else ""
+    out = re.sub(r"#\w+", keep, text)
+    return re.sub(r"[ \t]+\n", "\n", re.sub(r"[ \t]{2,}", " ", out)).strip()
 CTA = "✨ Твой разбор по дате рождения за 10 секунд — ссылка в шапке профиля @numerita.ai"
 
 
@@ -95,7 +108,7 @@ def reel_caption(text: str, code: str) -> str:
     import re
     text = re.sub(r"\n*t\.me/\S+", "", text).strip()
     tail = "Ссылка — в шапке профиля ✨" if code == "ru" else "Link in bio ✨"
-    return f"{text}\n\n{tail}\n\n{TAGS_BY_LANG[code]}".strip()[:2200]
+    return limit_hashtags(f"{text}\n\n{tail}\n\n{TAGS_BY_LANG[code]}")[:2200]
 
 
 async def post_video(client, account: str, url: str, text: str) -> tuple[str, str | None]:
@@ -148,7 +161,7 @@ def caption(post) -> str:
     from .bot import LINK_LINE
     text = tgchannel.no_grid_word(strip_credits(post.text))
     text = "\n".join(line.rstrip() for line in LINK_LINE.sub("", text).splitlines()).strip()
-    return f"{text}\n\n{CTA}\n\n{TAGS}"[:2200]
+    return limit_hashtags(f"{text}\n\n{CTA}\n\n{TAGS}")[:2200]
 
 
 def image(post) -> bytes:
