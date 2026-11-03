@@ -1707,7 +1707,7 @@ async def post_next(
             queued = await sharpen_script(db, generator, queued)
         post = await publish(queued, db, threads, bot, "", cfg.cards)
     else:
-        rubric = plan.choose(recent, rng, now)
+        rubric = plan.choose(recent, rng, None if lang.is_en() else now)  # окна серий — по статистике русского аккаунта; для английского окна ещё не изучены
         if en_grid_first:
             rubric = next((r for r in plan.all_rubrics() if r.key == "grid"), rubric)
             await db.kv_set("en:first_grid", "1")
@@ -1734,7 +1734,7 @@ async def post_next(
                 dead = None
             else:
                 rubric = plan.effective(original)
-        series_row = await series.due(db, now) if text_mode.enabled() and not dead else None  # серия окна: чт и вс вечером/утром
+        series_row = await series.due(db, now) if text_mode.enabled() and not dead and not lang.is_en() else None  # серия окна: чт и вс вечером/утром
         if series_row and (series_rubric := next((r for r in plan.all_rubrics() if r.key == series_row[2]), None)):
             rubric = plan.effective(series_rubric)
             await series.mark(db, now, series_row[2])
