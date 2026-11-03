@@ -2404,6 +2404,38 @@ async def op_ready(cmd: dict, db: Storage, cfg: Config) -> bool:
     return last is None or now - last >= min_gap(now)
 
 
+async def reply_to_comment(db: Storage, threads: ThreadsClient, bot: Bot, cfg: Config, author: str, fragment: str, text: str, tag: str = "") -> None:
+    """Ответ владельца на конкретный комментарий (пульт reply_to): ищем комментарий по автору и куску текста под нашими постами за 5 суток, отвечаем через Zernio,
+    «ответил» пишем только по успешному ответу площадки. Каждому комментарию — один ответ (идемпотентно, и бот потом не ответит второй раз)."""
+    author, fragment = author.lower().lstrip("@"), fragment.lower()
+    if lang.is_en() and lang.has_cyrillic(text):
+        await notify_admins(bot, cfg, f"{tag}⚠️ Ответ не отправлен: русские буквы в английском аккаунте.")
+        return
+    since = datetime.now(timezone.utc) - timedelta(days=5)
+    try:
+        posts = await threads.commented_posts(since)
+        for item in posts:
+            post_id = item.get("id") or item.get("_id") or item.get("postId")
+            if not post_id:
+                continue
+            for comment in await threads.comments(post_id, max_pages=3):
+                who = ((comment.get("from") or {}).get("username") or "").lower().lstrip("@")
+                if who == author and fragment in (comment.get("message") or "").lower() and not (comment.get("from") or {}).get("isOwner"):
+                    comment_id = comment.get("id")
+                    if await db.handled_comments([comment_id]):
+                        await notify_admins(bot, cfg, f"{tag}ℹ️ На этот комментарий уже отвечали, второй раз не отвечаю.")
+                        return
+                    await threads.reply(post_id, comment_id, text)
+                    local = next((p for p in await db.recent_published(since) if p.threads_id == post_id), None)
+                    await db.record_comment(comment_id, local.id if local else 0, who, comment.get("message") or "", text, "replied")
+                    await notify_admins(bot, cfg, f"{tag}✅ Ответил на комментарий @{who}: «{(comment.get('message') or '')[:60]}».")
+                    return
+    except ThreadsError as e:
+        await notify_admins(bot, cfg, f"{tag}⚠️ Ответ не отправлен: {e}")
+        return
+    await notify_admins(bot, cfg, f"{tag}⚠️ Комментарий @{author} с «{fragment}» не найден под нашими постами за 5 суток (возможно, Zernio ещё не подтянул его): повторю при следующей команде.")
+
+
 async def run_op(cmd: dict, db: Storage, threads: ThreadsClient | None, bot: Bot, cfg: Config,
                  generator: Generator | None = None) -> None:
     """Одна команда пульта владельца (zavod/ops.py) — и одна строка-квитанция."""
@@ -2458,6 +2490,8 @@ async def run_op(cmd: dict, db: Storage, threads: ThreadsClient | None, bot: Bot
         status, link = await instagram.post_video(threads, account, url, cmd.get("caption", ""))
         await notify_admins(bot, cfg, f"{tag}📸 Instagram: {link}" if status == "published"
                             else f"{tag}⚠️ Instagram ответил «{status}»")
+    elif action == "reply_to" and threads is not None and text and cmd.get("author") and cmd.get("fragment"):
+        await reply_to_comment(db, threads, bot, cfg, str(cmd["author"]), str(cmd["fragment"]), text, tag)
     elif action == "tell":  # длинный текст только владельцу: из команды или из файла knowledge/ (Threads не трогаем, $0)
         body = text or await repo_text(str(cmd.get("file") or ""))
         if not body:
