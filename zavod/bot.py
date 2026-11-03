@@ -457,14 +457,15 @@ async def retire_banned(db: Storage, threads: ThreadsClient, bot: Bot, cfg: Conf
             await notify_admins(bot, cfg, f"⚠️ Пост #{post.id} не снялся: Threads всё ещё показывает «{status}». Пробую ещё.")
 
 
-MANUAL_TEST_UNTIL = datetime(2026, 11, 10, 23, 59)  # слово владельца 03.11.2026: неделя теста «руками против Zernio» (русский аккаунт), потом сравниваем охват
+MANUAL_TEST_UNTIL = datetime(2026, 11, 10, 23, 59)  # слово владельца 03.11.2026: неделя теста «руками против Zernio» (русский и английский аккаунты), потом сравниваем охват
 MANUAL_HOURS = range(18, 23)
 
 
 async def manual_test(db: Storage, bot: Bot, cfg: Config, post, now: datetime) -> bool:
     """Тест «руками против Zernio»: раз в сутки вечером один готовый текст (не матрица) не публикуется программой, а уходит владельцу на ручную публикацию в Threads.
     Остальные посты идут как обычно. Через сутки владелец присылает скриншот статистики — сравниваем просмотры и комментарии (по первой строке поста)."""
-    if lang.is_en() or now.replace(tzinfo=None) > MANUAL_TEST_UNTIL or now.hour not in MANUAL_HOURS:
+    hours = range(15, 23) if lang.is_en() else MANUAL_HOURS  # английскому — окно пошире: его аудитория в других часовых поясах
+    if now.replace(tzinfo=None) > MANUAL_TEST_UNTIL or now.hour not in hours:
         return False
     if not (post.rubric or "").startswith("text_") or not await db.claim_slot(f"manual test {now.date().isoformat()}"):
         return False
@@ -473,7 +474,8 @@ async def manual_test(db: Storage, bot: Bot, cfg: Config, post, now: datetime) -
     log_.append({"date": now.date().isoformat(), "id": post.id, "rubric": post.rubric, "first": first})
     await db.kv_set("manual:log", json.dumps(log_[-30:], ensure_ascii=False))
     extra = f"\n\nПервым комментарием добавьте: {post.first_comment}" if post.first_comment else ""
-    message = (f"✋ Ручной пост для теста #{len(log_)}: опубликуйте в Threads (numerita.ai) руками, ровно этот текст, в ближайший час. "
+    handle = "numerita.love, английский" if lang.is_en() else "numerita.ai"
+    message = (f"{'[EN] ' if lang.is_en() else ''}✋ Ручной пост для теста #{len(log_)}: опубликуйте в Threads ({handle}) руками, ровно этот текст, в ближайший час. "
                f"Через сутки пришлите скриншот статистики поста.{html.escape(extra)}\n\n<pre>{html.escape(post.text)}</pre>")
     for admin_id in cfg.admin_ids:
         try:
