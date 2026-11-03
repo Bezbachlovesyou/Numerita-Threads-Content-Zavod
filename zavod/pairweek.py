@@ -59,7 +59,7 @@ def block(pair: dict, en: bool) -> str:
 
 async def due(db, now: datetime) -> bool:
     """Пора ли выпускать пару недели: прошло 6,5 суток, дневное окно по МСК."""
-    if now.hour not in HOURS:
+    if now.hour not in HOURS or now.weekday() != 3:  # четверг: «Пара недели» живёт в четверговой серии
         return False
     last = await db.kv_get("pairweek:last")
     return not last or now - datetime.fromisoformat(last) >= EVERY

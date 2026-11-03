@@ -29,7 +29,7 @@ from . import autoreply
 from . import text_mode
 from . import lang
 from .optimizer import optimize
-from . import art, attribution, pairweek, rework, physics, postmatrix, costs, constraint, funnel, profit, reminders, performance, approved_post, zero_research, api_budget, tgchannel, brandvideo, instagram, sketch, zero_cleanup
+from . import art, attribution, pairweek, rework, series, physics, postmatrix, costs, constraint, funnel, profit, reminders, performance, approved_post, zero_research, api_budget, tgchannel, brandvideo, instagram, sketch, zero_cleanup
 from .config import Config
 from .generator import GenerationError, Generator
 from .storage import PgStorage, Post, Storage
@@ -1707,7 +1707,7 @@ async def post_next(
             queued = await sharpen_script(db, generator, queued)
         post = await publish(queued, db, threads, bot, "", cfg.cards)
     else:
-        rubric = plan.choose(recent, rng)
+        rubric = plan.choose(recent, rng, now)
         if en_grid_first:
             rubric = next((r for r in plan.all_rubrics() if r.key == "grid"), rubric)
             await db.kv_set("en:first_grid", "1")
@@ -1734,6 +1734,10 @@ async def post_next(
                 dead = None
             else:
                 rubric = plan.effective(original)
+        series_row = await series.due(db, now) if text_mode.enabled() and not dead else None  # серия окна: чт и вс вечером/утром
+        if series_row and (series_rubric := next((r for r in plan.all_rubrics() if r.key == series_row[2]), None)):
+            rubric = plan.effective(series_rubric)
+            await series.mark(db, now, series_row[2])
         pair_rubric = next((r for r in plan.all_rubrics() if r.key == "text_pair_week"), None)  # «Пара недели»: раз в неделю в дневное окно, со ссылкой не чаще раза в двое суток
         if pair_rubric and not dead and text_mode.enabled() and await pairweek.due(db, now) and await attribution.link_post_allowed(db, now):
             rubric = plan.effective(pair_rubric)
@@ -1892,6 +1896,8 @@ async def post_next(
                 hook, slot.card_number, slot.card_label, slot.rubric.cta,
                 slot.card_cta_text or button or LINK_CARD_TEXT.get(link_mode or ""), palette, style, slot.card_dates,
             ).to_json()
+        if slot.rubric.key in ("text_marriage", "text_roles", "text_pair_week") and (slot.rubric.key == "text_pair_week" or series.window_rubric(now)):
+            text = series.with_label(text, slot.rubric.key, lang.is_en())  # название серии последней строкой
         post_id = await db.add_draft(slot.topic, text, slot.rubric.key, first_comment, card_json)
         if profile:
             await postmatrix.record(db, post_id, profile)  # какие значения профиля дали какие комментарии — видно в /params

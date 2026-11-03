@@ -185,6 +185,7 @@ AXES = {"genre": GENRES, "voice": VOICES_RU, "length": LENGTHS, "hook": HOOKS, "
         "link": LINKS, "ending": ENDINGS, "theme": THEMES, "truth": TRUTHS, "narrator": NARRATORS}
 ORDER = ("genre", "voice", "length", "hook", "structure", "visual", "tone", "link", "ending", "theme", "truth", "narrator")
 PARTIAL = ("voice", "tone")  # рубрики с собственным форматом: только голос и тон (иногда ещё визуал)
+SUPPRESSED = {("genre", "scene"), ("genre", "sitcom")}  # 03.11.2026: «сценки» и «ситкомы» — 4–34 просмотра, нули лайков; из выдачи убраны
 REAL_ONLY = {("genre", "subscriber"), ("narrator", "real")}  # только если есть реальные истории (flags["real_story"])
 
 # Совместимость: жанр задаёт допустимые значения других осей.
@@ -234,6 +235,7 @@ def sample(rng: random.Random, lang: str, rubric_key: str, recent: list[dict], w
         if allowed:
             options = [o for o in options if o in allowed] or options
         options = [o for o in options if flags.get("real_story") or (name, o) not in REAL_ONLY]
+        options = [o for o in options if (name, o) not in SUPPRESSED] or options
         failed = (flags.get("avoid") or {}).get(name)  # профиль снятого поста: его значение не повторяем, пока есть из чего выбирать
         options = [o for o in options if o != failed] or options
         window = [r.get(name) for r in recent[:AVOID.get(name, 2)]]

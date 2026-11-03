@@ -74,8 +74,8 @@ NIGHT_GAP = (240, 300)  # минут, 00:00–06:59
 # 30.10.2026, слово владельца: «вечер — люди читают Threads, врубим все газы». Вечерний прайм 18:00–22:59 — пост
 # каждые 60–80 мин (≈5 за вечер, ≈10–11 в сутки при потолке 20); ответы — в прежних безопасных лимитах.
 PRIME_HOURS = range(18, 23)
-PRIME_GAP = (45, 60)  # 30.10 19:25 владелец: «как можно чаще» — 45–60 мин, потолок 20 в сутки прежний
-PRIME_MIN_GAP = timedelta(minutes=45)
+PRIME_GAP = (60, 75)  # 03.11: реже и сильнее (≈8–9 постов в сутки вместо 10–12): охват есть, не хватает причины подписаться; потолок 20 в сутки прежний
+PRIME_MIN_GAP = timedelta(minutes=60)
 
 
 def min_gap(now: datetime) -> timedelta:
@@ -100,7 +100,20 @@ def strip_credits(text: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()
 
 
+# Слово владельца 03.11.2026 (аудитория Threads: Dating Threads 269, психология 178, Book Threads 221, AI Threads 161): пост уходит в ленты этих тем.
+# Данные Threads 03.11.2026: «сценки», «протоколы», «суд», ситкомы дают 4–60 просмотров и нули лайков — почти не выпускаем (×0,15), остальные форматы держат охват.
+SUPPRESSED = {"text_court", "text_protocol", "text_chat", "text_office", "text_venus", "text_tag_family", "text_review", "text_choices"}
+DATING_RUBRICS = {"text_loves", "text_marriage", "text_marry", "text_heaven_pairs", "text_pair", "text_pair_week", "text_tag_pair", "text_seek", "love", "pair", "ex"}
+PSYCH_RUBRICS = {"text_fears", "text_reaction", "text_outgrow", "text_success", "text_levels", "text_gifts", "text_battery", "text_roles", "text_avoid", "text_great", "text_unknown"}
+
+
 def topic_tag_for(rubric: str | None) -> str:
+    if _is_en():  # английский аккаунт: ни одной кириллической буквы, в том числе в теме
+        return "Dating Threads" if rubric in DATING_RUBRICS else "Psychology" if rubric in PSYCH_RUBRICS else "Numerology"
+    if rubric in DATING_RUBRICS:
+        return "Dating Threads"
+    if rubric in PSYCH_RUBRICS:
+        return "психология"
     return TOPIC_TAGS.get(rubric or "", DEFAULT_TOPIC_TAG)
 
 
@@ -189,7 +202,7 @@ class ContentPlan:
         text = self.overrides.get(rubric.key)
         return replace(rubric, text=text) if text else rubric
 
-    def choose(self, recent: list[str], rng: random.Random) -> Rubric:
+    def choose(self, recent: list[str], rng: random.Random, now: datetime | None = None) -> Rubric:
         """Следующая рубрика. recent — рубрики последних постов, свежие первыми."""
         by_key = {r.key: r for r in self.all_rubrics()}
         recent_ctas = [by_key[k].cta for k in recent[:5] if k in by_key]
@@ -212,6 +225,11 @@ class ContentPlan:
         live = [r for r in pool if self.weights.get(r.key, 1.0) > 0]  # вес 0 — рубрику больше не делаем
         pool = live or pool
         weights = [max(0.2, self.weights.get(r.key, boost.get(r.key, 1.0))) for r in pool]
+        weights = [w * (0.15 if r.key in SUPPRESSED else 1.0) for r, w in zip(pool, weights)]
+        if now is not None:  # среда 18–21 — окно матрицы «Угадай число» (series.py)
+            from . import series
+            if series.in_grid_window(now) and "grid" not in recent[:3]:
+                weights = [w * (series.GRID_BOOST if r.key == "grid" else 1.0) for r, w in zip(pool, weights)]
         return self.effective(rng.choices(pool, weights=weights)[0])
 
     def render(self, rubric: Rubric, now: datetime, rng: random.Random) -> Slot:

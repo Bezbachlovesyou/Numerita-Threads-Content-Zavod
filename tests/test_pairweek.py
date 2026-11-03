@@ -8,7 +8,7 @@ from pathlib import Path
 from zavod import attribution as A, autopost, pairweek as PW
 from zavod.storage import Storage
 
-NOON = datetime(2026, 11, 3, 13, 0, tzinfo=timezone.utc)
+NOON = datetime(2026, 11, 5, 13, 0, tzinfo=timezone.utc)  # четверг
 
 
 class PairWeek(unittest.IsolatedAsyncioTestCase):
