@@ -2434,9 +2434,12 @@ async def reply_to_comment(db: Storage, threads: ThreadsClient, bot: Bot, cfg: C
         if pick_:
             target_id, post_id_local, comment, who = pick_
             comment_id = comment.get("id")
-            if await db.handled_comments([comment_id]):
+            prior = await db._rows("SELECT status FROM comment_replies WHERE comment_id = ?", (comment_id,))
+            if any(r["status"] == "replied" for r in prior):
                 await notify_admins(bot, cfg, f"{tag}ℹ️ На этот комментарий уже отвечали, второй раз не отвечаю.")
                 return
+            if prior:  # бот ранее пропустил этот комментарий (skipped): прямой приказ владельца сильнее — убираем пометку и отвечаем
+                await db._execute("DELETE FROM comment_replies WHERE comment_id = ?", (comment_id,))
             await threads.reply(target_id, comment_id, text)
             await db.record_comment(comment_id, post_id_local or 0, who or author, comment.get("message") or "", text, "replied")
             await notify_admins(bot, cfg, f"{tag}✅ Ответил на комментарий @{who or author}: «{(comment.get('message') or '')[:60]}».")

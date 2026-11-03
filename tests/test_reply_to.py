@@ -73,3 +73,11 @@ class Nested(ReplyTo):
         self.t.comments = comments
         await B.reply_to_comment(self.db, self.t, self.bot, self.cfg, "abdrakhman1414", "жалпы", "Давайте проще")
         self.t.reply.assert_awaited_once_with("zp2", "c7", "Давайте проще")
+
+
+class SkippedBefore(ReplyTo):
+    async def test_comment_the_bot_skipped_earlier_still_gets_the_owners_reply(self):
+        await self.db.record_comment("c1", 0, "abdrakhman1414", "Не дедің жалпы", "skip:model", "skipped")
+        await B.reply_to_comment(self.db, self.t, self.bot, self.cfg, "abdrakhman1414", "жалпы", "Қарапайым түсіндірейін")
+        self.t.reply.assert_awaited_once_with("zp1", "c1", "Қарапайым түсіндірейін")
+        self.assertTrue(any("✅" in n for n in self.notes))
