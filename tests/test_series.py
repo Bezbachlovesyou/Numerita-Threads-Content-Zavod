@@ -30,7 +30,12 @@ class Series(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(await series.due(self.db, MON))
         self.assertIsNone(await series.due(self.db, THU.replace(hour=12)))
 
+    def test_labels_are_off_by_owner_word(self):
+        self.assertEqual(series.with_label("Пост про любовь", "text_marriage", False), "Пост про любовь")
+
     def test_label_added_last_and_respects_limit(self):
+        series.LABELS_ENABLED = True
+        self.addCleanup(setattr, series, "LABELS_ENABLED", False)
         text = series.with_label("Пост про любовь", "text_marriage", False)
         self.assertTrue(text.endswith("«Дата рождения и любовь»"))
         self.assertEqual(series.with_label("x" * 490, "text_marriage", False), "x" * 490)  # не влезло — без метки

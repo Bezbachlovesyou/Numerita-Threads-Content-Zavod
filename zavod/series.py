@@ -54,8 +54,13 @@ def label(key: str, en: bool) -> str | None:
     return None
 
 
+LABELS_ENABLED = False  # слово владельца 03.11.2026: расписание по дням недели людям не показываем (ни в профиле, ни в постах) — «мелкая хрень, делать из этого целый день»; серии работают тихо, только по времени
+
+
 def with_label(text: str, key: str, en: bool, limit: int = 500) -> str:
-    """Дописать название серии последней строкой (если помещается)."""
+    """Дописать название серии последней строкой (если помещается и не выключено)."""
+    if not LABELS_ENABLED:
+        return text
     line = label(key, en)
     if not line or line in text:
         return text
