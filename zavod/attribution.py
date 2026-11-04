@@ -204,13 +204,14 @@ def share_attributed(out: dict) -> float | None:
 def lines(table: list[dict], out: dict | None = None, names: dict | None = None, top: int = 8) -> list[str]:
     """Отчёт по рубрикам: «рубрика — N постов, X комментариев из Y (доля), пришли…, оплатили…»; малая выборка помечена."""
     names = names or {}
+    from .optimizer import short_name  # понятные названия рубрик без «text_…» (04.11.2026)
     total_comments = sum(t["comments"] for t in table)
     total_posts = sum(t["posts"] for t in table)
     res = [f"рубрики за период: постов {total_posts}, комментариев {total_comments}"]
     for t in table[:top]:
         share = f"{t['comments_share'] * 100:.0f}% всех комментариев" if t["comments_share"] is not None else "доля неизвестна"
         views = f", просмотров {t['views']}" if t["views"] is not None else ""
-        res.append(f"  {names.get(t['rubric'], t['rubric'])} ({PLATFORMS.get(t['platform'], t['platform'])}) — {t['posts']} постов{views}, "
+        res.append(f"  {names.get(t['rubric']) or short_name(t['rubric'])} ({PLATFORMS.get(t['platform'], t['platform'])}) — {t['posts']} постов{views}, "
                    f"комментариев {t['comments']} из {total_comments} ({share}, {t['comments_per_post']:.1f} на пост); в боте: пришли {t['came']} "
                    f"(по ответам {t['via_reply']}), «вау» {t['wow']}, оплатили {t['paid']}" + ("" if t["enough"] else " — мало данных"))
     if out:

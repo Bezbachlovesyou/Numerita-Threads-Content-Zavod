@@ -105,7 +105,8 @@ async def report(db, now):
         raw = await db.kv_get(f'performance:{post.id}:latest')
         sample = json.loads(raw) if raw else {}
         metric = lambda k: str(sample[k]) if sample.get(k) is not None else 'нет данных'
-        lines.append(f"#{post.id} · {post.rubric or 'без рубрики'} · {post.published_at:%d.%m %H:%M} UTC\n"
+        from .optimizer import short_name
+        lines.append(f"#{post.id} · {short_name(post.rubric)} · {post.published_at:%d.%m %H:%M} UTC\n"
                      f"{post.text[:90]}\nЛайки {metric('likes')}; комментарии {metric('comments')}; "
                      f"просмотры {metric('views')} · возраст замера {sample.get('age_hours', '—')} ч")
     if not posts:
@@ -165,27 +166,25 @@ def _find_followers(obj, depth=0):
 
 
 async def daily_summary(db, client, now):
-    """Ежедневная сводка (слово владельца 02.11.2026): подписчики и посты без реакций. Подписчики — снимок раз в сутки из аналитики Zernio, сравнение со вчера и неделей назад;
-    нет поля в ответе — так и пишем. Посты без лайков и комментариев — по последним замерам; почему они ещё висят — по причинам (молодые, нет данных, лимит удалений)."""
+    """Ежедневная сводка (слово владельца 02.11.2026), коротко (04.11.2026: «много информации, глаза устают»): подписчики и посты без реакции в трёх строках."""
     from . import zero_cleanup
-    lines = ['📈 Ежедневно: подписчики и посты без реакций']
+    from .optimizer import short_name
     followers = None
     try:
-        stats = await client.account_stats(limit=1)
-        followers = _find_followers(stats)
+        followers = _find_followers(await client.account_stats(limit=1))
     except Exception:
         followers = None
     today = now.date().isoformat()
     if followers is None:
-        lines.append('Подписчики: Zernio не отдал число (поле не найдено) — пришлите скриншот профиля, посчитаю по нему.')
+        head = 'Подписчики: Zernio не отдал число — пришлите скриншот профиля, посчитаю по нему.'
     else:
         await db.kv_set(f'followers:{today}', str(followers))
         parts = [f'Подписчики: {followers}']
-        for days, name in ((1, 'вчера'), (7, 'неделю назад')):
+        for days, name in ((1, 'за день'), (7, 'за неделю')):
             old = await db.kv_get(f'followers:{(now.date() - timedelta(days=days)).isoformat()}')
             if old and old.isdigit():
-                parts.append(f'{followers - int(old):+d} к {name}')
-        lines.append(', '.join(parts))
+                parts.append(f'{followers - int(old):+d} {name}')
+        head = ', '.join(parts[:1]) + (f" ({', '.join(parts[1:])})" if len(parts) > 1 else '')
     posts = await db.recent_published(now - timedelta(days=7))
     zero, nodata, young, total = [], 0, 0, 0
     for post in posts:
@@ -201,11 +200,15 @@ async def daily_summary(db, client, now):
     removed = 0
     for i in range(7):
         removed += int(await db.kv_get('zero_cleanup:day:' + (now.date() - timedelta(days=i)).isoformat()) or 0)
-    share = f'{100 * len(zero) // max(1, total - young)}%' if total - young else '—'
-    lines.append(f'За 7 дней опубликовано {total}; без реакции (до 2 лайков, без комментариев) висят {len(zero)} ({share} зрелых), нет данных {nodata}, ещё молодых {young}; снято за 7 дней: {removed}.')
+    mature = total - young
+    share = f' ({100 * len(zero) // max(1, mature)}%)' if mature else ''
+    line = f'Постов за неделю {total}: без реакции висят {len(zero)}{share}, снято {removed}.'
+    if nodata:
+        line += f' Без данных: {nodata}.'
+    out = ['📈 ' + head, line]
     if zero:
         by = {}
         for post in zero:
-            by[post.rubric or 'без рубрики'] = by.get(post.rubric or 'без рубрики', 0) + 1
-        lines.append('Чаще всего пустые рубрики: ' + ', '.join(f'{k} ({v})' for k, v in sorted(by.items(), key=lambda kv: -kv[1])[:5]))
-    return '\n'.join(lines)
+            by[short_name(post.rubric)] = by.get(short_name(post.rubric), 0) + 1
+        out.append('Чаще пустые: ' + ', '.join(f'{k} ({v})' for k, v in sorted(by.items(), key=lambda kv: -kv[1])[:3]))
+    return '\n'.join(out)

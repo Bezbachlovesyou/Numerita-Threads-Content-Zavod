@@ -71,8 +71,27 @@ RUBRIC_NAMES = {
     "turn": "поворот и неожиданность", "text_hype": "шутка о хайпе дня", "text_levels": "четыре числа спорят в голове",
     "text_dna": "ДНК и числа", "text_great": "великая личность", "text_science": "наука и нумерология",
     "text_sky": "небесный календарь", "text_heaven_pairs": "пары, созданные на небесах",
+    # слово владельца 04.11.2026: названия рубрик — короткие и понятные, без «text_…» (глаза устают от длинных отчётов)
+    "text_chat": "переписка чисел", "text_venus": "служба поддержки Венеры", "text_court": "шуточный суд", "text_office": "числа в офисе", "text_choices": "выбор из двух реплик",
+    "text_review": "отзыв о своём числе", "text_why_met": "зачем вас свела судьба", "number_mirror": "зеркало числа", "text_daily": "бытовая шутка",
+    "text_secrets": "тайны числа", "text_marry": "кто с кем в браке", "text_celeb": "числа знаменитых", "text_aroma": "аромат числа", "text_roles": "роль твоего числа",
+    "text_avoid": "чего избегать", "text_sunrise": "рассвет и дата", "text_seek": "ищу родившихся…", "text_physics": "физика и число", "text_year": "год меняет судьбу",
+    "text_pair": "пара по двум датам", "text_unknown": "чего не видно по дате", "text_fears": "страхи по дню рождения", "text_reaction": "неожиданная реакция",
+    "text_pair_week": "пара недели", "text_lessons": "уроки по дню рождения", "text_from_comments": "из ваших комментариев", "text_free": "свободный жанр",
+    "text_battery": "социальная батарейка", "text_outgrow": "что перерасти", "text_marriage": "энергия в любви и браке", "text_loves": "кого любят втайне",
+    "text_gifts": "природные дары", "text_eras": "эпоха твоей души", "text_success": "какой успех нужен", "text_wealth": "путь к деньгам",
+    "lesson": "урок дня рождения", "seven_layers": "семь ракурсов заботы", "eight_growth": "рост восьмёрок", "one_portrait": "портрет Солнца", "one_scene": "сценка числа",
+    "planet_resources": "ресурсы планеты", "text_poster": "афиша", "text_popart": "поп-арт", "text_tag": "отметь друга", "text_tag_family": "семейная сценка", "text_dispute": "спор чисел",
+    "text_protocol": "протокол чисел", "script": "готовый текст", "text_seed": "готовый текст", "text_note": "записка от числа", "text_apology": "извинение",
     "text_what_next": "«Что было дальше?» по числам", "text_tag_pair": "отметь пару", "text_who_told": "«Кто вообще внушил…?»", "text_baza": "золотые правила числа — «это база»", "text_rollcall": "перекличка рождённых", "text_one_digit": "одна цифра меняет всё (сценка)", "text_howto": "мини-инструкция расчёта", "text_myth": "разоблачение мифа о числах", "text_insight": "инсайт-подборка о числе",
 }
+
+
+def short_name(key: str | None) -> str:
+    """Короткое понятное название рубрики по ключу (для отчётов без доступа к плану): известное — по словарю, иначе без «text_» и подчёркиваний."""
+    if not key:
+        return "без рубрики"
+    return RUBRIC_NAMES.get(key) or key.removeprefix("text_").replace("_", " ")
 
 
 def rubric_name(key: str, plan: ContentPlan) -> str:

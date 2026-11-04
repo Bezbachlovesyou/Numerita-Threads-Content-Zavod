@@ -130,12 +130,23 @@ class DailySummary(DeliveryTests):
         client.account_stats.return_value = {'overview': {'totalFollowers': 97}}
         text = await performance.daily_summary(self.db, client, self.now)
         self.assertIn('Подписчики: 97', text)
-        self.assertIn('-3 к вчера', text)
+        self.assertIn('-3 за день', text)
         self.assertIn('висят 1', text)
-        self.assertIn('ещё молодых 1', text)
+        self.assertNotIn('молодых', text)
 
     async def test_missing_followers_field_is_stated_not_guessed(self):
         client = AsyncMock()
         client.account_stats.return_value = {'overview': {'views': 5}}
         text = await performance.daily_summary(self.db, client, self.now)
         self.assertIn('не отдал число', text)
+
+
+class ShortNames(unittest.TestCase):
+    def test_every_rubric_has_a_human_name_without_text_prefix(self):
+        from pathlib import Path
+        from zavod import autopost
+        from zavod.optimizer import short_name
+        for r in autopost.load_rubrics(Path("prompts/content_plan.md")):
+            self.assertFalse(short_name(r.key).startswith("text_"), r.key)
+            self.assertNotIn("_", short_name(r.key), r.key)
+        self.assertEqual(short_name("text_note"), "записка от числа")
