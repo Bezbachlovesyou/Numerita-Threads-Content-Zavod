@@ -12,7 +12,7 @@ from .knowledge import reduce_number
 
 # Рубрики третьего механизма: год, пара, время рождения (рассвет), «ищу…», «чего не знает общий пост».
 PERSONAL = ("text_year", "text_pair", "text_sunrise", "text_seek", "text_unknown")
-PERSONAL_SHARE = 0.35  # если в последних трёх постах такого не было — берём из набора с этой вероятностью
+PERSONAL_SHARE = 0.18  # если в последних трёх постах такого не было — берём из набора с этой вероятностью
 
 
 def destiny(day: int, month: int, year: int) -> int:

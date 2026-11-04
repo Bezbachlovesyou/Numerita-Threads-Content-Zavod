@@ -105,6 +105,7 @@ def strip_credits(text: str) -> str:
 # списки по дням рождения про любовь/роли (1,6–3,6 тыс.), страхи, пары, «Пара недели», небо; остальное — единицы–десятки просмотров. Эти рубрики — ядро; остальные ×0,25 (не выключены: свежие форматы пробуются, но редко).
 CORE = {"grid", "text_marriage", "text_roles", "text_flags", "text_fears", "text_reaction", "text_lessons", "text_heaven_pairs", "text_pair_week", "text_pair", "text_sky", "text_free", "text_celeb", "text_physics", "text_loves", "text_year", "text_seek", "text_from_comments"}
 NON_CORE_FACTOR = 0.25
+GRID_SHARE = 0.22  # вес матрицы при допуске (раз в 3 поста максимум) даёт ≈15% ленты
 # Данные Threads 03.11.2026: «сценки», «протоколы», «суд», ситкомы дают 4–60 просмотров и нули лайков — почти не выпускаем (×0,15), остальные форматы держат охват.
 SUPPRESSED = {"text_court", "text_protocol", "text_chat", "text_office", "text_venus", "text_tag_family", "text_review", "text_choices"}
 DATING_RUBRICS = {"text_flags", "text_loves", "text_marriage", "text_marry", "text_heaven_pairs", "text_pair", "text_pair_week", "text_tag_pair", "love", "pair", "ex"}  # только настоящие рубрики про любовь и пары: «Ищу тех, кто родился…» (text_seek) — продажа, не про отношения (03.11)
@@ -218,7 +219,7 @@ class ContentPlan:
         if text_mode.enabled():
             pool = [r for r in pool if text_mode.allowed(r)] or [r for r in self.all_rubrics() if text_mode.allowed(r)]
             fresh_text = [r for r in pool if r.key.startswith('text_') or r.key == 'number_mirror'
-                          or (r.key == 'grid' and text_mode.grid_enabled() and 'grid' not in recent[:3])]
+                          or (r.key == 'grid' and text_mode.grid_enabled() and 'grid' not in recent[:2])]
             pool = fresh_text or pool
         if recent_ctas[:1] == ["link"] or recent_ctas.count("link") >= 2:
             pool = [r for r in pool if r.cta != "link"] or pool
@@ -230,9 +231,14 @@ class ContentPlan:
         pool = live or pool
         weights = [max(0.2, self.weights.get(r.key, boost.get(r.key, 1.0))) for r in pool]
         weights = [w * (0.15 if r.key in SUPPRESSED else 1.0 if r.key in CORE else NON_CORE_FACTOR) for r, w in zip(pool, weights)]
+        # Слово владельца 04.11.2026: матрицы «Угадай число» — самый сильный формат (до 6,5 тыс. просмотров, сотни комментариев), но выходили в ~6% постов. Гарантируем им долю GRID_SHARE
+        # независимо от весов оптимизатора: вес матрицы = доля/(1−доля) от суммы остальных (пока матрицы не было в последних трёх постах).
+        if "grid" not in recent[:2] and any(r.key == "grid" for r in pool):
+            others = sum(w for r, w in zip(pool, weights) if r.key != "grid")
+            weights = [(GRID_SHARE / (1 - GRID_SHARE)) * others if r.key == "grid" else w for r, w in zip(pool, weights)]
         if now is not None:  # среда 18–21 — окно матрицы «Угадай число» (series.py)
             from . import series
-            if series.in_grid_window(now) and "grid" not in recent[:3]:
+            if series.in_grid_window(now) and "grid" not in recent[:2]:
                 weights = [w * (series.GRID_BOOST if r.key == "grid" else 1.0) for r, w in zip(pool, weights)]
         return self.effective(rng.choices(pool, weights=weights)[0])
 
