@@ -78,6 +78,8 @@ def complete_sentences(text: str) -> str:
     return text[: match[-1].start() + 1].strip() if match else ""
 
 
+# 04.11.2026 (слово владельца: расходы завода ÷5): проверки и оценки текста — дешёвой моделью ответов (Haiku); пишет посты, как раньше, основная модель.
+CHEAP_KINDS = {"coherence", "art", "hookcheck", "summary", "toc"}  # подъём текста (elevate) и сами посты — основная модель: от них зависит качество
 DEFAULT_MAX_TOKENS = 8000
 
 
@@ -259,7 +261,7 @@ class Generator:
         from .lang import public_rule
         orig_system = system
         system = apply(system) + public_rule(kind)
-        model = model or self.model
+        model = model or (self.reply_model if kind in CHEAP_KINDS and getattr(self, "reply_model", None) else self.model)
         try:
             async with httpx.AsyncClient(timeout=180) as http:
                 response = await http.post(

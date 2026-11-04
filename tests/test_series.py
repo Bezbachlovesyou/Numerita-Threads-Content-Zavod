@@ -73,5 +73,46 @@ class Suppressed(unittest.TestCase):
         suppressed = sum(k in autopost.SUPPRESSED for k in picks) / len(picks)
         self.assertLess(suppressed, 0.03)
 
-    def test_evening_rhythm_is_sixty_to_seventy_five_minutes(self):
-        self.assertEqual(autopost.PRIME_GAP, (60, 75))
+    def test_evening_rhythm_is_two_to_two_and_a_half_hours(self):
+        self.assertEqual(autopost.PRIME_GAP, (120, 150))
+
+
+class Economy(unittest.IsolatedAsyncioTestCase):
+    def test_posts_per_day_dropped_to_about_five(self):
+        import datetime as dt
+        plan = autopost.ContentPlan(autopost.load_rubrics(Path("prompts/content_plan.md")))
+        rng = random.Random(1)
+        now, end, count = dt.datetime(2026, 11, 5, 0, 0), dt.datetime(2026, 12, 5, 0, 0), 0
+        while now < end:
+            now += plan.next_gap(now, rng)
+            count += 1
+        self.assertLess(count / 30, 6.5)
+        self.assertGreater(count / 30, 3.5)
+
+    def test_core_rubrics_dominate_the_feed(self):
+        plan = autopost.ContentPlan(autopost.load_rubrics(Path("prompts/content_plan.md")))
+        picks = [plan.choose(["text_x", "text_y", "text_z"], random.Random(i)).key for i in range(2000)]
+        core = sum(k in autopost.CORE for k in picks) / len(picks)
+        self.assertGreater(core, 0.75)
+
+    async def test_gates_use_the_cheap_model_and_posts_the_main_one(self):
+        from unittest.mock import AsyncMock, MagicMock
+        from zavod import generator as G
+        g = G.Generator.__new__(G.Generator)
+        g.api_key, g.model, g.reply_model, g.system = "k", "anthropic/claude-sonnet-5-5", "anthropic/claude-haiku-5-5", "s"
+        used = {}
+        class Fake:
+            def __call__(self, *a, **k): return self
+            async def __aenter__(self): return self
+            async def __aexit__(self, *a): return False
+            async def post(self, url, headers=None, json=None):
+                used.setdefault("models", []).append(json["model"])
+                import httpx
+                return httpx.Response(200, json={"choices": [{"message": {"content": "ok"}, "finish_reason": "stop"}], "usage": {}}, request=httpx.Request("POST", url))
+        from unittest.mock import patch
+        async def noop(*a, **k): pass
+        g._record_cost = noop
+        with patch("httpx.AsyncClient", Fake()):
+            await g._complete("s", "p", kind="coherence")
+            await g._complete("s", "p", kind="post")
+        self.assertEqual(used["models"], ["anthropic/claude-haiku-5-5", "anthropic/claude-sonnet-5-5"])

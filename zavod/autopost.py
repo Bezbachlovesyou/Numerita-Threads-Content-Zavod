@@ -68,14 +68,14 @@ BOT_LINK = "t.me/Numeritabot?start=ad_en_th_" if _is_en() else "t.me/Numeritabot
 # но частые посты нового аккаунта выглядят как спам), никогда не реже раза в 4 часа.
 # 28.10.2026 (владелец: «не ходить по грани, красиво ехать»): качество важнее частоты — ≈6–8 постов в сутки.
 MIN_GAP = timedelta(minutes=120)
-MAX_GAP = timedelta(hours=5)
-DAY_GAP = (200, 260)  # минут, 07:00–17:59; 30.10 владелец: «днём реже, вечером бомбить чаще»
-NIGHT_GAP = (240, 300)  # минут, 00:00–06:59
+MAX_GAP = timedelta(hours=7)  # 04.11.2026: реже и только лучшее — потолок паузы поднят
+DAY_GAP = (300, 360)  # минут, 07:00–17:59; 30.10 владелец: «днём реже, вечером бомбить чаще»
+NIGHT_GAP = (360, 420)  # минут, 00:00–06:59
 # 30.10.2026, слово владельца: «вечер — люди читают Threads, врубим все газы». Вечерний прайм 18:00–22:59 — пост
 # каждые 60–80 мин (≈5 за вечер, ≈10–11 в сутки при потолке 20); ответы — в прежних безопасных лимитах.
 PRIME_HOURS = range(18, 23)
-PRIME_GAP = (60, 75)  # 03.11: реже и сильнее (≈8–9 постов в сутки вместо 10–12): охват есть, не хватает причины подписаться; потолок 20 в сутки прежний
-PRIME_MIN_GAP = timedelta(minutes=60)
+PRIME_GAP = (120, 150)  # 03.11: реже и сильнее (≈8–9 постов в сутки вместо 10–12): охват есть, не хватает причины подписаться; потолок 20 в сутки прежний
+PRIME_MIN_GAP = timedelta(minutes=120)
 
 
 def min_gap(now: datetime) -> timedelta:
@@ -101,6 +101,10 @@ def strip_credits(text: str) -> str:
 
 
 # Слово владельца 03.11.2026 (аудитория Threads: Dating Threads 269, психология 178, Book Threads 221, AI Threads 161): пост уходит в ленты этих тем.
+# Слово владельца 04.11.2026: «снизить траты завода в 5 раз, делать только то, что срабатывало, разнообразив его». По данным Threads за 30 дней просмотры и комментарии дают матрицы «Угадай число» (0,4–6,5 тыс.),
+# списки по дням рождения про любовь/роли (1,6–3,6 тыс.), страхи, пары, «Пара недели», небо; остальное — единицы–десятки просмотров. Эти рубрики — ядро; остальные ×0,25 (не выключены: свежие форматы пробуются, но редко).
+CORE = {"grid", "text_marriage", "text_roles", "text_fears", "text_reaction", "text_lessons", "text_heaven_pairs", "text_pair_week", "text_pair", "text_sky", "text_free", "text_celeb", "text_physics", "text_loves", "text_year", "text_seek", "text_from_comments"}
+NON_CORE_FACTOR = 0.25
 # Данные Threads 03.11.2026: «сценки», «протоколы», «суд», ситкомы дают 4–60 просмотров и нули лайков — почти не выпускаем (×0,15), остальные форматы держат охват.
 SUPPRESSED = {"text_court", "text_protocol", "text_chat", "text_office", "text_venus", "text_tag_family", "text_review", "text_choices"}
 DATING_RUBRICS = {"text_loves", "text_marriage", "text_marry", "text_heaven_pairs", "text_pair", "text_pair_week", "text_tag_pair", "love", "pair", "ex"}  # только настоящие рубрики про любовь и пары: «Ищу тех, кто родился…» (text_seek) — продажа, не про отношения (03.11)
@@ -172,7 +176,7 @@ def load_rubrics(path: Path) -> list[Rubric]:
 
 
 # Новые форматы по слову владельца — чаще, пока оптимизатор не наберёт по ним данных.
-BOOST = {"text_baza": 2.5, "text_rollcall": 2.5, "text_one_digit": 2.0, "text_howto": 1.5, "text_myth": 2.0, "text_insight": 1.5, "text_who_told": 2.5, "text_heaven_pairs": 3.0, "text_what_next": 2.0, "text_tag_pair": 2.0, "text_hype": 3.0, "text_secrets": 3.0, "text_marry": 3.0, "text_celeb": 4.0, "text_aroma": 2.5, "text_roles": 2.5, "text_avoid": 2.5, "text_sunrise": 4.5, "text_seek": 4.0, "text_physics": 3.0, "text_year": 4.0, "text_fears": 3.0, "text_reaction": 3.0, "text_lessons": 3.0, "text_free": 30.0, "text_pair": 4.0, "text_unknown": 3.0, "text_battery": 2.5, "text_outgrow": 2.5, "text_marriage": 4.0, "text_loves": 2.5, "text_gifts": 2.5, "text_eras": 2.5, "text_success": 2.5, "text_wealth": 2.5, "text_levels": 2.5, "grid": 8.0, "text_great": 2.0, "text_science": 2.0, "text_dna": 1.5, "text_sky": 1.5}  # не чаще раза в день — следит post_next
+BOOST = {"text_baza": 2.5, "text_rollcall": 2.5, "text_one_digit": 2.0, "text_howto": 1.5, "text_myth": 2.0, "text_insight": 1.5, "text_who_told": 2.5, "text_heaven_pairs": 3.0, "text_what_next": 2.0, "text_tag_pair": 2.0, "text_hype": 3.0, "text_secrets": 3.0, "text_marry": 3.0, "text_celeb": 4.0, "text_aroma": 2.5, "text_roles": 2.5, "text_avoid": 2.5, "text_sunrise": 4.5, "text_seek": 4.0, "text_physics": 3.0, "text_year": 4.0, "text_fears": 3.0, "text_reaction": 3.0, "text_lessons": 3.0, "text_free": 12.0, "text_pair": 4.0, "text_unknown": 3.0, "text_battery": 2.5, "text_outgrow": 2.5, "text_marriage": 4.0, "text_loves": 2.5, "text_gifts": 2.5, "text_eras": 2.5, "text_success": 2.5, "text_wealth": 2.5, "text_levels": 2.5, "grid": 8.0, "text_great": 2.0, "text_science": 2.0, "text_dna": 1.5, "text_sky": 1.5}  # не чаще раза в день — следит post_next
 
 
 class ContentPlan:
@@ -225,7 +229,7 @@ class ContentPlan:
         live = [r for r in pool if self.weights.get(r.key, 1.0) > 0]  # вес 0 — рубрику больше не делаем
         pool = live or pool
         weights = [max(0.2, self.weights.get(r.key, boost.get(r.key, 1.0))) for r in pool]
-        weights = [w * (0.15 if r.key in SUPPRESSED else 1.0) for r, w in zip(pool, weights)]
+        weights = [w * (0.15 if r.key in SUPPRESSED else 1.0 if r.key in CORE else NON_CORE_FACTOR) for r, w in zip(pool, weights)]
         if now is not None:  # среда 18–21 — окно матрицы «Угадай число» (series.py)
             from . import series
             if series.in_grid_window(now) and "grid" not in recent[:3]:
