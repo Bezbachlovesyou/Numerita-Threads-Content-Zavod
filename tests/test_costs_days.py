@@ -32,3 +32,31 @@ class Days(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class OpenRouterReport(unittest.IsolatedAsyncioTestCase):
+    async def test_without_management_key_it_explains_the_one_step(self):
+        text = await costs.openrouter_report("")
+        self.assertIn("Management Keys", text)
+        self.assertIn("OPENROUTER_MANAGEMENT_KEY", text)
+
+    async def test_report_shows_keys_models_and_days(self):
+        import httpx
+
+        class Fake:
+            def __init__(self, *a, **k): pass
+            async def __aenter__(self): return self
+            async def __aexit__(self, *a): return False
+            async def get(self, url, params=None):
+                req = httpx.Request("GET", url)
+                if url.endswith("/keys"):
+                    return httpx.Response(200, request=req, json={"data": [
+                        {"name": "Numerita bot", "usage_daily": 0.3, "usage_weekly": 1.29, "usage_monthly": 1.88},
+                        {"name": "dev", "usage_daily": 0, "usage_weekly": 32.0, "usage_monthly": 33.0, "disabled": False}]})
+                return httpx.Response(200, request=req, json={"data": [
+                    {"model": "anthropic/claude-sonnet-5-5", "usage": 2.0}, {"model": "anthropic/claude-haiku-5-5", "usage": 0.5}]})
+        with patch("httpx.AsyncClient", Fake):
+            text = await costs.openrouter_report("mk", 2)
+        self.assertIn("dev: $0.00 / $32.00 / $33.00", text)
+        self.assertIn("claude-sonnet-5-5: $4.00 (80%)", text)  # два дня по $2.00
+        self.assertIn("По дням (UTC)", text)

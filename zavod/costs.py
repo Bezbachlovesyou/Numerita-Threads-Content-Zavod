@@ -250,3 +250,56 @@ async def report_days(db, generator, tz, days: int = 3) -> str:
     lines.append("")
     lines.append("Расход других ключей этого счёта (основной бот, разработка) я отсюда не вижу: он в OpenRouter → Activity; ветку основного бота я уже попросил прислать свою раскладку.")
     return "\n".join(lines)[:3900]
+
+
+async def openrouter_report(mgmt_key: str, days: int = 3) -> str:
+    """Аналитика OpenRouter прямо в Telegram (слово владельца 04.11.2026): по ключам счёта и по моделям за последние дни, без захода в сайт.
+    Нужен управляющий ключ (Management key, openrouter.ai/settings/management-keys) в переменной OPENROUTER_MANAGEMENT_KEY на Railway: обычный ключ эти данные не отдаёт."""
+    if not mgmt_key:
+        return ("Чтобы я показывал аналитику OpenRouter сам, нужен один шаг от вас:\n"
+                "1) openrouter.ai → Settings → Management Keys → создать ключ (имя «analytics»);\n"
+                "2) вставить его в Railway → сервис завода → Variables → OPENROUTER_MANAGEMENT_KEY (в чат ключ не присылайте).\n"
+                "После этого команда /openrouter покажет расход по ключам и моделям за 3 дня.")
+    headers = {"Authorization": f"Bearer {mgmt_key}"}
+    lines = ["📊 OpenRouter: куда уходят деньги"]
+    async with httpx.AsyncClient(timeout=30, headers=headers) as http:
+        keys = []
+        try:
+            r = await http.get("https://openrouter.ai/api/v1/keys")
+            keys = (r.json().get("data") or []) if r.is_success else []
+            if not r.is_success:
+                lines.append(f"Ключи: OpenRouter ответил {r.status_code} — проверьте, что это именно Management key.")
+        except (httpx.HTTPError, ValueError):
+            lines.append("Ключи: не удалось получить список.")
+        if keys:
+            lines.append("\nПо ключам (сегодня / 7 дней / месяц):")
+            for k in sorted(keys, key=lambda k: -float(k.get("usage_monthly") or k.get("usage") or 0))[:8]:
+                name = k.get("name") or k.get("label") or "без имени"
+                lines.append(f"• {name}{' (выключен)' if k.get('disabled') else ''}: {money(float(k.get('usage_daily') or 0))} / "
+                             f"{money(float(k.get('usage_weekly') or 0))} / {money(float(k.get('usage_monthly') or k.get('usage') or 0))}")
+        by_model: dict[str, float] = {}
+        by_day: dict[str, float] = {}
+        got = False
+        today = datetime.now(timezone.utc).date()
+        for i in range(1, days + 1):
+            day = (today - timedelta(days=i)).isoformat()
+            try:
+                r = await http.get("https://openrouter.ai/api/v1/activity", params={"date": day})
+                rows = (r.json().get("data") or []) if r.is_success else []
+            except (httpx.HTTPError, ValueError):
+                rows = []
+            for row in rows:
+                got = True
+                usd = float(row.get("usage") or 0)
+                by_day[day] = by_day.get(day, 0.0) + usd
+                model = str(row.get("model") or "?").split("/")[-1]
+                by_model[model] = by_model.get(model, 0.0) + usd
+        if got:
+            lines.append("\nПо дням (UTC): " + "; ".join(f"{d[5:]}: {money(v)}" for d, v in sorted(by_day.items())))
+            total = sum(by_model.values()) or 1
+            lines.append("По моделям:")
+            for m, v in sorted(by_model.items(), key=lambda kv: -kv[1])[:6]:
+                lines.append(f"• {m}: {money(v)} ({round(100 * v / total)}%)")
+        else:
+            lines.append("\nПо дням и моделям OpenRouter данных не вернул (завершённых дней мало или ключ не управляющий).")
+    return "\n".join(lines)[:3900]

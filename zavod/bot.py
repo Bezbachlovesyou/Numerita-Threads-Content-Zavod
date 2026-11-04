@@ -57,6 +57,7 @@ COMMANDS = [
     ("performance", "лайки и комментарии каждого поста"),
     ("daily", "подписчики и посты без реакций"),
     ("costs3", "расходы на нейросеть за 3 дня по статьям"),
+    ("openrouter", "аналитика OpenRouter: ключи и модели"),
     ("safety", "квоты API и ограничения автоответов"),
     ("reviews", "квитанции трёх ежедневных обходов"),
     ("cleanup", "квитанции удаления нулевых постов"),
@@ -1191,6 +1192,10 @@ def create_router(cfg: Config, plan: ContentPlan) -> Router:
     @router.message(Command("performance"))
     async def performance_handler(message: Message, db: Storage):
         await message.answer(await performance.report(db, datetime.now(timezone.utc)), parse_mode=None)
+
+    @router.message(Command("openrouter"))
+    async def openrouter_handler(message: Message):
+        await message.answer(await costs.openrouter_report(os.getenv("OPENROUTER_MANAGEMENT_KEY", "").strip()), parse_mode=None)
 
     @router.message(Command("costs3"))
     async def costs3_handler(message: Message, db: Storage, generator: Generator):
@@ -2513,6 +2518,8 @@ async def run_op(cmd: dict, db: Storage, threads: ThreadsClient | None, bot: Bot
                             else f"{tag}⚠️ Instagram ответил «{status}»")
     elif action == "reply_to" and threads is not None and text and cmd.get("author") and cmd.get("fragment"):
         await reply_to_comment(db, threads, bot, cfg, str(cmd["author"]), str(cmd["fragment"]), text, tag)
+    elif action == "openrouter_report":  # аналитика OpenRouter по ключам и моделям (нужен OPENROUTER_MANAGEMENT_KEY)
+        await notify_admins(bot, cfg, tag + await costs.openrouter_report(os.getenv("OPENROUTER_MANAGEMENT_KEY", "").strip(), int(cmd.get("days") or 3)))
     elif action == "costs_days" and generator is not None:  # раскладка расходов завода по статьям и дням (по умолчанию 3 дня)
         await notify_admins(bot, cfg, tag + await costs.report_days(db, generator, cfg.timezone, int(cmd.get("days") or 3)))
     elif action == "tell":  # длинный текст только владельцу: из команды или из файла knowledge/ (Threads не трогаем, $0)
