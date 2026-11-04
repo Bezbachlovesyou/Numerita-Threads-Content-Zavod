@@ -26,3 +26,10 @@ class Flags(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class GameLabel(unittest.TestCase):
+    def test_game_label_is_registered_for_both_languages(self):
+        for label in ("ad_th_game_redflag", "ad_en_th_game_redflag"):
+            p = A.parse(label)
+            self.assertEqual((p["kind"], p["name"], p["platform"]), ("static", "game_redflag", "th"), label)

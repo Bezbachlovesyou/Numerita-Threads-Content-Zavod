@@ -2008,6 +2008,8 @@ async def post_next(
         except GenerationError as e:
             await notify_admins(bot, cfg, f"❌ Автопост не написан: {e}\nТема: {slot.topic}")
             return False
+        if slot.rubric.key == "text_flags" and first_comment is None and await attribution.link_post_allowed(db, now):  # игра вдвоём из бота (ветка бота, 04.11): ссылка открывает игру, метка game_redflag
+            first_comment = ("Play it together — you and your person: " if lang.is_en() else "Сыграть вдвоём, ты и твой человек: ") + BOT_LINK + "game_redflag"
         if slot.rubric.key == "text_pair_week" and first_comment is None:  # ссылка «проверь свою пару» — первым комментарием, метка ad_[en_]th_pair
             first_comment = ("Check your own pair in a minute: " if lang.is_en() else "Проверь свою пару за минуту: ") + BOT_LINK + "pair"
         if first_comment is None and slot.rubric.cta != "link" and (slot.rubric.key.startswith("text_") or slot.rubric.key == "grid") \
