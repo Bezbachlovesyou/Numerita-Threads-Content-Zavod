@@ -214,3 +214,39 @@ async def tune_code_share(db, now: datetime) -> str | None:
     await db.kv_set("code_share", f"{new:.2f}")
     return (f"🤖 Ответы кодом: продолжили разговор {round(100 * rc)}% против {round(100 * ra)}% у нейросети — "
             f"теперь кодом отвечаю {round(100 * new)}% людей с датой или парой (было {round(100 * share)}%).")
+
+
+async def report_days(db, generator, tz, days: int = 3) -> str:
+    """Раскладка расходов завода за последние дни по статьям и дням (слово владельца 04.11.2026: «куда ушли деньги за 3 дня»). Только ключ завода — по нашему учёту;
+    расходы других ключей того же счёта (основной бот, разработка) видны в самом OpenRouter: openrouter.ai → Activity (можно выгрузить CSV)."""
+    now = datetime.now(tz)
+    state = await openrouter_state(generator.api_key, generator.model)
+    lines = [f"💸 Расходы завода за {days} дня"]
+    credits, key = state["credits"], state["key"]
+    if credits:
+        left = float(credits.get("total_credits") or 0) - float(credits.get("total_usage") or 0)
+        lines.append(f"Баланс счёта сейчас: {money(left)}")
+    if key.get("usage_weekly") is not None:
+        lines.append(f"Ключ завода: сегодня {money(float(key.get('usage_daily') or 0))}, за неделю {money(float(key['usage_weekly']))}")
+    totals: dict[str, list] = {}
+    per_day = []
+    for i in range(days):
+        day = (now - timedelta(days=i)).date()
+        ledger = json.loads(await db.kv_get(f"cost:{day.isoformat()}") or "{}")
+        total = sum(v[1] for v in ledger.values())
+        per_day.append(f"{day:%d.%m}: {money(total)}" + ("" if ledger else " (учёта нет)"))
+        for kind, (n, usd, *_rest) in ledger.items():
+            base = kind.partition("·")[0]
+            row = totals.setdefault(base, [0, 0.0])
+            row[0] += n
+            row[1] += usd
+    lines.append("По дням: " + "; ".join(per_day))
+    if totals:
+        lines.append("")
+        grand = sum(v[1] for v in totals.values()) or 1
+        for base, (n, usd) in sorted(totals.items(), key=lambda kv: -kv[1][1])[:8]:
+            lines.append(f"• {KINDS.get(base, base)}: {money(usd)} ({round(100 * usd / grand)}%, {n} запр.)")
+        lines.append(f"Итого по учёту завода: {money(grand if totals else 0)}")
+    lines.append("")
+    lines.append("Расход других ключей этого счёта (основной бот, разработка) я отсюда не вижу: он в OpenRouter → Activity; ветку основного бота я уже попросил прислать свою раскладку.")
+    return "\n".join(lines)[:3900]
