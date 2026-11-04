@@ -106,6 +106,18 @@ async def _fetch(days: int) -> dict | None:
         return None
 
 
+def games_lines(data: dict | None) -> list[str]:
+    """Игры бота (ключ games.redflag в /threads.json, слово владельца 04.11.2026: «игра растёт, когда друзья зовут друзей»): одна строка, K — коэффициент приглашений
+    (сколько друзей доиграло на одного доигравшего; K>1 — игра растёт сама). Нет данных — молчим."""
+    game = ((data or {}).get("games") or {}).get("redflag")
+    if not isinstance(game, dict) or not game.get("started"):
+        return []
+    k = game.get("k")
+    k_text = f", K={float(k):.2f}" if isinstance(k, (int, float)) else ""
+    return [f"игра «Красный или зелёный?»: начали {game.get('started', 0)}, доиграли {game.get('finished_first', 0)}, "
+            f"позвали близкого {game.get('pressed_invite', 0)}, друзей пришло {game.get('friends_came', 0)} (доиграли {game.get('friends_finished', 0)}){k_text}"]
+
+
 def lines(data: dict | None) -> list[str]:
     """Коротко: всего, посты против ответов, лучшие метки."""
     if not data:
@@ -127,4 +139,4 @@ def lines(data: dict | None) -> list[str]:
            f"по постам и шапке профиля: пришли {t['came'] - replies['came']}, оплатили {t['paid'] - replies['paid']}"]
     best = sorted(labels, key=lambda r: (-int(r.get("paid") or 0), -int(r.get("came") or 0)))[:6]
     out.append("лучшие метки: " + ", ".join(f"{r['label'][3:]} — {r['came']} пришли, {r.get('paid', 0)} оплат" for r in best))
-    return out
+    return out + games_lines(data)

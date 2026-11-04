@@ -159,3 +159,14 @@ class ProfitControllerPostgres(ProfitController):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class GamesLine(unittest.TestCase):
+    def test_games_line_shows_k_and_is_silent_without_data(self):
+        from zavod import funnel
+        self.assertEqual(funnel.games_lines({"games": {"redflag": {"started": 0}}}), [])
+        self.assertEqual(funnel.games_lines(None), [])
+        line = funnel.games_lines({"games": {"redflag": {"started": 20, "finished_first": 12, "pressed_invite": 5, "friends_came": 4,
+                                                          "friends_finished": 3, "k": 0.25}}})[0]
+        self.assertIn("начали 20", line)
+        self.assertIn("K=0.25", line)
