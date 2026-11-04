@@ -105,6 +105,9 @@ def strip_credits(text: str) -> str:
 # списки по дням рождения про любовь/роли (1,6–3,6 тыс.), страхи, пары, «Пара недели», небо; остальное — единицы–десятки просмотров. Эти рубрики — ядро; остальные ×0,25 (не выключены: свежие форматы пробуются, но редко).
 CORE = {"grid", "text_marriage", "text_roles", "text_flags", "text_rita", "text_angel", "text_goals_story", "text_fears", "text_reaction", "text_lessons", "text_heaven_pairs", "text_pair_week", "text_pair", "text_sky", "text_free", "text_celeb", "text_physics", "text_loves", "text_year", "text_seek", "text_from_comments"}
 NON_CORE_FACTOR = 0.25
+# Настоящие цифры из событий бота за 30 дней (ветка бота, 04.11.2026; тестовые аккаунты не исключены — поэтому только «больше 20»). Обновлять по новому отчёту бота.
+GOALS_DATA = ("за 30 дней в боте больше 20 человек поставили себе цель и больше 20 записали свои маленькие победы (число приблизительное, без точной цифры). "
+              "Отметок «цель выполнена» нет — НЕ пиши, что люди достигли целей; пиши про шаги и победы. Ни одной личной детали, имён, дат и сроков.")
 GRID_SHARE = 0.22  # вес матрицы при допуске (раз в 3 поста максимум) даёт ≈15% ленты
 # Данные Threads 03.11.2026: «сценки», «протоколы», «суд», ситкомы дают 4–60 просмотров и нули лайков — почти не выпускаем (×0,15), остальные форматы держат охват.
 SUPPRESSED = {"text_court", "text_protocol", "text_chat", "text_office", "text_venus", "text_tag_family", "text_review", "text_choices"}
@@ -266,7 +269,7 @@ class ContentPlan:
             who=rng.choice(WHO_TO_TAG),
             physics=physics.fact_for(digit, rng) if "{physics}" in rubric.text else "",
             year_example=personal.year_example(rng) if "{year_example}" in rubric.text else "",
-            goals_data="нет подтверждённых цифр",
+            goals_data=GOALS_DATA,
             great=greatpeople.block(greatpeople.pick(rng, _is_en()), _is_en()) if "{great}" in rubric.text else "",
         )
         if "{emotion}" in rubric.text:  # пометка для самоулучшения: какая эмоция лучше вовлекает

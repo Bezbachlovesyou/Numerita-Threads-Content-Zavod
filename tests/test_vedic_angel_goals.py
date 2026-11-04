@@ -29,7 +29,8 @@ class NewThemes(unittest.TestCase):
         for part in ("Только ПРАВДА", "не выдумывай историй", "Не обещай"):
             self.assertIn(part, text)
         slot = autopost.ContentPlan(list(self.rubrics.values())).render(self.rubrics["text_goals_story"], datetime(2026, 11, 5, 12), random.Random(2))
-        self.assertIn("нет подтверждённых цифр", slot.topic)
+        self.assertIn("больше 20 человек", slot.topic)
+        self.assertIn("НЕ пиши, что люди достигли целей", slot.topic)
 
 
 if __name__ == "__main__":
