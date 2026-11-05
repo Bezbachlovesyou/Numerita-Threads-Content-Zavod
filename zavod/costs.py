@@ -330,3 +330,19 @@ async def post_cost_line(db, tz, days: int = 7) -> str:
     if alive and alive != made:
         line += f"; на один оставшийся живым ({alive}) = {money(total / alive)}"
     return line
+
+
+# Жёсткий дневной потолок расходов завода (слово владельца 05.11.2026: «2,55 за день — непозволительно много; меньше доллара»). Считается на каждый экземпляр (RU и EN): вместе ≈ $0,8 + ответы.
+SOFT_USD = 0.30   # дальше необязательные проверки (цельность, оценка, обходы, сводки) не запускаются: пост выходит как есть или не выходит по правилам кода
+HARD_USD = 0.40   # дальше новые посты не пишутся до завтра
+
+
+async def today_total(db, tz) -> float:
+    raw = await db.kv_get(day_key(datetime.now(tz)))
+    return sum(v[1] for v in json.loads(raw).values()) if raw else 0.0
+
+
+def make_guard(db, tz):
+    async def guard() -> float:
+        return await today_total(db, tz)
+    return guard

@@ -112,7 +112,7 @@ def load_config() -> Config:
         reply_ab_model=os.getenv("REPLY_AB_MODEL", "").strip() or DEFAULT_REPLY_AB_MODEL,
         reply_ab_share=0.0,  # A/B DeepSeek против Haiku закончен 28.10.2026: отвечает только Haiku
         # Потолок расходов на ответы и сводки диалогов в сутки, $ (закон «всегда в плюсе»).
-        reply_budget_usd=float(os.getenv("REPLY_BUDGET_USD", "1") or 1),
+        reply_budget_usd=float(os.getenv("REPLY_BUDGET_USD", "0.15") or 0.15),
         # Видео с Нумеритой (fal.ai, Seedance 2.0). Без FAL_KEY видео не делаются, VIDEO=off — выключить.
         fal_key=os.getenv("FAL_KEY", "").strip(),
         video=not text_mode.enabled() and os.getenv("VIDEO", "on").strip().lower() not in ("off", "0", "no", "нет"),

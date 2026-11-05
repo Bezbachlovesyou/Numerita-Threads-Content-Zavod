@@ -80,6 +80,7 @@ def complete_sentences(text: str) -> str:
 
 # 04.11.2026 (слово владельца: расходы завода ÷5): проверки и оценки текста — дешёвой моделью ответов (Haiku); пишет посты, как раньше, основная модель.
 CHEAP_KINDS = {"coherence", "art", "hookcheck", "summary", "toc"}  # подъём текста (elevate) и сами посты — основная модель: от них зависит качество
+OPTIONAL_KINDS = {"coherence", "art", "hookcheck", "summary", "toc", "optimizer", "strengthen", "elevate", "sharpen"}  # необязательные шаги: после мягкого потолка расходов не запускаются
 DEFAULT_MAX_TOKENS = 8000
 
 
@@ -111,6 +112,7 @@ class Generator:
             self.system += '\n\n' + text_mode.STYLE
         self.knowledge = knowledge
         self.reply_model = model  # модель ответов на комментарии (задаётся при запуске)
+        self.spend_guard = None  # async () -> сколько потрачено сегодня, $ (дневной потолок расходов)
         self.cost_sink = None  # async (kind, usd, prompt_tokens, completion_tokens, cached_tokens) — учёт расходов
 
     async def _with_knowledge(self, prompt: str, about: str, limit: int | None = None) -> str:
@@ -260,6 +262,10 @@ class Generator:
                         kind: str = "other", model: str | None = None, _pay: int = 0) -> str:
         from .honesty import apply
         from .lang import public_rule
+        if kind in OPTIONAL_KINDS and getattr(self, "spend_guard", None) is not None:
+            from .costs import SOFT_USD
+            if await self.spend_guard() >= SOFT_USD:
+                raise GenerationError("дневной бюджет расходов исчерпан: необязательный шаг пропущен")
         orig_system = system
         system = apply(system) + public_rule(kind)
         model = model or (self.reply_model if kind in CHEAP_KINDS and getattr(self, "reply_model", None) else self.model)

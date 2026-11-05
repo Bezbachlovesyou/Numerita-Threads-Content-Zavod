@@ -38,6 +38,8 @@ async def main() -> None:
         await text_mode.seed_apology(storage)
     generator = Generator(cfg.openrouter_api_key, cfg.openrouter_model, VOICE_PROMPT, KnowledgeBase(cfg.kb_url))
     generator.cost_sink = make_sink(storage, cfg.timezone)
+    from .costs import make_guard
+    generator.spend_guard = make_guard(storage, cfg.timezone)  # дневной потолок расходов (costs.SOFT_USD / HARD_USD)
     funnel.KEY = os.getenv("NUMERITA_THREADS_KEY", "").strip()
     generator.reply_model = cfg.reply_model
     if not await storage.kv_get("reply_ab_since"):

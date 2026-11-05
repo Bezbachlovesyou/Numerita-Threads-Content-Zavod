@@ -2240,6 +2240,11 @@ async def autopost_tick(
 ) -> None:
     """Пора ли выпускать пост. Время следующего поста бот выбирает сам и хранит в базе."""
     now = datetime.now(cfg.timezone)
+    if getattr(generator, "spend_guard", None) is not None:  # жёсткий дневной потолок расходов: новые посты до завтра не пишем
+        if await generator.spend_guard() >= costs.HARD_USD:
+            if await db.claim_slot(f"budget stop {now.date().isoformat()}"):
+                await notify_admins(bot, cfg, f"{'[EN] ' if lang.is_en() else ''}💸 Дневной потолок расходов завода (${costs.HARD_USD:.2f}) достигнут: новые посты до завтра не пишу.")
+            return
     last = await db.last_published_at()
     stored = await db.kv_get("next_post_at")
     gap = min_gap(now)
