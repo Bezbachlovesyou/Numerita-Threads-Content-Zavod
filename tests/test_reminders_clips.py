@@ -30,7 +30,7 @@ class Reminders(unittest.IsolatedAsyncioTestCase):
         first = await reminders.run_due(self.db, MORNING, TZ)
         self.assertTrue(first and first[0].startswith("🌍 Масштаб"))
         self.assertEqual(await reminders.run_due(self.db, MORNING + timedelta(hours=1), TZ), [])  # тот же день — без повтора
-        self.assertEqual([m for m in await reminders.run_due(self.db, MORNING + timedelta(days=2), TZ) if not m.startswith('📘')], [])
+        self.assertEqual([m for m in await reminders.run_due(self.db, MORNING + timedelta(days=2), TZ) if not m.startswith(('📘', '🌈'))], [])
         third = await reminders.run_due(self.db, MORNING + timedelta(days=3), TZ)
         self.assertTrue(third and third[0] != first[0])  # формулировки идут по кругу
         evening = MORNING.replace(hour=21) + timedelta(days=9)

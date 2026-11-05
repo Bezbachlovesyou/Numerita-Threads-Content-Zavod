@@ -70,6 +70,12 @@ async def run_due(db, now: datetime, tz) -> list[str]:
         await db.kv_set("remind:lesson:last", now.isoformat())
         await db.kv_set("remind:lesson:n", str(n + 1))
         out.append(owner_lessons.lesson_text(n))
+    if await _due(db, "remind:chakra:last", now, 1):  # ежедневная заметка о чакрах (слово владельца 05.11.2026)
+        from . import chakras
+        n = int(await db.kv_get("remind:chakra:n") or 0)
+        await db.kv_set("remind:chakra:last", now.isoformat())
+        await db.kv_set("remind:chakra:n", str(n + 1))
+        out.append(chakras.note_text(n))
     open_ideas = await ideas(db)
     if open_ideas and await _due(db, "remind:ideas:last", now, IDEAS_EVERY_DAYS):
         await db.kv_set("remind:ideas:last", now.isoformat())
