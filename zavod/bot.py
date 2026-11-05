@@ -57,6 +57,7 @@ COMMANDS = [
     ("performance", "лайки и комментарии каждого поста"),
     ("daily", "подписчики и посты без реакций"),
     ("costs3", "расходы на нейросеть за 3 дня по статьям"),
+    ("humans", "живые ли люди нас комментируют"),
     ("openrouter", "аналитика OpenRouter: ключи и модели"),
     ("safety", "квоты API и ограничения автоответов"),
     ("reviews", "квитанции трёх ежедневных обходов"),
@@ -1196,6 +1197,11 @@ def create_router(cfg: Config, plan: ContentPlan) -> Router:
     @router.message(Command("openrouter"))
     async def openrouter_handler(message: Message):
         await message.answer(await costs.openrouter_report(os.getenv("OPENROUTER_MANAGEMENT_KEY", "").strip()), parse_mode=None)
+
+    @router.message(Command("humans"))
+    async def humans_handler(message: Message, db: Storage):
+        from . import humans
+        await message.answer(await humans.report(db, datetime.now(timezone.utc)), parse_mode=None)
 
     @router.message(Command("costs3"))
     async def costs3_handler(message: Message, db: Storage, generator: Generator):
@@ -2520,6 +2526,9 @@ async def run_op(cmd: dict, db: Storage, threads: ThreadsClient | None, bot: Bot
                             else f"{tag}⚠️ Instagram ответил «{status}»")
     elif action == "reply_to" and threads is not None and text and cmd.get("author") and cmd.get("fragment"):
         await reply_to_comment(db, threads, bot, cfg, str(cmd["author"]), str(cmd["fragment"]), text, tag)
+    elif action == "humans_report":  # живые ли комментаторы: признаки ботов по базе ответов
+        from . import humans
+        await notify_admins(bot, cfg, tag + await humans.report(db, datetime.now(timezone.utc)))
     elif action == "openrouter_report":  # аналитика OpenRouter по ключам и моделям (нужен OPENROUTER_MANAGEMENT_KEY)
         await notify_admins(bot, cfg, tag + await costs.openrouter_report(os.getenv("OPENROUTER_MANAGEMENT_KEY", "").strip(), int(cmd.get("days") or 3)))
     elif action == "costs_days" and generator is not None:  # раскладка расходов завода по статьям и дням (по умолчанию 3 дня)
