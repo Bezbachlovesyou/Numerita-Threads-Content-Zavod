@@ -563,13 +563,18 @@ async def manual_test(db: Storage, bot: Bot, cfg: Config, post, now: datetime) -
     first = next((line for line in post.text.splitlines() if line.strip()), "")[:80]
     log_.append({"date": now.date().isoformat(), "id": post.id, "rubric": post.rubric, "first": first})
     await db.kv_set("manual:log", json.dumps(log_[-30:], ensure_ascii=False))
-    extra = f"\n\nПервым комментарием добавьте: {post.first_comment}" if post.first_comment else ""
     handle = "numerita.love, английский" if lang.is_en() else "numerita.ai"
-    message = (f"{'[EN] ' if lang.is_en() else ''}✋ Ручной пост для теста #{len(log_)}: опубликуйте в Threads ({handle}) руками, ровно этот текст, в ближайший час. "
-               f"Через сутки пришлите скриншот статистики поста.{html.escape(extra)}\n\n<pre>{html.escape(post.text)}</pre>")
+    tag = "[EN] " if lang.is_en() else ""
+    # Слово владельца 05.11.2026: копировать одним нажатием — отдельное сообщение под пост и отдельное под первый комментарий, ничего не выделять и не вырезать.
+    messages = [f"{tag}✋ Ручной пост для теста #{len(log_)} ({handle}). Опубликуйте в Threads в ближайший час; через сутки пришлите скриншот статистики.\n"
+                f"{'Ниже два сообщения: нажмите на каждое, оно копируется целиком.' if post.first_comment else 'Ниже сообщение: нажмите на него, оно копируется целиком.'}\n\n1️⃣ ПОСТ:",
+                f"<pre>{html.escape(post.text)}</pre>"]
+    if post.first_comment:
+        messages += ["2️⃣ ПЕРВЫМ КОММЕНТАРИЕМ (после публикации поста):", f"<pre>{html.escape(post.first_comment)}</pre>"]
     for admin_id in cfg.admin_ids:
         try:
-            await bot.send_message(admin_id, message, parse_mode="HTML")
+            for i, message in enumerate(messages):
+                await bot.send_message(admin_id, message, parse_mode="HTML" if "<pre>" in message else None)
         except TelegramAPIError:
             log.exception("Ручной пост не отправлен админу %s", admin_id)
     await db.delete(post.id)  # программа этот пост не публикует

@@ -37,6 +37,17 @@ class Manual(unittest.IsolatedAsyncioTestCase):
         second = await self.draft(text="Другой пост")
         self.assertFalse(await B.manual_test(self.db, self.bot, self.cfg, second, EVENING))  # один в сутки
 
+    async def test_post_and_first_comment_arrive_as_separate_copyable_blocks(self):
+        ident = await self.db.add_draft("t", "Текст поста\nвторая строка", "text_pair_week", "Проверь свою пару за минуту: t.me/Numeritabot?start=ad_th_pair")
+        post = await self.db.get(ident)
+        self.assertTrue(await B.manual_test(self.db, self.bot, self.cfg, post, EVENING))
+        sent = [c.args[1] for c in self.bot.send_message.await_args_list]
+        pres = [m for m in sent if m.startswith("<pre>")]
+        self.assertEqual(len(pres), 2)  # пост и комментарий — отдельными блоками «нажал — скопировал»
+        self.assertIn("Текст поста", pres[0])
+        self.assertIn("t.me/Numeritabot?start=ad_th_pair", pres[1])
+        self.assertNotIn("t.me", pres[0])
+
     async def test_not_in_the_morning_not_for_matrices_not_after_the_test_period(self):
         post = await self.draft()
         self.assertFalse(await B.manual_test(self.db, self.bot, self.cfg, post, EVENING.replace(hour=10)))
