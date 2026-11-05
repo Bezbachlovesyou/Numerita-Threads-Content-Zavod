@@ -60,3 +60,23 @@ class OpenRouterReport(unittest.IsolatedAsyncioTestCase):
         self.assertIn("dev: $0.00 / $32.00 / $33.00", text)
         self.assertIn("claude-sonnet-5-5: $4.00 (80%)", text)  # два дня по $2.00
         self.assertIn("По дням (UTC)", text)
+
+
+class PostCost(unittest.IsolatedAsyncioTestCase):
+    async def test_weighted_average_over_all_created_and_alive_posts(self):
+        tmp = tempfile.TemporaryDirectory()
+        db = Storage(tmp.name + "/t.sqlite")
+        await db.init()
+        today = datetime.now(TZ).date().isoformat()
+        await db.kv_set(f"cost:{today}", json.dumps({"post": [4, 1.0, 1, 1, 0], "art": [4, 0.2, 1, 1, 0]}))
+        for i in range(4):
+            ident = await db.add_draft("t", f"post {i}", "text_free")
+            if i < 2:
+                await db.set_threads_id(ident, f"r{i}")
+                await db.mark_published(ident)
+            else:
+                await db.delete(ident)
+        line = await costs.post_cost_line(db, TZ, 3)
+        self.assertIn("$1.20 ÷ 4 созданных = $0.30", line)
+        self.assertIn("на один оставшийся живым (2) = $0.60", line)
+        tmp.cleanup()

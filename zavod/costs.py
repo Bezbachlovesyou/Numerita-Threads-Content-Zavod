@@ -247,6 +247,7 @@ async def report_days(db, generator, tz, days: int = 3) -> str:
         for base, (n, usd) in sorted(totals.items(), key=lambda kv: -kv[1][1])[:8]:
             lines.append(f"• {KINDS.get(base, base)}: {money(usd)} ({round(100 * usd / grand)}%, {n} запр.)")
         lines.append(f"Итого по учёту завода: {money(grand if totals else 0)}")
+    lines.append(await post_cost_line(db, tz, days))
     lines.append("")
     lines.append("Расход других ключей этого счёта (основной бот, разработка) я отсюда не вижу: он в OpenRouter → Activity; ветку основного бота я уже попросил прислать свою раскладку.")
     return "\n".join(lines)[:3900]
@@ -303,3 +304,29 @@ async def openrouter_report(mgmt_key: str, days: int = 3) -> str:
         else:
             lines.append("\nПо дням и моделям OpenRouter данных не вернул (завершённых дней мало или ключ не управляющий).")
     return "\n".join(lines)[:3900]
+
+
+async def post_cost_line(db, tz, days: int = 7) -> str:
+    """Средневзвешенная цена одного поста (слово владельца 05.11.2026): все расходы завода по учёту за дни, где учёт есть, делим на все созданные за эти дни посты
+    (и вышедшие, и снятые, и не вышедшие) и на оставшиеся живыми. Это все-включено: ответы, проверки, обходы, самоулучшение."""
+    now = datetime.now(tz)
+    total, ledger_days = 0.0, []
+    for i in range(days):
+        day = (now - timedelta(days=i)).date()
+        raw = await db.kv_get(f"cost:{day.isoformat()}")
+        if raw:
+            total += sum(v[1] for v in json.loads(raw).values())
+            ledger_days.append(day)
+    if not ledger_days:
+        return "Цена поста: учёта расходов ещё нет."
+    first = min(ledger_days)
+    since = datetime.combine(first, datetime.min.time(), tz).astimezone(timezone.utc).isoformat()
+    rows = await db._rows("SELECT status, COUNT(*) AS n FROM posts WHERE created_at >= ? GROUP BY status", (since,))
+    made = sum(int(r["n"]) for r in rows)
+    alive = sum(int(r["n"]) for r in rows if r["status"] == "published")
+    if not made:
+        return f"Цена поста: расходы {money(total)} за {len(ledger_days)} дн., постов за это время нет."
+    line = f"Цена поста (всё включено, {len(ledger_days)} дн. учёта): {money(total)} ÷ {made} созданных = {money(total / made)}"
+    if alive and alive != made:
+        line += f"; на один оставшийся живым ({alive}) = {money(total / alive)}"
+    return line
