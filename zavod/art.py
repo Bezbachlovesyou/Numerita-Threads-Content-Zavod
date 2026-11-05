@@ -108,7 +108,9 @@ async def elevate(generator, text: str, report: dict) -> str:
     from . import text_mode
     if text_mode.enabled():
         prompt += "\n\n" + text_mode.STYLE
-    return (await generator.improve(generator.system, prompt, max_tokens=700, kind="elevate")).strip()
+    system = getattr(generator, "voice_short", None)
+    system = system if isinstance(system, str) and system else generator.system  # подъём — по короткому голосу: слабое место названо в задании, весь плейбук не нужен
+    return (await generator.improve(system, prompt, max_tokens=700, kind="elevate")).strip()
 
 
 async def art_gate(generator, body: str, english: bool = False) -> str | None:

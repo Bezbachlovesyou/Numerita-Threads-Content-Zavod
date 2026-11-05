@@ -92,6 +92,7 @@ class Generator:
         self.api_key = clean_key(api_key)
         self.model = model
         self.system = voice_path.read_text(encoding="utf-8")
+        self.voice_short = self.system  # только голос Нумериты (≈10 тыс. знаков): для «подъёма» текста вместо всех ≈60 тыс. (экономия 05.11.2026)
         playbook = voice_path.with_name("playbook.md")  # хуки, сторителлинг, что заходит в Threads
         if playbook.exists():
             self.system += "\n\n" + playbook.read_text(encoding="utf-8")
