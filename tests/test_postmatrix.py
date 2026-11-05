@@ -148,3 +148,10 @@ class WithPostgres(WithDb):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SuperHook(unittest.TestCase):
+    def test_second_phrase_rule_is_in_the_style_and_forbids_invented_numbers(self):
+        from zavod import text_mode
+        for part in ("ВТОРАЯ ФРАЗА — СУПЕРХУК", "РЕЗУЛЬТАТ", "УСИЛИЕ", "ИССЛЕДОВАНИЕ", "Ничего не выдумывай", "100 000 подписчиков"):
+            self.assertIn(part, text_mode.STYLE)
