@@ -74,7 +74,7 @@ class Suppressed(unittest.TestCase):
         self.assertLess(suppressed, 0.03)
 
     def test_evening_rhythm_is_two_to_two_and_a_half_hours(self):
-        self.assertEqual(autopost.PRIME_GAP, (120, 150))
+        self.assertEqual(autopost.PRIME_GAP, (360, 420))
 
 
 class Economy(unittest.IsolatedAsyncioTestCase):
@@ -86,8 +86,8 @@ class Economy(unittest.IsolatedAsyncioTestCase):
         while now < end:
             now += plan.next_gap(now, rng)
             count += 1
-        self.assertLess(count / 30, 6.5)
-        self.assertGreater(count / 30, 3.5)
+        self.assertLess(count / 30, 2.6)  # слово владельца 05.11: ещё втрое реже, ставка на качество
+        self.assertGreater(count / 30, 1.5)
 
     def test_core_rubrics_dominate_the_feed(self):
         plan = autopost.ContentPlan(autopost.load_rubrics(Path("prompts/content_plan.md")))
