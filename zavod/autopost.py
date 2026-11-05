@@ -112,7 +112,7 @@ GRID_SHARE = 0.22  # вес матрицы при допуске (раз в 3 п
 # Данные Threads 03.11.2026: «сценки», «протоколы», «суд», ситкомы дают 4–60 просмотров и нули лайков — почти не выпускаем (×0,15), остальные форматы держат охват.
 SUPPRESSED = {"text_court", "text_protocol", "text_chat", "text_office", "text_venus", "text_tag_family", "text_review", "text_choices"}
 DATING_RUBRICS = {"text_flags", "text_loves", "text_marriage", "text_marry", "text_heaven_pairs", "text_pair", "text_pair_week", "text_tag_pair", "love", "pair", "ex"}  # только настоящие рубрики про любовь и пары: «Ищу тех, кто родился…» (text_seek) — продажа, не про отношения (03.11)
-PSYCH_RUBRICS = {"text_rita", "text_angel", "text_goals_story", "text_lessons", "text_fears", "text_reaction", "text_outgrow", "text_success", "text_levels", "text_gifts", "text_battery", "text_roles", "text_avoid", "text_great", "text_unknown"}
+PSYCH_RUBRICS = {"text_qualities", "text_rita", "text_angel", "text_goals_story", "text_lessons", "text_fears", "text_reaction", "text_outgrow", "text_success", "text_levels", "text_gifts", "text_battery", "text_roles", "text_avoid", "text_great", "text_unknown"}
 
 
 def topic_tag_for(rubric: str | None) -> str:
@@ -215,7 +215,7 @@ class ContentPlan:
         by_key = {r.key: r for r in self.all_rubrics()}
         recent_ctas = [by_key[k].cta for k in recent[:5] if k in by_key]
         pool = [r for r in self.all_rubrics() if not recent or r.key != recent[0]]
-        pool = [r for r in pool if r.key not in ("text_pair_week", "text_from_comments")] or pool  # «Пара недели» выходит только по расписанию (pairweek.due), не по жребию
+        pool = [r for r in pool if r.key not in ("text_pair_week", "text_from_comments", "text_qualities")] or pool  # «Пара недели» выходит только по расписанию (pairweek.due), не по жребию
         if _is_en():  # английский аккаунт: без русских лент новостей/хайпа, картинок с русским текстом
             from .lang import EN_SKIP_RUBRICS
             pool = [r for r in pool if r.key not in EN_SKIP_RUBRICS] or pool

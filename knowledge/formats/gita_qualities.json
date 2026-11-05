@@ -1,0 +1,236 @@
+[
+ {
+  "n": 1,
+  "ru": "Бесстрашие",
+  "en": "Fearlessness",
+  "sa_ru": "абхайям",
+  "sa": "abhayam",
+  "mean_ru": "Спокойствие перед неизвестным; смелость идти, даже когда не всё ясно.",
+  "mean_en": "Calm in front of the unknown; the courage to move when things are not clear."
+ },
+ {
+  "n": 2,
+  "ru": "Чистота сердца",
+  "en": "Purity of heart",
+  "sa_ru": "саттва-самшуддхи",
+  "sa": "sattva-samshuddhih",
+  "mean_ru": "Ясные, честные намерения: без двойного дна.",
+  "mean_en": "Clear, honest intentions with no hidden agenda."
+ },
+ {
+  "n": 3,
+  "ru": "Твёрдость в знании",
+  "en": "Steadiness in knowledge",
+  "sa_ru": "джняна-йога-вьявастхити",
+  "sa": "jnana-yoga-vyavasthitih",
+  "mean_ru": "Знать, зачем идёшь, и не сворачивать при первом ветре.",
+  "mean_en": "Knowing why you walk, and not turning at the first gust of wind."
+ },
+ {
+  "n": 4,
+  "ru": "Щедрость",
+  "en": "Generosity",
+  "sa_ru": "данам",
+  "sa": "danam",
+  "mean_ru": "Давать без счёта и без ожидания благодарности.",
+  "mean_en": "Giving without keeping score and without waiting for thanks."
+ },
+ {
+  "n": 5,
+  "ru": "Самообладание",
+  "en": "Self-control",
+  "sa_ru": "дамах",
+  "sa": "damah",
+  "mean_ru": "Власть над собственными порывами: пауза между импульсом и действием.",
+  "mean_en": "Mastery over your own impulses: the pause between urge and action."
+ },
+ {
+  "n": 6,
+  "ru": "Служение",
+  "en": "Selfless service",
+  "sa_ru": "яджня",
+  "sa": "yajnah",
+  "mean_ru": "Делать дело как дар, а не как торг.",
+  "mean_en": "Doing the work as a gift, not as a trade."
+ },
+ {
+  "n": 7,
+  "ru": "Изучение мудрых текстов",
+  "en": "Study of wise texts",
+  "sa_ru": "свадхьяя",
+  "sa": "svadhyayah",
+  "mean_ru": "Регулярно читать и осмыслять, что стоит помнить.",
+  "mean_en": "Reading and reflecting on what is worth remembering, regularly."
+ },
+ {
+  "n": 8,
+  "ru": "Самодисциплина",
+  "en": "Self-discipline",
+  "sa_ru": "тапас",
+  "sa": "tapah",
+  "mean_ru": "Терпеть ради цели: маленькое усилие каждый день.",
+  "mean_en": "Enduring for a goal: a small effort every day."
+ },
+ {
+  "n": 9,
+  "ru": "Прямота",
+  "en": "Straightforwardness",
+  "sa_ru": "арджавам",
+  "sa": "arjavam",
+  "mean_ru": "Говорить и жить без обходных путей и лишних масок.",
+  "mean_en": "Speaking and living without detours or extra masks."
+ },
+ {
+  "n": 10,
+  "ru": "Ненасилие",
+  "en": "Non-harming",
+  "sa_ru": "ахимса",
+  "sa": "ahimsa",
+  "mean_ru": "Не причинять боли ни словом, ни делом, ни мыслью.",
+  "mean_en": "Not causing pain by word, deed or thought."
+ },
+ {
+  "n": 11,
+  "ru": "Правдивость",
+  "en": "Truthfulness",
+  "sa_ru": "сатьям",
+  "sa": "satyam",
+  "mean_ru": "Говорить правду так, чтобы она помогала, а не ранила.",
+  "mean_en": "Telling the truth in a way that helps rather than wounds."
+ },
+ {
+  "n": 12,
+  "ru": "Свобода от гнева",
+  "en": "Freedom from anger",
+  "sa_ru": "акродха",
+  "sa": "akrodhah",
+  "mean_ru": "Остывать раньше, чем наломаешь дров.",
+  "mean_en": "Cooling down before you break something."
+ },
+ {
+  "n": 13,
+  "ru": "Отречённость",
+  "en": "Renunciation",
+  "sa_ru": "тьяга",
+  "sa": "tyagah",
+  "mean_ru": "Делать, не цепляясь за плоды: сделал своё и отпустил.",
+  "mean_en": "Doing without clinging to the fruits: do your part and let go."
+ },
+ {
+  "n": 14,
+  "ru": "Спокойствие",
+  "en": "Inner peace",
+  "sa_ru": "шанти",
+  "sa": "shantih",
+  "mean_ru": "Тишина внутри, даже когда шумно снаружи.",
+  "mean_en": "Quiet inside even when it is loud outside."
+ },
+ {
+  "n": 15,
+  "ru": "Нежелание злословить",
+  "en": "Not slandering",
+  "sa_ru": "апайшунам",
+  "sa": "apaishunam",
+  "mean_ru": "Не искать чужих недостатков и не пересказывать их другим.",
+  "mean_en": "Not hunting for others' faults and not retelling them."
+ },
+ {
+  "n": 16,
+  "ru": "Сострадание ко всем",
+  "en": "Compassion for all beings",
+  "sa_ru": "дая бхутешу",
+  "sa": "daya bhuteshu",
+  "mean_ru": "Видеть в другом того, кому тоже бывает трудно.",
+  "mean_en": "Seeing in another someone who also has hard days."
+ },
+ {
+  "n": 17,
+  "ru": "Свобода от жадности",
+  "en": "Freedom from greed",
+  "sa_ru": "алолуптвам",
+  "sa": "aloluptvam",
+  "mean_ru": "Хватает того, что есть; лишнее не держит за горло.",
+  "mean_en": "Having enough; the excess does not hold you by the throat."
+ },
+ {
+  "n": 18,
+  "ru": "Мягкость",
+  "en": "Gentleness",
+  "sa_ru": "мардавам",
+  "sa": "mardavam",
+  "mean_ru": "Сила, которая не давит.",
+  "mean_en": "Strength that does not press."
+ },
+ {
+  "n": 19,
+  "ru": "Скромность",
+  "en": "Modesty",
+  "sa_ru": "хри",
+  "sa": "hrih",
+  "mean_ru": "Стыдиться дурного, а не хорошего; не выпячиваться.",
+  "mean_en": "Being ashamed of the bad, not of the good; not showing off."
+ },
+ {
+  "n": 20,
+  "ru": "Постоянство",
+  "en": "Steadiness",
+  "sa_ru": "ачапалам",
+  "sa": "achapalam",
+  "mean_ru": "Не метаться: довести начатое.",
+  "mean_en": "Not darting about: finishing what you start."
+ },
+ {
+  "n": 21,
+  "ru": "Сияние",
+  "en": "Radiance",
+  "sa_ru": "теджах",
+  "sa": "tejah",
+  "mean_ru": "Внутренняя сила, которая видна без слов.",
+  "mean_en": "Inner strength that shows without words."
+ },
+ {
+  "n": 22,
+  "ru": "Прощение",
+  "en": "Forgiveness",
+  "sa_ru": "кшама",
+  "sa": "kshama",
+  "mean_ru": "Отпустить обиду, чтобы не нести её дальше.",
+  "mean_en": "Letting a grievance go so you do not carry it further."
+ },
+ {
+  "n": 23,
+  "ru": "Стойкость",
+  "en": "Fortitude",
+  "sa_ru": "дхрити",
+  "sa": "dhritih",
+  "mean_ru": "Держаться, когда трудно, и не терять себя.",
+  "mean_en": "Holding on when it is hard, without losing yourself."
+ },
+ {
+  "n": 24,
+  "ru": "Чистота",
+  "en": "Cleanliness",
+  "sa_ru": "шаучам",
+  "sa": "shaucham",
+  "mean_ru": "Порядок в теле, доме и мыслях.",
+  "mean_en": "Order in body, home and thoughts."
+ },
+ {
+  "n": 25,
+  "ru": "Отсутствие вражды",
+  "en": "No hostility",
+  "sa_ru": "адрохо",
+  "sa": "adroho",
+  "mean_ru": "Не искать врага в каждом.",
+  "mean_en": "Not seeing an enemy in everyone."
+ },
+ {
+  "n": 26,
+  "ru": "Отсутствие гордыни",
+  "en": "No pride",
+  "sa_ru": "на-ати-манита",
+  "sa": "na-ati-manita",
+  "mean_ru": "Не считать себя выше других.",
+  "mean_en": "Not thinking yourself above others."
+ }
+]

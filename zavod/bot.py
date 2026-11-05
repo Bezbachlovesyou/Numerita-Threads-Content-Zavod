@@ -30,7 +30,7 @@ from . import text_mode
 from . import lang
 from .optimizer import optimize
 from .dialogue import walk_comments
-from . import art, attribution, fromcomments, pairweek, rework, series, physics, postmatrix, costs, constraint, funnel, profit, reminders, performance, approved_post, zero_research, api_budget, tgchannel, brandvideo, instagram, sketch, zero_cleanup
+from . import art, attribution, gitaqualities, fromcomments, pairweek, rework, series, physics, postmatrix, costs, constraint, funnel, profit, reminders, performance, approved_post, zero_research, api_budget, tgchannel, brandvideo, instagram, sketch, zero_cleanup
 from .config import Config
 from .generator import GenerationError, Generator
 from .storage import PgStorage, Post, Storage
@@ -1896,6 +1896,9 @@ async def post_next(
         pair_rubric = next((r for r in plan.all_rubrics() if r.key == "text_pair_week"), None)  # «Пара недели»: раз в неделю в дневное окно, со ссылкой не чаще раза в двое суток
         if pair_rubric and not dead and text_mode.enabled() and await pairweek.due(db, now) and await attribution.link_post_allowed(db, now):
             rubric = plan.effective(pair_rubric)
+        gita_rubric = next((r for r in plan.all_rubrics() if r.key == "text_qualities"), None)  # сериал «26 даров светлой природы»: по одному качеству в сутки днём
+        if gita_rubric and not dead and rubric.key != "text_pair_week" and text_mode.enabled() and await gitaqualities.due(db, now):
+            rubric = plan.effective(gita_rubric)
         comments_rubric = next((r for r in plan.all_rubrics() if r.key == "text_from_comments"), None)  # темы из комментариев читателей, раз в сутки днём
         if comments_rubric and not dead and rubric.key != "text_pair_week" and text_mode.enabled() and await fromcomments.due(db, now):
             rubric = plan.effective(comments_rubric)
@@ -1909,6 +1912,8 @@ async def post_next(
             await db.kv_set("list:fmt", str(n + 1))
             rubric = have[keys[n % len(keys)]]
         slot = plan.render(rubric, now, rng)
+        if "[[QUALITY]]" in slot.topic:  # качество из Гиты — по порядку (gitaqualities.py)
+            slot = replace(slot, topic=slot.topic.replace("[[QUALITY]]", gitaqualities.block(await gitaqualities.take(db, now), lang.is_en())))
         if "[[COMMENTS]]" in slot.topic:  # настоящие недавние комментарии (без имён и ссылок)
             slot = replace(slot, topic=slot.topic.replace("[[COMMENTS]]", await fromcomments.take(db, now)))
         if "[[PAIR]]" in slot.topic:  # данные пары недели посчитаны кодом (pairweek.py)
