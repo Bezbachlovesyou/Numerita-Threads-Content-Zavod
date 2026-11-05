@@ -64,6 +64,12 @@ async def run_due(db, now: datetime, tz) -> list[str]:
         await db.kv_set("remind:civ:last", now.isoformat())
         await db.kv_set("remind:civ:n", str(n + 1))
         out.append(CIVILIZATION[n % len(CIVILIZATION)])
+    if await _due(db, "remind:lesson:last", now, 1):  # ежедневный короткий урок: Голдратт, теории роста, ТРИЗ (слово владельца 05.11.2026)
+        from . import owner_lessons
+        n = int(await db.kv_get("remind:lesson:n") or 0)
+        await db.kv_set("remind:lesson:last", now.isoformat())
+        await db.kv_set("remind:lesson:n", str(n + 1))
+        out.append(owner_lessons.lesson_text(n))
     open_ideas = await ideas(db)
     if open_ideas and await _due(db, "remind:ideas:last", now, IDEAS_EVERY_DAYS):
         await db.kv_set("remind:ideas:last", now.isoformat())

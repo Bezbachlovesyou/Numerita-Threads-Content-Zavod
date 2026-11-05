@@ -148,6 +148,19 @@ async def focus(db: Storage, key: str) -> str:
     return raw.get("text", "")
 
 
+def short(text: str, limit: int) -> str:
+    """Сократить до limit знаков по границе предложения или слова, с «…»; никогда не режет слово пополам."""
+    text = " ".join(str(text or "").split())
+    if len(text) <= limit:
+        return text
+    cut = text[:limit]
+    for sep in (". ", "! ", "? ", "; "):
+        i = cut.rfind(sep)
+        if i >= limit * 0.5:
+            return cut[:i + 1]
+    return cut.rsplit(" ", 1)[0].rstrip(",;:—- ") + "…"
+
+
 GROWTH = """Это дневной обход по всем нашим теориям роста (слово владельца 25.10.2026), а не только по Голдратту.
 Сверь данные с каждой линзой и выбери ОДНУ самую сильную меру:
 - Бережливый стартап (Рис, Мауря): какая наша главная догадка сейчас и какая цифра её проверит; не строим лишнего.
@@ -180,23 +193,22 @@ async def review(db: Storage, generator: Generator, now: datetime, tz, growth: b
     for key, field, label in (("post_focus", "post_focus", "посты"), ("reply_focus", "reply_focus", "ответы")):
         text = (plan.get(field) or "").strip()[:500]
         if text and PRESSURE.search(text):  # контролёр ценности: мера с давлением не включается
-            rejected.append(f"• {label}: «{text[:120]}» — отклонено: давление вместо пользы")
+            rejected.append(f"• {label}: отклонено (давление вместо пользы)")
             text = ""
         if text:
             await db.kv_set(key, json.dumps({"text": text, "until": until}, ensure_ascii=False))
-            applied.append(f"• {label}: {text}")
-    title = "🔭 Обход: Голдратт, теории роста и ТРИЗ"
-    lines = [f"{title}, {now:%d.%m %H:%M}", "",
-             f"Узкое звено: {plan['bottleneck']}", f"Почему: {plan.get('why', '')}", f"Шаг: {plan.get('step', '')}"]
+            applied.append(f"• {label}: {short(text, 140)}")
+    # Слово владельца 05.11.2026: сообщения короткие, суть, никогда не обрываются на полуслове.
+    lines = [f"🔭 Обход {now:%d.%m %H:%M}: Голдратт, рост, ТРИЗ",
+             f"Узкое звено: {short(plan['bottleneck'], 120)}", f"Шаг: {short(plan.get('step', ''), 140)}"]
     if applied:
-        lines += ["", f"Включила на {FOCUS_HOURS} часов (откатится само):"] + applied
+        lines += [f"Включила на {FOCUS_HOURS} ч:"] + applied
     if rejected:
-        lines += ["", "Контролёр ценности не пропустил:"] + rejected
-    lines += ["", "Цифры цепочки (код): " + chain.weakest(await chain.collect(db, now, 7))["link"]] \
-        + profit.lines(await profit.state(db, now))[:1]
+        lines += ["Не пропустил контролёр ценности:"] + rejected
+    lines += profit.lines(await profit.state(db, now))[:1]
     ask = (plan.get("ask_owner") or "").strip()
     if ask:
-        lines += ["", f"‼️ Нужно твоё слово: {ask}"]
+        lines += ["", f"‼️ Нужно твоё слово: {short(ask, 260)}"]
     return "\n".join(lines)
 
 

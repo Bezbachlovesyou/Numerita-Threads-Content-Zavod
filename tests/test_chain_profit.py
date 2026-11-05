@@ -170,3 +170,15 @@ class GamesLine(unittest.TestCase):
                                                           "friends_finished": 3, "k": 0.25}}})[0]
         self.assertIn("начали 20", line)
         self.assertIn("K=0.25", line)
+
+
+class ShortCut(unittest.TestCase):
+    def test_short_never_cuts_a_word_and_keeps_meaning(self):
+        from zavod.constraint import short
+        text = "Рубрика «роль твоего числа» собрала 38 комментариев на один пост (57% всех). В следующих постах этой рубрики сначала один вопрос."
+        out = short(text, 100)
+        self.assertLessEqual(len(out), 101)
+        self.assertTrue(out.endswith((".", "…")))
+        self.assertNotIn("сначала одн", out)
+        self.assertEqual(short("Коротко.", 100), "Коротко.")
+        self.assertEqual(short("раз два три четыре пять шесть семь", 12), "раз два три…")
