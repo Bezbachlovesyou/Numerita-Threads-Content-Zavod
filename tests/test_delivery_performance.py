@@ -129,10 +129,24 @@ class DailySummary(DeliveryTests):
         client = AsyncMock()
         client.account_stats.return_value = {'overview': {'totalFollowers': 97}}
         text = await performance.daily_summary(self.db, client, self.now)
-        self.assertIn('Подписчики: 97', text)
-        self.assertIn('-3 за день', text)
-        self.assertIn('висят 1', text)
+        self.assertIn('Подписчики сейчас: 97', text)
+        self.assertIn('вчера было 100 (разница -3)', text)
+        self.assertIn('без лайков и комментариев 1', text)
         self.assertNotIn('молодых', text)
+
+    async def test_foreign_account_and_huge_jump_are_not_believed(self):
+        yesterday = (self.now.date() - timedelta(days=1)).isoformat()
+        await self.db.kv_set(f'followers:{yesterday}', '7')
+        client = AsyncMock()
+        client.account_id = 'en'
+        client.account_stats.return_value = {'accounts': [{'accountId': 'ru', 'followers': 105}, {'accountId': 'en', 'followers': 8}]}
+        text = await performance.daily_summary(self.db, client, self.now)
+        self.assertIn('Подписчики сейчас: 8', text)
+        client.account_stats.return_value = {'overview': {'followers': 105}}
+        client.account_id = None
+        text = await performance.daily_summary(self.db, client, self.now + timedelta(seconds=1))
+        self.assertIn('Скачок слишком большой', text)
+        print('OK')
 
     async def test_missing_followers_field_is_stated_not_guessed(self):
         client = AsyncMock()

@@ -145,21 +145,26 @@ async def grid_ab(db, posts):
         len(groups[False]), avg(groups[False], 0), avg(groups[False], 1))
 
 
-def _find_followers(obj, depth=0):
-    """Число подписчиков из ответа аналитики Zernio: ищем поле с «follower» (формат не закреплён, не угадываем — нет поля, нет числа)."""
+def _find_followers(obj, depth=0, account_id=None):
+    """Число подписчиков ЭТОГО аккаунта из ответа аналитики Zernio (формат не закреплён: не угадываем).
+    Если в словаре указан accountId и он чужой, пропускаем (EN не должен получить число RU); поля «прирост» пропускаем."""
     if depth > 4:
         return None
     if isinstance(obj, dict):
+        acc = obj.get('accountId') or obj.get('account_id')
+        if acc and account_id and str(acc) != str(account_id):
+            return None
         for k, v in obj.items():
-            if 'follower' in str(k).lower() and number(v) is not None:
+            name = str(k).lower().replace('_', '')
+            if 'follower' in name and not any(w in name for w in ('gain', 'growth', 'new', 'change', 'lost', 'delta')) and number(v) is not None:
                 return number(v)
         for v in obj.values():
-            got = _find_followers(v, depth + 1)
+            got = _find_followers(v, depth + 1, account_id)
             if got is not None:
                 return got
     elif isinstance(obj, list):
         for v in obj:
-            got = _find_followers(v, depth + 1)
+            got = _find_followers(v, depth + 1, account_id)
             if got is not None:
                 return got
     return None
@@ -171,20 +176,25 @@ async def daily_summary(db, client, now):
     from .optimizer import short_name
     followers = None
     try:
-        followers = _find_followers(await client.account_stats(limit=1))
+        followers = _find_followers(await client.account_stats(limit=1), account_id=getattr(client, 'account_id', None))
     except Exception:
         followers = None
     today = now.date().isoformat()
     if followers is None:
         head = 'Подписчики: Zernio не отдал число — пришлите скриншот профиля, посчитаю по нему.'
     else:
-        await db.kv_set(f'followers:{today}', str(followers))
-        parts = [f'Подписчики: {followers}']
-        for days, name in ((1, 'за день'), (7, 'за неделю')):
-            old = await db.kv_get(f'followers:{(now.date() - timedelta(days=days)).isoformat()}')
-            if old and old.isdigit():
-                parts.append(f'{followers - int(old):+d} {name}')
-        head = ', '.join(parts[:1]) + (f" ({', '.join(parts[1:])})" if len(parts) > 1 else '')
+        prev = await db.kv_get(f'followers:{(now.date() - timedelta(days=1)).isoformat()}')
+        if prev and prev.isdigit() and abs(followers - int(prev)) > max(20, int(prev) * 0.3):
+            head = (f'Подписчики: площадка отдала {followers}, вчера было {prev}. Скачок слишком большой, '
+                    'не верю и не записываю: пришлите скриншот профиля, сверю.')
+        else:
+            await db.kv_set(f'followers:{today}', str(followers))
+            parts = [f'Подписчики сейчас: {followers}']
+            for days, name in ((1, 'вчера'), (7, '7 дней назад')):
+                old = await db.kv_get(f'followers:{(now.date() - timedelta(days=days)).isoformat()}')
+                if old and old.isdigit():
+                    parts.append(f'{name} было {int(old)} (разница {followers - int(old):+d})')
+            head = parts[0] + (' · ' + '; '.join(parts[1:]) if len(parts) > 1 else ' (сравнить пока не с чем: счёт начат сегодня)')
     posts = await db.recent_published(now - timedelta(days=7))
     zero, nodata, young, total = [], 0, 0, 0
     for post in posts:
@@ -201,10 +211,11 @@ async def daily_summary(db, client, now):
     for i in range(7):
         removed += int(await db.kv_get('zero_cleanup:day:' + (now.date() - timedelta(days=i)).isoformat()) or 0)
     mature = total - young
-    share = f' ({100 * len(zero) // max(1, mature)}%)' if mature else ''
-    line = f'Постов за неделю {total}: без реакции висят {len(zero)}{share}, снято {removed}.'
+    share = f' ({100 * len(zero) // max(1, mature)}% от {mature})' if mature else ''
+    line = (f'Посты за 7 дней: вышло {total}. Из тех, что старше суток ({mature}): без лайков и комментариев {len(zero)}{share}. '
+            f'Нашей уборкой удалено пустых за 7 дней: {removed}.')
     if nodata:
-        line += f' Без данных: {nodata}.'
+        line += f' Нет данных от площадки: {nodata} (не считаю их пустыми).'
     out = ['📈 ' + head, line]
     if zero:
         by = {}
