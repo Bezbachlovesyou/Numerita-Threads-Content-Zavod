@@ -21,13 +21,12 @@ def destiny(day: int, month: int, year: int) -> int:
 
 
 def year_example(rng: random.Random) -> str:
-    """Два года одного дня рождения с РАЗНЫМИ числами судьбы: «14.05.1985 → число судьбы 6; 14.05.1992 → число судьбы 4»."""
+    """Один день рождения, ТРИ разных года, три РАЗНЫХ числа судьбы («Три года — три дороги»): «14.05.1985 → 6; 14.05.1992 → 4; 14.05.2001 → 3»."""
     while True:
         month, d = rng.randint(1, 12), rng.randint(1, 28)
-        y1, y2 = rng.sample(range(1960, 2006), 2)
-        n1, n2 = destiny(d, month, y1), destiny(d, month, y2)
-        if n1 != n2:
+        years = sorted(rng.sample(range(1960, 2008), 3))
+        nums = [destiny(d, month, y) for y in years]
+        if len(set(nums)) == 3:
             break
-    return (f"{d:02d}.{month:02d}.{y1} → сумма цифр {sum(int(c) for c in f'{d:02d}{month:02d}{y1}')} → число судьбы {n1}; "
-            f"{d:02d}.{month:02d}.{y2} → сумма цифр {sum(int(c) for c in f'{d:02d}{month:02d}{y2}')} → число судьбы {n2}; "
-            f"число души у обоих {reduce_number(d)} (день {d})")
+    parts = [f"{d:02d}.{month:02d}.{y} → сумма цифр {sum(int(c) for c in f'{d:02d}{month:02d}{y}')} → число судьбы {n}" for y, n in zip(years, nums)]
+    return "; ".join(parts) + f"; число души у всех троих {reduce_number(d)} (день {d})"

@@ -17,14 +17,14 @@ class Arithmetic(unittest.TestCase):
         for seed in range(200):
             text = personal.year_example(random.Random(seed))
             dates = re.findall(r"(\d\d)\.(\d\d)\.(\d{4}) → сумма цифр (\d+) → число судьбы (\d)", text)
-            self.assertEqual(len(dates), 2, text)
+            self.assertEqual(len(dates), 3, text)
             nums = []
             for d, m, y, total, n in dates:
                 self.assertEqual(sum(int(c) for c in d + m + y), int(total))
                 self.assertEqual(personal.destiny(int(d), int(m), int(y)), int(n))
                 nums.append(n)
-            self.assertNotEqual(nums[0], nums[1])  # смысл примера: тот же день, разные судьбы
-            self.assertEqual(dates[0][:2], dates[1][:2])  # день и месяц одинаковы, разный только год
+            self.assertEqual(len(set(nums)), 3)  # смысл примера: тот же день, три разные судьбы
+            self.assertEqual({x[:2] for x in dates}, {dates[0][:2]})  # день и месяц одинаковы, разный только год
 
 
 class Rubrics(unittest.TestCase):
