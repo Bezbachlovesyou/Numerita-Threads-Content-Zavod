@@ -157,11 +157,23 @@ def risky_reply(text: str) -> bool:
     return bool(RISKY_REPLY.search(text or ""))
 
 
+def fit(text: str, limit: int) -> str:
+    """Влезть в лимит БЕЗ обрыва на полуслове (слово владельца 07.11.2026, «в Telegr»): режем по границе последнего целого предложения,
+    нет предложения — по границе слова и с «…»."""
+    if len(text) <= limit:
+        return text
+    cut = text[:limit]
+    ends = [m.end() for m in re.finditer(r"[.!?…](?:\s|$)|[.!?…][)»\"✨🤍💫🌙⭐🕊🌿🔥💎🙏☀️🌅🍂🌊🎯🧭💙]*(?:\s|$)", cut)]
+    if ends and ends[-1] >= limit * 0.4:
+        return cut[:ends[-1]].rstrip()
+    return cut.rsplit(" ", 1)[0].rstrip(" ,;:—-") + "…"
+
+
 def finish_reply(text: str) -> str:
     """Обрезает слишком длинный ответ и вычищает любые ссылки — в ответах их быть не должно."""
     body = re.sub(r"[ \t]{2,}", " ", LINK_RE.sub("", strip_credits(text.replace("{LINK}", "")))).strip()
     if len(body) > MAX_REPLY_LENGTH:
-        body = body[: MAX_REPLY_LENGTH - 1].rsplit(" ", 1)[0] + "…"
+        body = fit(body, MAX_REPLY_LENGTH - 1)
     return body
 
 
@@ -448,7 +460,7 @@ async def answer_comments(
             log.warning("Слишком короткий ответ на %s: %r — не отправляю", comment["id"], text)
             continue
         if mode in ("link", "paywall", "offer"):
-            text = (f"{text[: MAX_REPLY_LENGTH - 45]}\n{BOT_LINK}r{post_id or 0}_"
+            text = (f"{fit(text, MAX_REPLY_LENGTH - 45)}\n{BOT_LINK}r{post_id or 0}_"
                     f"{ladder.letter(mode, variant)}"
                     + (arm[0] if arm else "") + vibe)  # метка ветки: …c/…a — код/нейросеть; e — живой стиль, n — обычный
         if sent:
