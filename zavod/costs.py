@@ -124,16 +124,43 @@ async def report(db, generator, tz) -> str:
                   f"• пост: ≈{money(post_cost)} — голос, методичка, эмоции, изобилие ≈{post_in / 1000:.0f} тыс. токенов",
                   f"• итого по сделанному сегодня ≈{money(reply_cost * by_status.get('replied', 0) + post_cost * n_posts)}"
                   " (без переписываний, сводок и пропусков нейросетью)"]
-    smart = await smart_ab(db, now)
-    if smart:
-        lines += ["", "A/B «умный ответ или ответ кодом» на комментарии с датой, 7 дней:"] + smart
+    vibe = await vibe_ab(db, now)
+    if vibe:
+        lines += ["", "A/B стиля ответов за 7 дней («живой» с эмодзи и юмором против обычного), с 07.11:"] + vibe
     ab = await reply_ab(db, generator, now)
     if ab:
-        lines += ["", "A/B моделей ответов за 7 дней (продолжили разговор после нашего ответа):"] + ab
+        lines += ["", "Ответы нейросети на комментарии, 7 дней, по моделям (продолжили разговор после нашего ответа). Ответы кодом выключены с 28.10:"] + ab
     from . import funnel
     lines += ["", "Что было дальше в боте:"] + ["• " + x for x in funnel.lines(await funnel.fetch(1))]
     lines += ["", "Картинки рисуются кодом — $0. Видео (fal.ai) не включено и с этого счёта не платится."]
     return "\n".join(lines)
+
+
+async def vibe_ab(db, now: datetime) -> list[str]:
+    """A/B стиля ответов (07.11.2026): по веткам (ник → e/n) — ответили людям, продолжили разговор. Переходы в бота — по буквам e/n в метке ссылки."""
+    from .autoreply import vibe_arm
+    since = max((now - timedelta(days=7)).astimezone(timezone.utc).isoformat(), "2026-11-07")
+    rows = await db._rows("SELECT target_id, root_id, author, role, created_at FROM dialogue_messages "
+                          "WHERE created_at >= ? ORDER BY created_at", (since,))
+    first_reply: dict = {}
+    talked: dict = {}
+    authors: dict = {}
+    for r in rows:
+        thread = (r["target_id"], r["root_id"])
+        if r["role"] == "assistant":
+            first_reply.setdefault(thread, r["created_at"])
+        else:
+            authors.setdefault(thread, set()).add(r["author"])
+            if thread in first_reply and r["created_at"] > first_reply[thread]:
+                talked.setdefault(thread, set()).add(r["author"])
+    stats = {"e": [0, 0], "n": [0, 0]}
+    for thread in first_reply:
+        for author in authors.get(thread, ()):
+            row = stats[vibe_arm(author)]
+            row[0] += 1
+            row[1] += author in talked.get(thread, set())
+    names = {"e": "живой (эмодзи, образ, юмор)", "n": "обычный"}
+    return [f"• {names[a]}: ответили {n}, продолжили разговор {t} ({round(100 * t / n)}%)" for a, (n, t) in stats.items() if n]
 
 
 async def smart_ab(db, now: datetime, raw: bool = False):

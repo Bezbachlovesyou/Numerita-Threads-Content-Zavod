@@ -25,7 +25,7 @@ class Model:
         self.summaries = 0
         self.fail_summary = False
 
-    async def write_reply(self, post, comment, author, mode, model=None):
+    async def write_reply(self, post, comment, author, mode, model=None, careful=False, vibe=False):
         self.calls += 1
         ideas = ["сюжет держится на выборе героя", "автор прячет главное в паузах", "финал спорит с началом",
                  "второстепенный персонаж ведёт историю", "язык меняется вместе с героем", "время в книге течёт иначе",

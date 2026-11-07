@@ -104,7 +104,7 @@ class WithDb(unittest.IsolatedAsyncioTestCase):
                 self.sent.append(text)
 
         class Model:
-            async def write_reply(self, post, text, author, mode, model=None):
+            async def write_reply(self, post, text, author, mode, model=None, careful=False, vibe=False):
                 seen["post"] = post
                 return "Ура, нашла! Цифры этого числа в языке чисел говорят о тонкой интуиции. А день рождения скажешь?"
 
@@ -129,7 +129,7 @@ class WithDb(unittest.IsolatedAsyncioTestCase):
                 self.sent.append(text)
 
         class Model:
-            async def write_reply(self, post, text, author, mode, model=None):
+            async def write_reply(self, post, text, author, mode, model=None, careful=False, vibe=False):
                 seen["post"] = post
                 return "Привет! Красивое число. Расскажешь, что для тебя оно значит?"
 

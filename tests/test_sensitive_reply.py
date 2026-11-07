@@ -32,7 +32,7 @@ class SensitiveReply(unittest.IsolatedAsyncioTestCase):
                 sent.append(text)
 
         class Model:
-            async def write_reply(self, post, text, author, mode, model=None, careful=False):
+            async def write_reply(self, post, text, author, mode, model=None, careful=False, vibe=False):
                 calls.append(careful)
                 return answers[min(len(calls) - 1, len(answers) - 1)]
         with patch('zavod.autoreply.reply_targets', new=AsyncMock(return_value=[('p', None, 'Терпение')])), \

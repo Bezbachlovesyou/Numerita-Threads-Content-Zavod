@@ -36,7 +36,7 @@ class ConversationFirst(unittest.IsolatedAsyncioTestCase):
                 self.sent.append((key, text))
         class Model:
             modes = []
-            async def write_reply(self, post, text, author, mode, model=None):
+            async def write_reply(self, post, text, author, mode, model=None, careful=False, vibe=False):
                 self.modes.append(mode)
                 return 'Тогда у тебя уже команда. Можно распределить конкретные задачи и оставить себе то, что нравится.'
         threads, model = Threads(), Model()

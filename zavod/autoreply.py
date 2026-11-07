@@ -98,6 +98,14 @@ def smart_arm(author: str) -> str:
     return "code" if zlib.crc32(f"smart:{author}".encode()) % 100 < CODE_SHARE * 100 else "ai"
 
 
+VIBE_SHARE = 0.5  # A/B стиля (слово владельца 07.11.2026): B «живой» — эмодзи, образ, юмор, вопрос; A — прежний. Одинаковое приглашение в обеих.
+
+
+def vibe_arm(author: str) -> str:
+    """«e» — живой стиль, «n» — обычный; один и тот же человек всегда в одной ветке (по нику)."""
+    return "e" if zlib.crc32(f"vibe:{author}".encode()) % 100 < VIBE_SHARE * 100 else "n"
+
+
 # Ответы кодом выключены (слово владельца 28.10.2026: «тупейше отвечает на нормальные вопросы»):
 # шаблон по дате не заменяет живой ответ. Каждому, кто получил такой шаблон, redo_code_replies отвечает заново.
 CODE_SHARE = 0.0
@@ -383,6 +391,8 @@ async def answer_comments(
         arm = smart_arm(author) if (find_birth(comment["message"]) or find_pair(comment["message"])) \
             and not memory.strip() else ""
         model = reply_model_for(author, getattr(generator, "reply_model", None), ab_model, ab_share)
+        vibe = vibe_arm(author)
+        use_vibe = vibe == "e" and not CRISIS_COMMENT.search(comment["message"] or "")
         seed = zlib.crc32(str(comment["id"]).encode())
         text = (code_reply(comment["message"], kb, seed=seed) or pair_reply(comment["message"], kb, seed=seed)) \
             if arm == "code" and mode in ("plain", "profile") else None
@@ -394,7 +404,7 @@ async def answer_comments(
         try:
             if not text:
                 generated += 1
-                text = (await generator.write_reply(post_text, comment["message"], author, mode, model)).strip()
+                text = (await generator.write_reply(post_text, comment["message"], author, mode, model, vibe=use_vibe)).strip()
         except GenerationError as e:
             log.warning("Не удалось написать ответ на комментарий %s: %s", comment["id"], e)
             await db.kv_set("autoreply_error", f"{now:%d.%m %H:%M} нейросеть: {e}")
@@ -425,7 +435,7 @@ async def answer_comments(
                 break
             try:
                 generated += 1
-                text = finish_reply(await generator.write_reply(post_text, comment["message"], author, mode, model))
+                text = finish_reply(await generator.write_reply(post_text, comment["message"], author, mode, model, vibe=use_vibe))
             except GenerationError:
                 continue
             if text[:60] in recent or reply_problem(text, recent_replies):
@@ -440,7 +450,7 @@ async def answer_comments(
         if mode in ("link", "paywall", "offer"):
             text = (f"{text[: MAX_REPLY_LENGTH - 45]}\n{BOT_LINK}r{post_id or 0}_"
                     f"{ladder.letter(mode, variant)}"
-                    + (arm[0] if arm else ""))  # метка ветки A/B: …_pc — ответ кодом, …_pi — ответ нейросети
+                    + (arm[0] if arm else "") + vibe)  # метка ветки: …c/…a — код/нейросеть; e — живой стиль, n — обычный
         if sent:
             await asyncio.sleep(random.uniform(*PAUSE))
 

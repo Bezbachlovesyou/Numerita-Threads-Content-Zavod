@@ -94,7 +94,7 @@ class InReplies(unittest.IsolatedAsyncioTestCase):
                 self.sent.append(text)
 
         class Model:
-            async def write_reply(self, post, text, author, mode, model=None):
+            async def write_reply(self, post, text, author, mode, model=None, careful=False, vibe=False):
                 seen["post"], seen["mode"] = post, mode
                 return "Число души 5, Меркурий: быстрый ум и живая речь. Где это помогает тебе?"
 

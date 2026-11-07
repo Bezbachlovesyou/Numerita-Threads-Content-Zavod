@@ -222,4 +222,11 @@ async def daily_summary(db, client, now):
         for post in zero:
             by[short_name(post.rubric)] = by.get(short_name(post.rubric), 0) + 1
         out.append('Чаще пустые: ' + ', '.join(f'{k} ({v})' for k, v in sorted(by.items(), key=lambda kv: -kv[1])[:3]))
+    try:
+        from .costs import vibe_ab
+        vibe = await vibe_ab(db, now)
+        if vibe:
+            out.append('Стиль ответов за 7 дней: ' + '; '.join(x.lstrip('• ') for x in vibe))
+    except Exception:
+        pass
     return '\n'.join(out)

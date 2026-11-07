@@ -88,6 +88,13 @@ class GenerationError(Exception):
     pass
 
 
+VIBE_RULE = ("\n\nСтиль «живой» (проба): тепло и ярко. 1–3 эмодзи ТОЛЬКО из набора ✨ 🤍 💫 🌙 ⭐ 🕊 🌿 🔥 💎 🙏 ☀️ 🌅 🍂 🌊 🎯 🧭 💙, "
+             "уместно, не в каждой фразе. Литературный образ: одна метафора или ритм фразы. Лёгкий добрый юмор над обстоятельствами, "
+             "не над человеком. В конце короткий живой вопрос, на который хочется ответить. Если тема тяжёлая (горе, болезнь, "
+             "кризис, одиночество) — без юмора и без эмодзи, просто тепло. Остальные правила (честность, без обещаний, "
+             "язык собеседника) прежние.")
+
+
 class Generator:
     def __init__(self, api_key: str, model: str, voice_path: Path, knowledge: KnowledgeBase):
         self.api_key = clean_key(api_key)
@@ -132,7 +139,7 @@ class Generator:
         return await self._complete(system, prompt, max_tokens=max_tokens, kind=kind, model=model)
 
     async def write_reply(self, post: str, comment: str, author: str, mode: str = "plain",
-                          model: str | None = None, careful: bool = False) -> str:
+                          model: str | None = None, careful: bool = False, vibe: bool = False) -> str:
         """Ответ на комментарий под постом. «SKIP» — отвечать не нужно.
 
         mode: plain — польза и разговор без приглашения; старые profile/question/offer также plain;
@@ -167,6 +174,8 @@ class Generator:
             + "Сам не пиши никаких ссылок, адресов и @упоминаний. " + endings[mode]
             + lang.local_language_rule(comment)  # ответ на языке комментатора (казахский, украинский, белорусский)
         )
+        if vibe and not careful:  # ветка B «живой» A/B стиля ответов (слово владельца 07.11.2026)
+            prompt += VIBE_RULE
         if careful:  # прошлый вариант задел фильтр Threads (самоповреждение, РПП, мат)
             prompt += ("\n\nПерепиши бережно: не повторяй мат и ругательства собеседника даже с многоточием, не пиши "
                        "о нехватке сил, смерти, вреде себе, еде и весе, не используй «держись». Тепло, по существу, "

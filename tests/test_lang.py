@@ -46,7 +46,7 @@ class EnglishOffer(unittest.IsolatedAsyncioTestCase):
                 sent.append(text)
 
         class Model:
-            async def write_reply(self, post, text, author, mode, model=None, careful=False):
+            async def write_reply(self, post, text, author, mode, model=None, careful=False, vibe=False):
                 modes.append(mode)
                 return "Twelve reduces to three: Jupiter energy, generous and curious. Want the full picture?"
         with patch('zavod.autoreply.is_en', return_value=True), \
