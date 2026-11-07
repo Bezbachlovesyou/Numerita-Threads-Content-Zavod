@@ -264,8 +264,11 @@ class Generator:
         from .lang import public_rule
         if kind in OPTIONAL_KINDS and getattr(self, "spend_guard", None) is not None:
             from .costs import SOFT_USD
-            if await self.spend_guard() >= SOFT_USD:
-                raise GenerationError("дневной бюджет расходов исчерпан: необязательный шаг пропущен")
+            spent_today = await self.spend_guard()
+            if spent_today >= SOFT_USD:
+                from .costs import HARD_USD
+                raise GenerationError(f"мягкий дневной лимит расходов ${SOFT_USD:.2f} исчерпан (потрачено ${spent_today:.2f}; "
+                                      f"жёсткий ${HARD_USD:.2f}): необязательный шаг пропущен")
         orig_system = system
         system = apply(system) + public_rule(kind)
         model = model or (self.reply_model if kind in CHEAP_KINDS and getattr(self, "reply_model", None) else self.model)
