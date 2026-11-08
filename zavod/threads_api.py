@@ -16,6 +16,10 @@ API_URL = "https://zernio.com/api/v1"
 MAX_LENGTH = 500
 
 
+EN_TOPIC_FALLBACK = {"нумерология": "Numerology", "астрология": "Astrology", "психология": "Psychology",
+                     "отношения": "Dating Threads", "саморазвитие": "Psychology"}
+
+
 class ThreadsError(Exception):
     def __init__(self, message, *, http_status=None, retry_after=None):
         self.http_status = http_status
@@ -85,6 +89,10 @@ class ThreadsClient:
             raise ThreadsError("Русские буквы в английском аккаунте — пост не отправлен.")
         platform: dict = {"platform": "threads", "accountId": self.account_id}
         extra = {}
+        if topic_tag and lang.is_en() and lang.has_cyrillic(topic_tag):
+            # Слово владельца 08.11.2026: английский аккаунт никогда не попадает в русскую тему («Нумерология»).
+            # Последний рубеж на любом пути публикации: русскую тему заменяем английской парой, иначе без темы.
+            topic_tag = EN_TOPIC_FALLBACK.get(topic_tag.strip().lower())
         if topic_tag:
             extra["topic_tag"] = topic_tag
         if first_comment:
