@@ -103,7 +103,7 @@ def strip_credits(text: str) -> str:
 # Слово владельца 03.11.2026 (аудитория Threads: Dating Threads 269, психология 178, Book Threads 221, AI Threads 161): пост уходит в ленты этих тем.
 # Слово владельца 04.11.2026: «снизить траты завода в 5 раз, делать только то, что срабатывало, разнообразив его». По данным Threads за 30 дней просмотры и комментарии дают матрицы «Угадай число» (0,4–6,5 тыс.),
 # списки по дням рождения про любовь/роли (1,6–3,6 тыс.), страхи, пары, «Пара недели», небо; остальное — единицы–десятки просмотров. Эти рубрики — ядро; остальные ×0,25 (не выключены: свежие форматы пробуются, но редко).
-CORE = {"grid", "text_marriage", "text_roles", "text_flags", "text_rita", "text_angel", "text_vector", "text_misread", "text_sign", "text_goals_story", "text_fears", "text_reaction", "text_lessons", "text_heaven_pairs", "text_pair_week", "text_pair", "text_sky", "text_free", "text_celeb", "text_physics", "text_loves", "text_year", "text_seek", "text_from_comments"}
+CORE = {"grid", "text_marriage", "text_roles", "text_flags", "text_rita", "text_angel", "text_vector", "text_misread", "text_sign", "text_sign_good", "text_goals_story", "text_fears", "text_reaction", "text_lessons", "text_heaven_pairs", "text_pair_week", "text_pair", "text_sky", "text_free", "text_celeb", "text_physics", "text_loves", "text_year", "text_seek", "text_from_comments"}
 NON_CORE_FACTOR = 0.25
 # Настоящие цифры из событий бота за 30 дней (ветка бота, 04.11.2026; тестовые аккаунты не исключены — поэтому только «больше 20»). Обновлять по новому отчёту бота.
 GOALS_DATA = ("за 30 дней в боте больше 20 человек поставили себе цель и больше 20 записали свои маленькие победы (число приблизительное, без точной цифры). "
@@ -115,7 +115,7 @@ DATING_RUBRICS = {"text_flags", "text_loves", "text_marriage", "text_marry", "te
 PSYCH_RUBRICS = {"text_qualities", "text_rita", "text_angel", "text_vector", "text_goals_story", "text_lessons", "text_fears", "text_reaction", "text_outgrow", "text_success", "text_levels", "text_gifts", "text_battery", "text_roles", "text_avoid", "text_great", "text_unknown"}
 
 
-ASTRO_RUBRICS = {"text_sign", "text_sky"}  # слово владельца 08.11.2026: «Знак × число» должен попадать в тему «Астрология», а не «Нумерология»
+ASTRO_RUBRICS = {"text_sign", "text_sign_good", "text_sky"}  # слово владельца 08.11.2026: «Знак × число» должен попадать в тему «Астрология», а не «Нумерология»
 
 
 def topic_tag_for(rubric: str | None) -> str:
@@ -185,8 +185,9 @@ def load_rubrics(path: Path) -> list[Rubric]:
 
 
 # Новые форматы по слову владельца — чаще, пока оптимизатор не наберёт по ним данных.
+SIGNS_EN = ["Aries", "Taurus", "Gemini", "Cancer", "Leo", "Virgo", "Libra", "Scorpio", "Sagittarius", "Capricorn", "Aquarius", "Pisces"]
 SIGNS_RU = ["Овны", "Тельцы", "Близнецы", "Раки", "Львы", "Девы", "Весы", "Скорпионы", "Стрельцы", "Козероги", "Водолеи", "Рыбы"]
-BOOST = {"text_baza": 2.5, "text_rollcall": 2.5, "text_one_digit": 2.0, "text_howto": 1.5, "text_myth": 2.0, "text_insight": 1.5, "text_who_told": 2.5, "text_heaven_pairs": 3.0, "text_what_next": 2.0, "text_tag_pair": 2.0, "text_hype": 3.0, "text_secrets": 3.0, "text_marry": 3.0, "text_celeb": 4.0, "text_aroma": 2.5, "text_roles": 2.5, "text_avoid": 2.5, "text_sunrise": 4.5, "text_seek": 4.0, "text_physics": 3.0, "text_year": 4.0, "text_fears": 3.0, "text_reaction": 3.0, "text_lessons": 3.0, "text_flags": 3.5, "text_rita": 3.0, "text_angel": 3.0, "text_vector": 3.0, "text_misread": 4.0, "text_sign": 4.0, "text_goals_story": 3.0, "text_free": 12.0, "text_pair": 4.0, "text_unknown": 3.0, "text_battery": 2.5, "text_outgrow": 2.5, "text_marriage": 4.0, "text_loves": 2.5, "text_gifts": 2.5, "text_eras": 2.5, "text_success": 2.5, "text_wealth": 2.5, "text_levels": 2.5, "grid": 8.0, "text_great": 2.0, "text_science": 2.0, "text_dna": 1.5, "text_sky": 1.5}  # не чаще раза в день — следит post_next
+BOOST = {"text_baza": 2.5, "text_rollcall": 2.5, "text_one_digit": 2.0, "text_howto": 1.5, "text_myth": 2.0, "text_insight": 1.5, "text_who_told": 2.5, "text_heaven_pairs": 3.0, "text_what_next": 2.0, "text_tag_pair": 2.0, "text_hype": 3.0, "text_secrets": 3.0, "text_marry": 3.0, "text_celeb": 4.0, "text_aroma": 2.5, "text_roles": 2.5, "text_avoid": 2.5, "text_sunrise": 4.5, "text_seek": 4.0, "text_physics": 3.0, "text_year": 4.0, "text_fears": 3.0, "text_reaction": 3.0, "text_lessons": 3.0, "text_flags": 3.5, "text_rita": 3.0, "text_angel": 3.0, "text_vector": 3.0, "text_misread": 4.0, "text_sign": 4.0, "text_sign_good": 7.0, "text_goals_story": 3.0, "text_free": 12.0, "text_pair": 4.0, "text_unknown": 3.0, "text_battery": 2.5, "text_outgrow": 2.5, "text_marriage": 4.0, "text_loves": 2.5, "text_gifts": 2.5, "text_eras": 2.5, "text_success": 2.5, "text_wealth": 2.5, "text_levels": 2.5, "grid": 8.0, "text_great": 2.0, "text_science": 2.0, "text_dna": 1.5, "text_sky": 1.5}  # не чаще раза в день — следит post_next
 
 
 class ContentPlan:
@@ -275,7 +276,7 @@ class ContentPlan:
             who=rng.choice(WHO_TO_TAG),
             physics=physics.fact_for(digit, rng) if "{physics}" in rubric.text else "",
             year_example=personal.year_example(rng) if "{year_example}" in rubric.text else "",
-            sign=rng.choice(SIGNS_RU) if "{sign}" in rubric.text else "",
+            sign=rng.choice(SIGNS_EN if _is_en() else SIGNS_RU) if "{sign}" in rubric.text else "",
             goals_data=GOALS_DATA,
             great=greatpeople.block(greatpeople.pick(rng, _is_en()), _is_en()) if "{great}" in rubric.text else "",
         )
