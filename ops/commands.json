@@ -778,5 +778,26 @@
   "rubric": "text_loves",
   "text": "HOW YOU FALL IN LOVE BY YOUR DAY NUMBER 💞\n\n1, 10, 19, 28: you make the first move\n2, 11, 20, 29: you hear every word\n3, 12, 21, 30: you laugh and realize you're gone\n4, 13, 22, 31: you test with actions\n5, 14, 23: you fall for the freedom beside you\n6, 15, 24: you start caring\n7, 16, 25: quiet, then suddenly serious\n8, 17, 26: you pick one, for long\n9, 18, 27: you give everything, uncounted\n\nWhich line is yours? Tell me your day as a number.",
   "account": "en"
+ },
+ {
+  "id": "gotaway-ru-2026-11-08",
+  "action": "thread",
+  "rubric": "text_gotaway",
+  "items": [
+   "РОДИЛСЯ В ЭТИХ ЧИСЛАХ? ЭТО ТЫ УШЁЛ ВОВРЕМЯ 🔮\n\nНе смогли ПОДДЕРЖАТЬ твой темп → 1, 10, 19, 28\nНе стали СЛУШАТЬ → 2, 11, 20, 29\nПозавидовали твоему СВЕТУ → 3, 12, 21, 30\nХотели ХАОСА, а ты был покоем → 4, 13, 22, 31\nПытались посадить в КЛЕТКУ → 5, 14, 23\nНе умели принимать ЗАБОТУ → 6, 15, 24\nТак и не разгадали ТЕБЯ → 7, 16, 25\nНе справились с твоей СИЛОЙ → 8, 17, 26\nВзяли твоё ПРОЩЕНИЕ и убежали → 9, 18, 27",
+   "Это день рождения: он показывает, как тебя читают. А кто остаётся рядом, читается по году и по паре. Образ, не приговор.\n\nИ теперь ты знаешь ✨",
+   "Проверь на себе: напиши свой день числом, скажу, что в нём про уход и про возвращение. Год и пару лучше считать лично: ссылка в шапке профиля.\n\nТы и есть то самое число ✨"
+  ]
+ },
+ {
+  "id": "gotaway-en-2026-11-08",
+  "account": "en",
+  "action": "thread",
+  "rubric": "text_gotaway",
+  "items": [
+   "BORN ON THESE DATES? YOU'RE THE ONE WHO LEFT IN TIME 🔮\n\nThey couldn't KEEP your pace → 1, 10, 19, 28\nThey didn't LISTEN → 2, 11, 20, 29\nThey envied your LIGHT → 3, 12, 21, 30\nThey wanted CHAOS, you were peace → 4, 13, 22, 31\nThey tried to CAGE you → 5, 14, 23\nThey couldn't take CARE → 6, 15, 24\nThey never figured YOU out → 7, 16, 25\nThey couldn't handle your POWER → 8, 17, 26\nThey took your FORGIVENESS and ran → 9, 18, 27",
+   "That's the birth day: it shows how you get read. Who stays is read from the year and the pair. An image, not a verdict.\n\nAnd now you know ✨",
+   "Test it on yourself: tell me your day as a number, I'll say what it holds about leaving and returning. Year and pair are best counted privately: link in profile.\n\nYou are the number ✨"
+  ]
  }
 ]
