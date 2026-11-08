@@ -115,7 +115,12 @@ DATING_RUBRICS = {"text_flags", "text_loves", "text_marriage", "text_marry", "te
 PSYCH_RUBRICS = {"text_qualities", "text_rita", "text_angel", "text_vector", "text_goals_story", "text_lessons", "text_fears", "text_reaction", "text_outgrow", "text_success", "text_levels", "text_gifts", "text_battery", "text_roles", "text_avoid", "text_great", "text_unknown"}
 
 
+ASTRO_RUBRICS = {"text_sign", "text_sky"}  # слово владельца 08.11.2026: «Знак × число» должен попадать в тему «Астрология», а не «Нумерология»
+
+
 def topic_tag_for(rubric: str | None) -> str:
+    if rubric in ASTRO_RUBRICS:
+        return "Astrology" if _is_en() else "Астрология"
     if _is_en():  # английский аккаунт: ни одной кириллической буквы, в том числе в теме
         return "Dating Threads" if rubric in DATING_RUBRICS else "Psychology" if rubric in PSYCH_RUBRICS else "Numerology"
     if rubric in DATING_RUBRICS:
