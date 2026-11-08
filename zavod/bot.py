@@ -1076,7 +1076,7 @@ async def publish(
             )
             text = strip_credits(text)  # без «по мотивам @…» и чужих @упоминаний
             threads_id = await threads.publish_text(
-                text, topic_tag_for(post.rubric), first_comment, image_urls, video_url,
+                text, topic_tag_for(post.rubric, text), first_comment, image_urls, video_url,
                 **({'media_kind':media_kind} if grid_exception else {})
             )
             await db.set_threads_id(post.id, threads_id or "published")
@@ -2518,7 +2518,7 @@ async def run_op(cmd: dict, db: Storage, threads: ThreadsClient | None, bot: Bot
     elif action == "thread" and threads is not None and cmd.get("items"):  # цепочка постов одним тредом
         items = [str(t).strip() for t in cmd["items"] if str(t).strip()]
         post_id = await db.add_draft(f"ops:{cmd['id']}", items[0], cmd.get("rubric") or "text_seed")
-        remote = await threads.publish_text(items[0], topic_tag_for(cmd.get("rubric")), thread_items=items)
+        remote = await threads.publish_text(items[0], topic_tag_for(cmd.get("rubric"), "\n".join(items)), thread_items=items)
         await db.set_threads_id(post_id, remote or "published")
         await db.mark_published(post_id)
         asyncio.create_task(post_receipt(bot, cfg, db, threads, datetime.now(cfg.timezone)))
