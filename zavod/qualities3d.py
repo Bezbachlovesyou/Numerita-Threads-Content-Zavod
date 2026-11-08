@@ -12,6 +12,7 @@
 import json
 import math
 import random
+import re
 import subprocess
 import tempfile
 from pathlib import Path
@@ -416,3 +417,77 @@ def answer_text(digit: int) -> str:
     words = load_qualities()[digit]
     return (f"Это {digit} — {', '.join(words[:6])}. Дни рождения с этим числом: {birth_days(digit)}. "
             "Образ числа, не приговор: в каждом из нас звучат все цифры.")
+
+
+# ---------- Под постом: код проверяет ответ ----------
+
+GUESS = re.compile(r"(?<![\d.,:/-])([1-9])(?![\d.,:/-])")
+KEEP_IDS = 400
+
+
+def spin_data(card: str | None) -> dict | None:
+    try:
+        spin = (json.loads(card or "{}") or {}).get("spin")
+    except ValueError:
+        return None
+    return spin if isinstance(spin, dict) and spin.get("digit") else None
+
+
+async def spin_of(db, post_id: int | None) -> dict | None:
+    """Данные выпуска «Качества чисел» (число, форма, варианты) или None, если пост — не он."""
+    if not post_id:
+        return None
+    post = await db.get(post_id)
+    if not post or post.rubric != "text_spin":
+        return None
+    return spin_data(post.card)
+
+
+def guess_of(comment: str, options: list[int]) -> int | None:
+    """Число, которое человек назвал: первая одиночная цифра 1–9 из вариантов (даты «5 мая» и «15.05» не берём)."""
+    if re.search(r"\d{2,}", comment or ""):  # в комментарии есть день, год или дата — это про рождение, а не ответ игры
+        return None
+    for g in GUESS.findall(comment or ""):
+        if int(g) in options:
+            return int(g)
+    return None
+
+
+def reply_note(spin: dict, comment: str) -> str:
+    """Добавка к заданию ответа: код проверил выбор, нейросеть только говорит тепло и по расчёту (модель сама не угадывает)."""
+    digit, options = int(spin["digit"]), [int(o) for o in spin["options"]]
+    words = load_qualities()
+    guess = guess_of(comment, options)
+    head = "\n\nИГРА «КАЧЕСТВА ЧИСЕЛ» — порядок ответа. "
+    if guess is None:
+        return (head + "Код не нашёл в комментарии выбора из вариантов (" + ", ".join(map(str, options)) + "). Если человек "
+                "назвал дату рождения или написал о другом — ответь по обычным правилам, игру не упоминай. Если просто "
+                "поддержал пост — тепло поблагодари и мягко предложи выбрать число из вариантов; ответ не раскрывай.")
+    if guess == digit:
+        lead = (f"КОД ПРОВЕРИЛ: человек назвал {guess} — это верно. Образ числа {digit}: {', '.join(words[digit][:6])}. "
+                f"Дни рождения с этим числом: {birth_days(digit)}.")
+        todo = ("1) Порадуйся и похвали. 2) Назови 3–4 слова образа и скажи, чем число так узнаётся (образ из языка чисел, "
+                "не диагноз). 3) Одной фразой мост к личному: напиши день рождения числом — скажу, чьи это слова в нём.")
+    else:
+        lead = (f"КОД ПРОВЕРИЛ: человек назвал {guess} — не угадал, верный ответ {digit}. Образ числа {digit}: "
+                f"{', '.join(words[digit][:6])}. Образ числа {guess}: {', '.join(words[guess][:4])}. "
+                f"Дни рождения с числом {digit}: {birth_days(digit)}.")
+        todo = ("1) Тепло и с юмором: близко к смыслу, но это другое число — игра для того, чтобы учиться. 2) Открой верное число "
+                f"и 2–3 его слова, потом 1–2 слова числа {guess}, чтобы человек увидел разницу. 3) Одной фразой мост: "
+                "напиши день рождения числом — скажу, какие слова звучат в нём.")
+    return head + lead + " " + todo + " Это игра-образ, не тест и не приговор; слов сверх базы не выдумывай."
+
+
+async def record(db, post_id: int, comment_id: str, spin: dict, comment: str) -> None:
+    """Копим ответы выпуска: сколько людей и кто что выбрал (для постов-итогов и оптимизатора)."""
+    guess = guess_of(comment, [int(o) for o in spin["options"]])
+    key = f"spin:{post_id}"
+    data = json.loads(await db.kv_get(key) or "{}") or {"n": 0, "right": 0, "picks": {}, "seen": []}
+    if comment_id in data["seen"]:
+        return
+    data["seen"] = (data["seen"] + [comment_id])[-KEEP_IDS:]
+    if guess is not None:
+        data["n"] += 1
+        data["right"] += int(guess == int(spin["digit"]))
+        data["picks"][str(guess)] = data["picks"].get(str(guess), 0) + 1
+    await db.kv_set(key, json.dumps(data, ensure_ascii=False))

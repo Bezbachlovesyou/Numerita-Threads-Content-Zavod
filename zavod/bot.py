@@ -994,6 +994,50 @@ async def confirm_grid_videos(db: Storage, threads: ThreadsClient, bot: Bot, cfg
                                           "выкладываю (слово владельца 30.10) — разберусь с форматом видео.")
 
 
+async def spin_autopost(cfg: Config, db: Storage, threads: ThreadsClient | None, bot: Bot, slot: Slot,
+                        now: datetime, rng: random.Random) -> bool:
+    """«Качества чисел» (08.11.2026): пост и видео собирает код, $0. Число и форма идут по кругу: 1 → сердце, 2 → сфера…"""
+    from . import qualities3d as Q
+    n = int(await db.kv_get("spin:n") or 0)
+    await db.kv_set("spin:n", str(n + 1))
+    digit, shape = 1 + n % 9, Q.SHAPES[n % len(Q.SHAPES)]
+    pick = random.Random(f"spin-{n}")
+    options = Q.make_options(digit, pick)
+    words = pick.sample(Q.load_qualities()[digit], 3)
+    text = Q.post_text(digit, words, options)
+    card = json.dumps({"anim": True, "spin": {"digit": digit, "shape": shape, "options": options, "seed": f"spin-{n}"}},
+                      ensure_ascii=False)
+    first_comment, link_mode = None, None
+    if await attribution.needs_tracking(db, slot.rubric.key, now, max_share=float(await db.kv_get("tracking:share") or 0.3)):
+        first_comment, link_mode = first_comment_for(slot, f"{slot.tag}_lc"), "comment"  # измерительная ссылка каркаса атрибуции
+    post_id = await db.add_draft(f"Качества числа {digit}, форма {shape}", text, slot.rubric.key, first_comment, card)
+    if link_mode:
+        await db.set_link_mode(post_id, link_mode)
+    post = await publish(await db.get(post_id), db, threads, bot, "", cfg.cards)
+    if post.status == "failed":
+        await notify_admins(bot, cfg, "⚠️ Пост не опубликован\n\n" + post_card(post, cfg), post)
+    return True
+
+
+async def ensure_spin_video(post: Post, db: Storage, threads: ThreadsClient) -> str | None:
+    """Видео «Качества чисел»: рисуется кодом, загружается в Zernio один раз на пост."""
+    from . import qualities3d as Q
+    spin = Q.spin_data(post.card)
+    if not spin or post.rubric != "text_spin":
+        return None
+    saved = await db.kv_get(f"spinvideo:{post.id}")
+    if saved:
+        return saved
+    try:
+        data = await asyncio.to_thread(Q.render_video, spin["shape"], int(spin["digit"]), spin["options"], spin["seed"])
+        url = await threads.upload_image(data, f"numerita_{post.id}_spin.mp4", "video/mp4")
+    except Exception:
+        log.exception("Видео качеств к посту #%s не собралось", post.id)
+        return None
+    await db.kv_set(f"spinvideo:{post.id}", url)
+    return url
+
+
 async def ensure_grid_video(post: Post, db: Storage, threads: ThreadsClient) -> str | None:
     """Живая матрица: видео формы с переливами и музыкой, если пост отмечен anim. Сбой — выйдет картинкой."""
     try:
@@ -1064,6 +1108,12 @@ async def publish(
             grid_video = await ensure_grid_video(post, db, threads) if grid_exception else None
             media_kind = 'number_grid_video' if grid_video else 'number_grid'
             video_url = grid_video or video_url
+            spin_post = post.rubric == "text_spin" and text_mode.enabled() and text_mode.grid_enabled()
+            if spin_post:  # «Качества чисел»: только живое видео; без него пост не выходит (как «Угадай число»)
+                video_url = await ensure_spin_video(post, db, threads)
+                media_kind = 'qualities_video'
+                if not video_url:
+                    raise ThreadsError("Видео «Качества чисел» не собралось — без него пост не выходит.")
             image_urls = await ensure_images(post, db, threads) if not video_url and (
                 (cards and not text_mode.enabled()) or grid_exception) else []
             if grid_exception and not grid_video and post.rubric == "grid" and (json.loads(post.card or "{}") or {}).get("anim"):
@@ -1077,7 +1127,7 @@ async def publish(
             text = strip_credits(text)  # без «по мотивам @…» и чужих @упоминаний
             threads_id = await threads.publish_text(
                 text, topic_tag_for(post.rubric), first_comment, image_urls, video_url,
-                **({'media_kind':media_kind} if grid_exception else {})
+                **({'media_kind':media_kind} if (grid_exception or spin_post) else {})
             )
             await db.set_threads_id(post.id, threads_id or "published")
         except ThreadsError as e:
@@ -2006,6 +2056,8 @@ async def post_next(
                               if grid.get("egg") else "")
                            + (f"\nФорма картинки: {SHAPES[shape][1]}. Вопрос на картинке: «{grid_title}» — "
                               "в тексте задай свой, новый вопрос в духе формы, не повторяя картинку." if shape in SHAPES else ""))
+        if slot.rubric.key == "text_spin":  # «Качества чисел»: пост и видео собирает код, нейросеть не нужна
+            return await spin_autopost(cfg, db, threads, bot, slot, now, rng)
         log.info("Автопост (%s): %s", slot.rubric.key, slot.topic)
         link_mode = await choose_link_mode(db, now, rng) if slot.rubric.cta == "link" else None
         try:

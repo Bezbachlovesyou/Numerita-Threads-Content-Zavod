@@ -391,6 +391,12 @@ async def answer_comments(
             chk = game.check(comment["message"], grid["hidden"], grid.get("egg"))
             post_text += game.note(chk, grid.get("egg"))
             await game.record(db, post_id, comment["id"], chk)
+        # «Качества чисел» (08.11.2026): код проверяет, какое число выбрал человек, и дает расчёт для ответа
+        from . import qualities3d
+        spin = await qualities3d.spin_of(db, post_id)
+        if spin is not None:
+            post_text += qualities3d.reply_note(spin, comment["message"])
+            await qualities3d.record(db, post_id, comment["id"], spin, comment["message"])
         # «Лестница личного» (31.10.2026): половина приглашений по-новому — дар, честное «чего не видно», приглашение; метка варианта
         # идёт в ссылку, воронка сравнит оба варианта по людям в боте и оплатам. Старый вариант — как был.
         from . import ladder

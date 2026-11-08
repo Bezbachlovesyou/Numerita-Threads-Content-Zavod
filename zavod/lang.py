@@ -12,7 +12,7 @@ import re
 LANG = (os.getenv("FACTORY_LANG", "ru").strip().lower() or "ru")
 PUBLIC_KINDS = {"post", "reply", "coherence", "sharpen", "strengthen", "note", "elevate"}
 EN_SKIP_RUBRICS = {"news", "text_hype", "text_note", "text_story", "text_story_call", "text_court",
-                   "text_protocol", "jackpot", "video", "carousel"}
+                   "text_protocol", "jackpot", "video", "carousel", "text_spin"}
 EN_RULE = (
     "\n\nLANGUAGE: Write the final public text in natural, warm, witty American English for an international "
     "English-speaking audience on Threads. The rules and knowledge above are in Russian — use their meaning, never "
