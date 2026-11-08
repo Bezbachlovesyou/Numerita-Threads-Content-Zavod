@@ -647,5 +647,24 @@
   "action": "post",
   "rubric": "text_sign",
   "text": "СТРЕЛЬЦЫ: ВАША СВОБОДА — ЭТО ВЫБОР ИЛИ ЩИТ? 🏹\n\nИногда «мне нужно пространство» значит «мне страшно, что привяжусь».\n\nЧисло дня подсказывает, что у вас:\n3, 12, 21, 30: щит из шутки\n5, 14, 23: щит из дороги\n7, 16, 25: щит из тишины\n9, 18, 27: щит из «мне ничего не нужно»\n\nНапиши знак и число дня, скажу, где у тебя щит."
+ },
+ {
+  "id": "regret-ru-2026-11-08",
+  "action": "thread",
+  "rubric": "text_misread",
+  "items": [
+   "КТО ПОЖАЛЕЕТ, ЧТО ПОТЕРЯЛ ТЕБЯ 💔\n\n1, 10, 19, 28: тот, кто в тебя не верил. Ты гордость, которой он не заметил\n2, 11, 20, 29: бывший, который до сих пор слушает вашу песню\n3, 12, 21, 30: друзья: с тобой было весело, без тебя в чате тишина\n4, 13, 22, 31: мама, она знает, чего тебе стоило дойти\n5, 14, 23: тот, кто не нашёл замену твоей энергии\n6, 15, 24: семья, когда ты засияешь\n7, 16, 25: никто, тебя боятся: ты стал недосягаем",
+   "8, 17, 26: богатый бывший, променявший алмаз на золото\n9, 18, 27: тот, кто тебе завидовал: ты выиграл\n\nКакая строка про тебя? Напиши свой день числом."
+  ]
+ },
+ {
+  "id": "regret-en-2026-11-08",
+  "account": "en",
+  "action": "thread",
+  "rubric": "text_misread",
+  "items": [
+   "WHO WILL REGRET LOSING YOU 💔\n\n1, 10, 19, 28: the one who never believed in you\n2, 11, 20, 29: an ex who still plays your song\n3, 12, 21, 30: friends: you were the fun, now the chat is quiet\n4, 13, 22, 31: your mother, she knows what it cost you\n5, 14, 23: someone who never found your energy again\n6, 15, 24: family, the day you glow up\n7, 16, 25: nobody, they fear you now",
+   "8, 17, 26: a rich ex who traded a diamond for gold\n9, 18, 27: the one who envied you: you won\n\nWhich line is yours? Tell me your day as a number."
+  ]
  }
 ]

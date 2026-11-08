@@ -76,6 +76,10 @@ async def run_due(db, now: datetime, tz) -> list[str]:
         await db.kv_set("remind:chakra:last", now.isoformat())
         await db.kv_set("remind:chakra:n", str(n + 1))
         out.append(chakras.note_text(n))
+    if await _due(db, "remind:dailypost:last", now, 1):  # пост дня для ручной публикации в Facebook/Instagram (слово владельца 08.11.2026)
+        from . import dailypost
+        await db.kv_set("remind:dailypost:last", now.isoformat())
+        out.extend(await dailypost.messages(db, now))
     open_ideas = await ideas(db)
     if open_ideas and await _due(db, "remind:ideas:last", now, IDEAS_EVERY_DAYS):
         await db.kv_set("remind:ideas:last", now.isoformat())
