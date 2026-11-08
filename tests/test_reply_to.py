@@ -81,3 +81,15 @@ class SkippedBefore(ReplyTo):
         await B.reply_to_comment(self.db, self.t, self.bot, self.cfg, "abdrakhman1414", "жалпы", "Қарапайым түсіндірейін")
         self.t.reply.assert_awaited_once_with("zp1", "c1", "Қарапайым түсіндірейін")
         self.assertTrue(any("✅" in n for n in self.notes))
+
+
+class Fallback(ReplyTo):
+    async def test_unreachable_nested_comment_falls_back_to_its_parent(self):
+        from zavod.threads_api import ThreadsError
+        self.t.comments = AsyncMock(return_value=[
+            {"id": "top", "message": "Looks like numbers are missing", "from": {"username": "jess"},
+             "replies": [{"id": "deep", "message": "8. 17, 26", "from": {"username": "jess"}}]}])
+        self.t.reply = AsyncMock(side_effect=[ThreadsError("Object with ID 'deep' does not exist, cannot be loaded due to missing permissions"), None])
+        await B.reply_to_comment(self.db, self.t, self.bot, self.cfg, "jess", "17, 26", "Here are the days")
+        self.assertEqual([c.args[1] for c in self.t.reply.await_args_list], ["deep", "top"])
+        print("OK")

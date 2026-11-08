@@ -2453,7 +2453,7 @@ async def reply_to_comment(db: Storage, threads: ThreadsClient, bot: Bot, cfg: C
         for target_id, post_id_local, _ in targets[:40]:
             comments = await threads.comments(target_id, max_pages=3)
             seen_posts += 1
-            for comment, _parent, _root in walk_comments(comments):
+            for comment, _parent, _root in walk_comments(comments):  # родитель и корень нужны для запасного ответа
                 seen_comments += 1
                 frm = comment.get("from") or {}
                 who = (frm.get("username") or frm.get("name") or "").lower().lstrip("@")
@@ -2461,11 +2461,11 @@ async def reply_to_comment(db: Storage, threads: ThreadsClient, bot: Bot, cfg: C
                     authors.append(who)
                 if frm.get("isOwner") or fragment not in (comment.get("message") or "").lower() or (who and who != author):
                     continue
-                found.append((target_id, post_id_local, comment, who))
+                found.append((target_id, post_id_local, comment, who, _parent, _root))
         exact = [f for f in found if f[3] == author]
         pick_ = exact[0] if exact else (found[0] if len(found) == 1 else None)
         if pick_:
-            target_id, post_id_local, comment, who = pick_
+            target_id, post_id_local, comment, who, parent_id, root_id = pick_
             comment_id = comment.get("id")
             prior = await db._rows("SELECT status FROM comment_replies WHERE comment_id = ?", (comment_id,))
             if any(r["status"] == "replied" for r in prior):
@@ -2473,7 +2473,16 @@ async def reply_to_comment(db: Storage, threads: ThreadsClient, bot: Bot, cfg: C
                 return
             if prior:  # бот ранее пропустил этот комментарий (skipped): прямой приказ владельца сильнее — убираем пометку и отвечаем
                 await db._execute("DELETE FROM comment_replies WHERE comment_id = ?", (comment_id,))
-            await threads.reply(target_id, comment_id, text)
+            try:
+                await threads.reply(target_id, comment_id, text)
+            except ThreadsError as e:
+                # Threads не даёт ответить на вложенный комментарий (удалён или нет прав): отвечаем на родителя/корень ветки (07.11.2026, Jessie)
+                fallback = next((c for c in (parent_id, root_id) if c and c != comment_id), None)
+                if fallback and ("does not exist" in str(e) or "missing permissions" in str(e)):
+                    await threads.reply(target_id, fallback, text)
+                    comment_id = fallback
+                else:
+                    raise
             await db.record_comment(comment_id, post_id_local or 0, who or author, comment.get("message") or "", text, "replied")
             await notify_admins(bot, cfg, f"{tag}✅ Ответил на комментарий @{who or author}: «{(comment.get('message') or '')[:60]}».")
             return
@@ -2488,7 +2497,7 @@ async def reply_to_comment(db: Storage, threads: ThreadsClient, bot: Bot, cfg: C
 async def run_op(cmd: dict, db: Storage, threads: ThreadsClient | None, bot: Bot, cfg: Config,
                  generator: Generator | None = None) -> None:
     """Одна команда пульта владельца (zavod/ops.py) — и одна строка-квитанция."""
-    tag = "[EN] " if lang.is_en() else ""
+    tag = "[EN] " if lang.is_en() and not os.getenv("INSTANCE_LABEL") else ""  # метку уже ставит notify_admins
     action, text = cmd.get("action"), (cmd.get("text") or "").strip()
     if action == "_error":
         await notify_admins(bot, cfg, f"{tag}⚠️ Команда {cmd['id']} не выполнена: {cmd.get('error')}")
