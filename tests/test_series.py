@@ -53,7 +53,7 @@ class Series(unittest.IsolatedAsyncioTestCase):
     def test_topic_tags_follow_audience_interests_and_en_has_no_cyrillic(self):
         self.assertEqual(autopost.topic_tag_for("text_loves"), "Dating Threads")
         self.assertNotEqual(autopost.topic_tag_for("text_seek"), "Dating Threads")  # продажа, не про отношения
-        self.assertEqual(autopost.topic_tag_for("text_fears"), "психология")
+        self.assertEqual(autopost.topic_tag_for("text_fears"), "Psychology Threads")
         self.assertEqual(autopost.topic_tag_for("text_baza"), "Нумерология")
 
 

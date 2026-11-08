@@ -131,15 +131,15 @@ def looks_astrological(text: str | None) -> bool:
 
 def topic_tag_for(rubric: str | None, text: str | None = None) -> str:
     if rubric == "text_matrix":
-        return "Destiny Matrix" if _is_en() else "Матрица судьбы"
+        return "Tarot Threads"  # 22 аркана Таро: сообщество «Tarot Threads» (слово владельца 08.11.2026 нашёл его; отдельного синего про матрицу судьбы пока нет)
     if rubric in ASTRO_RUBRICS or looks_astrological(text):
         return "Astrology Threads"  # сообщество с 145 тыс. участников (скриншот владельца 08.11.2026); название одно для RU и EN
     if _is_en():  # английский аккаунт: ни одной кириллической буквы, в том числе в теме
-        return "Dating Threads" if rubric in DATING_RUBRICS else "Psychology" if rubric in PSYCH_RUBRICS else "Numerology Threads"
+        return "Dating Threads" if rubric in DATING_RUBRICS else "Psychology Threads" if rubric in PSYCH_RUBRICS else "Numerology Threads"
     if rubric in DATING_RUBRICS:
         return "Dating Threads"
     if rubric in PSYCH_RUBRICS:
-        return "психология"
+        return "Psychology Threads"  # сообщество, найдено владельцем 08.11.2026
     return TOPIC_TAGS.get(rubric or "", DEFAULT_TOPIC_TAG)
 
 
