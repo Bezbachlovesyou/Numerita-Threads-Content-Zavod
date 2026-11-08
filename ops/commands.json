@@ -739,5 +739,44 @@
    "YOUR BIRTH-DAY ARCANA: DESTINY MATRIX 🔮\n\n1 Magician: starts something from nothing\n2 High Priestess: intuition, quiet wisdom\n3 Empress: care and abundance\n4 Emperor: order and support\n5 Hierophant: teacher, tradition\n6 Lovers: choosing with the heart\n7 Chariot: moving toward a goal\n8 Justice: truth and balance\n9 Hermit: depth and silence\n10 Wheel of Fortune: change and chance\n11 Strength: gentle power",
    "12 Hanged Man: a view from the other side\n13 Death: the old ends, the new begins\n14 Temperance: harmony and measure\n15 Devil: the pull of desire, a lesson in freedom\n16 Tower: sudden renewal\n17 Star: hope and inspiration\n18 Moon: intuition and dreams\n19 Sun: joy and warmth\n20 Judgement: awakening, a new path\n21 World: wholeness\n22 Fool: freedom, a light first step\n\nBorn on the 23rd-31st? Subtract 22: 23 is 1, 31 is 9.\nTell me your day as a number, I'll name your arcana. Images, not a verdict."
   ]
+ },
+ {
+  "id": "comm-tarot-ru-2026-11-08",
+  "action": "post",
+  "rubric": "text_matrix",
+  "text": "ТВОЙ АРКАН ТАРО СКРЫТ В ДНЕ РОЖДЕНИЯ 🃏\n\nВсё просто: день от 1 до 22 и есть номер аркана. Родился с 23 по 31? Вычти 22.\n\n6: Влюблённые, выбор сердцем\n11: Сила, мягкая сила\n17: Звезда, надежда\n19: Солнце, радость\n22: Шут, лёгкий первый шаг\n\nНапиши свой день числом, назову твой аркан. Это язык образов, не предсказание."
+ },
+ {
+  "id": "comm-tarot-en-2026-11-08",
+  "action": "post",
+  "rubric": "text_matrix",
+  "text": "YOUR TAROT CARD IS HIDDEN IN YOUR BIRTH DAY 🃏\n\nSimple: a day from 1 to 22 is the card number. Born on 23-31? Subtract 22.\n\n6: Lovers, choosing with the heart\n11: Strength, gentle power\n17: Star, hope\n19: Sun, joy\n22: Fool, a light first step\n\nTell me your day as a number, I'll name your card. Images, not a prediction.",
+  "account": "en"
+ },
+ {
+  "id": "comm-astro-ru-2026-11-08",
+  "action": "post",
+  "rubric": "text_sign_good",
+  "text": "Кажется, у Рыб заканчивается время, когда вы чувствовали за всех.\n\nТе, кто пользовался вашей мягкостью, отходят сами. Остаются те, кто бережёт вас в ответ. Вы наконец перестали спасать тех, кто не просил.\n\nРыбы, напишите знак и число дня рождения: скажу, какое число отвечает за этот поворот."
+ },
+ {
+  "id": "comm-astro-en-2026-11-08",
+  "action": "post",
+  "rubric": "text_sign_good",
+  "text": "Looks like Pisces is leaving the era of feeling everything for everyone.\n\nThe people who leaned on your softness are drifting away. What stays is the people who care for you back. You finally stopped rescuing those who never asked.\n\nPisces, write your sign and your birth day number: I'll tell you which number runs this turn.",
+  "account": "en"
+ },
+ {
+  "id": "comm-dating-ru-2026-11-08",
+  "action": "post",
+  "rubric": "text_loves",
+  "text": "КАК ТЫ ВЛЮБЛЯЕШЬСЯ ПО ЧИСЛУ ДНЯ 💞\n\n1, 10, 19, 28: делаешь первый шаг\n2, 11, 20, 29: слушаешь каждое слово\n3, 12, 21, 30: смеёшься и понимаешь, что пропал\n4, 13, 22, 31: проверяешь делами\n5, 14, 23: влюбляешься в свободу рядом\n6, 15, 24: начинаешь заботиться\n7, 16, 25: молчишь, а потом сразу всерьёз\n8, 17, 26: выбираешь одного и надолго\n9, 18, 27: отдаёшь всё, не считая\n\nКакая строка твоя? Напиши свой день числом."
+ },
+ {
+  "id": "comm-dating-en-2026-11-08",
+  "action": "post",
+  "rubric": "text_loves",
+  "text": "HOW YOU FALL IN LOVE BY YOUR DAY NUMBER 💞\n\n1, 10, 19, 28: you make the first move\n2, 11, 20, 29: you hear every word\n3, 12, 21, 30: you laugh and realize you're gone\n4, 13, 22, 31: you test with actions\n5, 14, 23: you fall for the freedom beside you\n6, 15, 24: you start caring\n7, 16, 25: quiet, then suddenly serious\n8, 17, 26: you pick one, for long\n9, 18, 27: you give everything, uncounted\n\nWhich line is yours? Tell me your day as a number.",
+  "account": "en"
  }
 ]
