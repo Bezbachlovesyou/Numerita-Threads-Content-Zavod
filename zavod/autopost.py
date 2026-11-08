@@ -133,7 +133,7 @@ def topic_tag_for(rubric: str | None, text: str | None = None) -> str:
     if rubric == "text_matrix":
         return "Destiny Matrix" if _is_en() else "Матрица судьбы"
     if rubric in ASTRO_RUBRICS or looks_astrological(text):
-        return "Astrology" if _is_en() else "Астрология"
+        return "Astrology Threads"  # сообщество с 145 тыс. участников (скриншот владельца 08.11.2026); название одно для RU и EN
     if _is_en():  # английский аккаунт: ни одной кириллической буквы, в том числе в теме
         return "Dating Threads" if rubric in DATING_RUBRICS else "Psychology" if rubric in PSYCH_RUBRICS else "Numerology"
     if rubric in DATING_RUBRICS:
