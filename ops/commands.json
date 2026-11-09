@@ -812,5 +812,18 @@
   "action": "post",
   "rubric": "text_sign_list",
   "text": "SCORPIOS ARE ON THE SAME TEAM AS GENIUSES 🦂\n\nPablo Picasso, October 25\nMarie Curie, November 7\nCarl Sagan, November 9\nFyodor Dostoevsky, November 11\nGrace Kelly, November 12\nEdwin Hubble, November 20\n\nIt's Scorpio season. Scorpios, tell me your birthday as a number: I'll say what image of talent it holds."
+ },
+ {
+  "id": "signteam-sagittarius-ru-2026-11-09",
+  "action": "post",
+  "rubric": "text_sign_list",
+  "text": "СТРЕЛЬЦЫ В ОДНОЙ КОМАНДЕ С ГЕНИЯМИ 🏹\n\nМарк Твен, 30 ноября\nУолт Дисней, 5 декабря\nФрэнк Синатра, 12 декабря\nДжейн Остин, 16 декабря\nЛюдвиг ван Бетховен, 16 или 17 декабря (дата крещения 17-го)\nЭдит Пиаф, 19 декабря\n\nСкоро сезон Стрельца. Стрельцы, напишите свой день рождения числом: скажу, какой образ таланта в нём заложен."
+ },
+ {
+  "id": "signteam-sagittarius-en-2026-11-09",
+  "account": "en",
+  "action": "post",
+  "rubric": "text_sign_list",
+  "text": "SAGITTARIUS IS ON THE SAME TEAM AS GENIUSES 🏹\n\nMark Twain, November 30\nWalt Disney, December 5\nFrank Sinatra, December 12\nJane Austen, December 16\nLudwig van Beethoven, December 16 or 17 (baptized on the 17th)\nEdith Piaf, December 19\n\nSagittarius season is coming. Sagittarians, tell me your birthday as a number: I'll say what image of talent it holds."
  }
 ]
