@@ -2515,6 +2515,10 @@ async def run_op(cmd: dict, db: Storage, threads: ThreadsClient | None, bot: Bot
     elif action == "post" and cmd.get("account") == "tg":
         if not cfg.telegram_channel or not text:
             return
+        # слово создателя 09.11.2026: от завода в канал не больше одного поста в сутки (вечерние «Новости» идут из бота); исключение — force
+        if not cmd.get("force") and not await db.claim_slot(f"tgch zavod day {datetime.now(cfg.timezone).date().isoformat()}"):
+            await notify_admins(bot, cfg, "ℹ️ В канал сегодня уже вышел пост от завода (лимит 1 в сутки), этот перенесите на завтра или добавьте \"force\": true.")
+            return
         msg = await bot.send_message(cfg.telegram_channel, text, parse_mode="HTML")
         await tgchannel.react(bot, cfg.telegram_channel, msg.message_id)
         ch = str(cfg.telegram_channel).lstrip("@")
@@ -3247,7 +3251,7 @@ async def run_scheduler(
                 from . import astroschool
                 local = now.astimezone(cfg.timezone)
                 lesson = await astroschool.due(db, local)
-                if lesson:
+                if lesson and await db.claim_slot(f"tgch zavod day {local.date().isoformat()}"):  # общий лимит: 1 пост в сутки от завода
                     from aiogram.types import LinkPreviewOptions
                     msg = await bot.send_message(cfg.telegram_channel, lesson, parse_mode="HTML",
                                                  link_preview_options=LinkPreviewOptions(is_disabled=True))
