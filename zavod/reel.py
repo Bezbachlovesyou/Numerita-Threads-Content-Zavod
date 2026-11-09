@@ -3,6 +3,9 @@ Grok Imagine Video (OpenRouter) из канонического кадра Ну�
 Деньги: смета seconds × PRICE_PER_SEC; жёсткий потолок CEILING_USD на команду; номер задания сохраняется сразу, повтор после перезапуска не платит заново."""
 import asyncio
 import logging
+import random
+import subprocess
+import tempfile
 from pathlib import Path
 
 import httpx
@@ -48,7 +51,9 @@ async def make(db, api_key: str, threads, cmd: dict, send_video, notify) -> None
                 cost = float((st.get("usage") or {}).get("cost") or estimate)
                 v = await http.get(f"{API}/videos/{jid}/content", headers=headers, follow_redirects=True)
                 v.raise_for_status()
-                await send_video(v.content, f"🎬 Ролик готов. Стоимость по факту ${cost:.2f}. Лицо, нимб и губы — как вам? «Выкладывай» или «переделай».")
+                final = await asyncio.to_thread(add_digits, v.content) if cmd.get("digits", True) else v.content
+                check = await asyncio.to_thread(hear_check, v.content, cmd["say"]) if cmd.get("say") else ""
+                await send_video(final, f"🎬 Ролик готов. Стоимость по факту ${cost:.2f}. {check}\nЛицо, свет глаз и цифры — как вам? «Выкладывай» или «переделай».")
                 return
             if st.get("status") in ("failed", "cancelled", "expired"):
                 await db.kv_set(key, "failed")
@@ -56,3 +61,52 @@ async def make(db, api_key: str, threads, cmd: dict, send_video, notify) -> None
                 return
             await asyncio.sleep(10)
     await notify("⚠️ Ролик не готов за 15 минут; номер задания сохранён, заберу при следующем запуске команды.")
+
+
+FONT = ASSETS / "fonts" / "CormorantGaramond.ttf"
+
+
+def digits_filter(seed: int = 7, count: int = 26) -> str:
+    """Чёткий золотой цифровой дождь поверх ролика (канон образа, слово владельца 09.11.2026: модель рисует цифры «непонятными штуками»,
+    поэтому цифры дорисовываем сами крупным шрифтом по краям кадра, не закрывая лицо). Глубина: дальние мельче, тусклее и медленнее."""
+    rng = random.Random(seed)
+    parts = []
+    for i in range(count):
+        depth = rng.random()
+        size = f"h*{0.022 + 0.04 * depth:.4f}"
+        alpha = 0.35 + 0.6 * depth
+        speed = f"h*{0.06 + 0.16 * depth:.4f}"
+        side = rng.random() < 0.5
+        xfrac = rng.uniform(0.02, 0.24) if side else rng.uniform(0.76, 0.96)
+        off = f"h*{rng.random():.4f}"
+        digit = str(rng.randint(0, 9))
+        parts.append(f"drawtext=fontfile='{FONT}':text='{digit}':fontsize={size}:fontcolor=0xFFD682@{alpha:.2f}:"
+                     f"x=w*{xfrac:.3f}:y='mod(t*{speed}+{off},h*1.1)-h*0.05':shadowcolor=0xB8860B@0.6:shadowx=1:shadowy=1")
+    return ",".join(parts)
+
+
+def add_digits(video: bytes) -> bytes:
+    """Возвращает видео с цифровым дождём; при любой ошибке отдаёт исходное (ролик важнее украшения)."""
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            src, out = Path(tmp) / "in.mp4", Path(tmp) / "out.mp4"
+            src.write_bytes(video)
+            subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(src), "-vf", digits_filter(), "-c:v", "libx264",
+                            "-pix_fmt", "yuv420p", "-crf", "18", "-c:a", "copy", str(out)], check=True, capture_output=True, timeout=240)
+            return out.read_bytes()
+    except Exception as e:  # noqa: BLE001
+        log.warning("Цифры поверх ролика не наложились: %s", e)
+        return video
+
+
+def hear_check(video: bytes, said: str) -> str:
+    """Проверка слухом ($0, faster-whisper, если установлен): те ли слова произнесены. Возвращает строку для подписи."""
+    try:
+        from . import welcome
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "r.mp4"
+            path.write_bytes(video)
+            problem = welcome.hear(path, "ru", [said])
+        return "✅ слова произнесены верно (проверено слухом)" if problem is None else "⚠️ " + problem
+    except Exception as e:  # noqa: BLE001
+        return f"(проверка слухом не выполнена: {type(e).__name__})"
