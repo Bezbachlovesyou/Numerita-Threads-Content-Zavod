@@ -148,6 +148,16 @@ class DailySummary(DeliveryTests):
         self.assertIn('Скачок слишком большой', text)
         print('OK')
 
+    async def test_owner_measurement_beats_stale_zernio(self):
+        await self.db.kv_set('followers:manual', f'110|{self.now.date().isoformat()}')
+        client = AsyncMock()
+        client.account_stats.return_value = {'overview': {'followers': 105}}
+        text = await performance.daily_summary(self.db, client, self.now)
+        self.assertIn('по вашему замеру', text)
+        self.assertIn(': 110', text)
+        self.assertIn('Zernio показывает 105, разница +5', text)
+        print('OK')
+
     async def test_missing_followers_field_is_stated_not_guessed(self):
         client = AsyncMock()
         client.account_stats.return_value = {'overview': {'views': 5}}

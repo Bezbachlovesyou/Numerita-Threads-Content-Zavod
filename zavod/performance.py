@@ -1,7 +1,7 @@
 """Platform observations; missing data stays missing, comparisons use 24–26h samples."""
 import json
 import math
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from .threads_api import ThreadsError
 
@@ -195,6 +195,11 @@ async def daily_summary(db, client, now):
                 if old and old.isdigit():
                     parts.append(f'{name} было {int(old)} (разница {followers - int(old):+d})')
             head = parts[0] + (' · ' + '; '.join(parts[1:]) if len(parts) > 1 else ' (сравнить пока не с чем: счёт начат сегодня)')
+    head += ' (источник: Zernio, число может отставать от Threads на сутки и больше)' if followers is not None else ''
+    manual = (await db.kv_get('followers:manual') or '').split('|')  # слово владельца 09.11.2026: бот показал 105, в Threads было 110 — истина только то, что видит владелец
+    if len(manual) == 2 and manual[0].isdigit() and (now.date() - date.fromisoformat(manual[1])).days <= 7:
+        zernio = f'; Zernio показывает {followers}, разница {int(manual[0]) - followers:+d}' if followers is not None else ''
+        head = f'Подписчики по вашему замеру {date.fromisoformat(manual[1]):%d.%m}: {manual[0]}{zernio}'
     posts = await db.recent_published(now - timedelta(days=7))
     zero, nodata, young, total = [], 0, 0, 0
     for post in posts:
