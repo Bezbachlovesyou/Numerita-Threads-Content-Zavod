@@ -2634,6 +2634,15 @@ async def run_op(cmd: dict, db: Storage, threads: ThreadsClient | None, bot: Bot
         async def _note(t):
             await notify_admins(bot, cfg, t)
         asyncio.create_task(reel.make(db, generator.api_key, threads, cmd, _send, _note))
+    elif action == "reel_voice" and generator is not None and cmd.get("from") and cmd.get("text"):
+        from . import reel
+        async def _send2(data, caption):
+            from aiogram.types import BufferedInputFile
+            for admin_id in cfg.admin_ids:
+                await bot.send_video(admin_id, BufferedInputFile(data, "numerita_reel_voice.mp4"), caption=caption[:1024], supports_streaming=True)
+        async def _note2(t):
+            await notify_admins(bot, cfg, t)
+        asyncio.create_task(reel.revoice(db, generator.api_key, cmd, _send2, _note2))
     elif action == "circle_preview":  # ролик «Найди числа от 1 до 31» — только владельцу на проверку, нигде не выкладываем ($0)
         async def _circle_job():
             from . import circle31

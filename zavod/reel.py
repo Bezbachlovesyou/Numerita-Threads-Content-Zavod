@@ -129,3 +129,43 @@ def hear_check(video: bytes, said: str) -> str:
         return "✅ слова произнесены верно (проверено слухом)" if problem is None else "⚠️ " + problem
     except Exception as e:  # noqa: BLE001
         return f"(проверка слухом не выполнена: {type(e).__name__})"
+
+
+async def revoice(db, api_key: str, cmd: dict, send_video, notify) -> None:
+    """Пересобрать ЗВУК готового ролика, не заказывая видео заново (слово владельца 09.11.2026: «нужно было просто пересобрать звук»).
+    Берём видео по сохранённому номеру задания (скачивание бесплатно), озвучиваем текст с ударениями голосом Нумериты (≈$0,02),
+    кладём музыку и цифровой дождь. Губы остаются от первой озвучки, поэтому текст должен быть близкой длины к исходному."""
+    import wave
+    from . import welcome
+    src_id, text = cmd.get("from"), cmd.get("text") or ""
+    jid = await db.kv_get(f"reel:job:{src_id}")
+    if not jid or jid == "failed":
+        await notify(f"⚠️ Звук не пересобран: у ролика {src_id} нет сохранённого задания.")
+        return
+    bad = unstressed_words(f'"{text}"')
+    if bad and not cmd.get("no_stress_check"):
+        await notify(f"⚠️ Звук не пересобран: в тексте нет ударений у слов: {', '.join(bad[:8])}.")
+        return
+    async with httpx.AsyncClient(timeout=240) as http:
+        v = await http.get(f"{API}/videos/{jid}/content", headers={"Authorization": f"Bearer {api_key}"}, follow_redirects=True)
+        v.raise_for_status()
+        pcm, cost = await welcome.speak(http, api_key, text, "ru")
+    pcm = welcome.trim(pcm)
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = Path(tmp)
+        (tmp / "in.mp4").write_bytes(v.content)
+        with wave.open(str(tmp / "v.wav"), "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(welcome.RATE)
+            w.writeframes(pcm)
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(tmp / "in.mp4"), "-stream_loop", "-1", "-i", str(welcome.MUSIC),
+                        "-i", str(tmp / "v.wav"), "-filter_complex",
+                        "[1:a]volume=0.22,afade=t=in:d=0.5[m];[2:a]aresample=48000,adelay=300|300,volume=1.3[v];"
+                        "[m][v]amix=inputs=2:normalize=0:duration=first,alimiter=limit=0.95[a]",
+                        "-map", "0:v", "-map", "[a]", "-c:v", "copy", "-c:a", "aac", "-shortest", str(tmp / "out.mp4")],
+                       check=True, capture_output=True, timeout=240)
+        out = (tmp / "out.mp4").read_bytes()
+    out = await asyncio.to_thread(add_digits, out) if cmd.get("digits", True) else out
+    check = await asyncio.to_thread(hear_check, out, cmd.get("say") or text.replace(ACUTE, ""))
+    await send_video(out, f"🎬 Звук пересобран (≈${cost:.2f}), видео прежнее. {check}\nУдарения как вам? «Выкладывай» или скажите, какое слово поправить.")
