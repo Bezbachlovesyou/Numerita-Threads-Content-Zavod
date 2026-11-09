@@ -16,6 +16,20 @@ MODEL = "x-ai/grok-imagine-video-1.5-lite"
 PRICE_PER_SEC = 0.031  # по смете приветственных роликов: $0,46 за 15 с
 CEILING_USD = 0.20
 ASSETS = Path(__file__).resolve().parent.parent / "assets"
+ACUTE = "\u0301"
+VOWELS = "аеёиоуыэюяАЕЁИОУЫЭЮЯ"
+
+
+def unstressed_words(prompt: str) -> list[str]:
+    """Слова русской речи в кавычках промпта, где есть 2+ гласных, но нет знака ударения (слово владельца 09.11.2026: ударение в промптах всегда).
+    Слова с «ё» ударение уже несут."""
+    import re
+    bad = []
+    for quote in re.findall(r"\"([^\"]*[А-Яа-яЁё][^\"]*)\"", prompt):
+        for word in re.findall(r"[А-Яа-яЁё\u0301-]+", quote):
+            if sum(c in VOWELS for c in word) >= 2 and ACUTE not in word and "ё" not in word.lower():
+                bad.append(word)
+    return bad
 
 
 async def make(db, api_key: str, threads, cmd: dict, send_video, notify) -> None:
@@ -25,6 +39,11 @@ async def make(db, api_key: str, threads, cmd: dict, send_video, notify) -> None
     if estimate > CEILING_USD:
         await notify(f"⚠️ Ролик не заказан: смета ${estimate:.2f} выше потолка ${CEILING_USD:.2f}.")
         return
+    if not cmd.get("no_stress_check"):
+        bad = unstressed_words(cmd["prompt"])
+        if bad:
+            await notify(f"⚠️ Ролик не заказан: в тексте речи нет ударений у слов: {', '.join(bad[:8])}. Правило владельца: ударение в промптах всегда.")
+            return
     headers = {"Authorization": f"Bearer {api_key}"}
     async with httpx.AsyncClient(timeout=120) as http:
         jid = await db.kv_get(key)
