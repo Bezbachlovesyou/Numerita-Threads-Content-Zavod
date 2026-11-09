@@ -71,7 +71,7 @@ async def make(db, api_key: str, threads, cmd: dict, send_video, notify) -> None
                 v = await http.get(f"{API}/videos/{jid}/content", headers=headers, follow_redirects=True)
                 v.raise_for_status()
                 final = await asyncio.to_thread(add_digits, v.content) if cmd.get("digits", True) else v.content
-                check = await asyncio.to_thread(hear_check, v.content, cmd["say"]) if cmd.get("say") else ""
+                check = await asyncio.to_thread(hear_check, v.content, cmd["say"], cmd.get("lang") or "ru") if cmd.get("say") else ""
                 await send_video(final, f"🎬 Ролик готов. Стоимость по факту ${cost:.2f}. {check}\nЛицо, свет глаз и цифры — как вам? «Выкладывай» или «переделай».")
                 return
             if st.get("status") in ("failed", "cancelled", "expired"):
@@ -118,14 +118,14 @@ def add_digits(video: bytes) -> bytes:
         return video
 
 
-def hear_check(video: bytes, said: str) -> str:
+def hear_check(video: bytes, said: str, lang: str = "ru") -> str:
     """Проверка слухом ($0, faster-whisper, если установлен): те ли слова произнесены. Возвращает строку для подписи."""
     try:
         from . import welcome
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "r.mp4"
             path.write_bytes(video)
-            problem = welcome.hear(path, "ru", [said])
+            problem = welcome.hear(path, lang, [said])
         return "✅ слова произнесены верно (проверено слухом)" if problem is None else "⚠️ " + problem
     except Exception as e:  # noqa: BLE001
         return f"(проверка слухом не выполнена: {type(e).__name__})"
