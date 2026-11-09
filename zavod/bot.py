@@ -2643,6 +2643,21 @@ async def run_op(cmd: dict, db: Storage, threads: ThreadsClient | None, bot: Bot
         async def _note2(t):
             await notify_admins(bot, cfg, t)
         asyncio.create_task(reel.revoice(db, generator.api_key, cmd, _send2, _note2))
+    elif action == "reel_channel" and generator is not None and cmd.get("from") and cmd.get("text") and cfg.telegram_channel:
+        from . import reel
+        if not cmd.get("force") and not await db.claim_slot(f"tgch zavod day {datetime.now(cfg.timezone).date().isoformat()}"):
+            await notify_admins(bot, cfg, "ℹ️ В канал сегодня уже вышел пост от завода (лимит 1 в сутки), ролик перенесите на завтра или добавьте \"force\": true.")
+            return
+        data = await reel.fetch_video(db, generator.api_key, cmd["from"])
+        if not data:
+            await notify_admins(bot, cfg, f"⚠️ Ролик не опубликован в канал: нет готового видео {cmd['from']}.")
+            return
+        from aiogram.types import BufferedInputFile
+        data = await asyncio.to_thread(reel.add_digits, data) if cmd.get("digits", True) else data
+        msg = await bot.send_video(cfg.telegram_channel, BufferedInputFile(data, "numerita.mp4"), caption=cmd["text"][:1024], parse_mode="HTML", supports_streaming=True)
+        await tgchannel.react(bot, cfg.telegram_channel, msg.message_id)
+        ch = str(cfg.telegram_channel).lstrip("@")
+        await notify_admins(bot, cfg, f"✅ Ролик в канале: t.me/{ch}/{msg.message_id}" if not ch.startswith("-") else "✅ Ролик в канале: вышел")
     elif action == "circle_preview":  # ролик «Найди числа от 1 до 31» — только владельцу на проверку, нигде не выкладываем ($0)
         async def _circle_job():
             from . import circle31

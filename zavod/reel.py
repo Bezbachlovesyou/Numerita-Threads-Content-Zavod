@@ -169,3 +169,14 @@ async def revoice(db, api_key: str, cmd: dict, send_video, notify) -> None:
     out = await asyncio.to_thread(add_digits, out) if cmd.get("digits", True) else out
     check = await asyncio.to_thread(hear_check, out, cmd.get("say") or text.replace(ACUTE, ""))
     await send_video(out, f"🎬 Звук пересобран (≈${cost:.2f}), видео прежнее. {check}\nУдарения как вам? «Выкладывай» или скажите, какое слово поправить.")
+
+
+async def fetch_video(db, api_key: str, src_id: str) -> bytes | None:
+    """Готовое видео по сохранённому номеру задания (скачивание бесплатно)."""
+    jid = await db.kv_get(f"reel:job:{src_id}")
+    if not jid or jid == "failed":
+        return None
+    async with httpx.AsyncClient(timeout=240) as http:
+        v = await http.get(f"{API}/videos/{jid}/content", headers={"Authorization": f"Bearer {api_key}"}, follow_redirects=True)
+        v.raise_for_status()
+        return v.content
