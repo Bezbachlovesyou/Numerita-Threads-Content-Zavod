@@ -907,5 +907,12 @@
   "action": "post",
   "account": "tg",
   "text": "🔮 <b>Асцендент: как вас видят за три секунды</b>\n\nЗнак Солнца: кто вы внутри. Асцендент: маска, с которой встречают люди.\n\nПримерно: на рассвете асцендент равен знаку Солнца, и каждые ~2 часа сдвигается на знак вперёд (полдень +3, закат +6).\n\nПример: Скорпион, родился около полудня → Водолей.\n\nТочно считается по времени и городу рождения. Свой разбор: <a href=\"https://t.me/Numeritabot?start=ad_tg_tgasc\">бот Нумериты</a> ✨"
+ },
+ {
+  "id": "reel-scorpio-sag-2026-11-09",
+  "action": "reel",
+  "seconds": 5,
+  "resolution": "480p",
+  "prompt": "Vertical 9:16 video, with audio. Animate the exact character from the first frame without changing her: same face, hairstyle, golden halo of numbers, wings and dress. A living starry universe behind her, twinkling stars, a distant comet, soft nebula, golden digits drifting like rain. Two tiny glowing constellations, a scorpion and an archer, sparkle beside her. Slow cinematic push-in. She looks into the camera with a playful confident smile and speaks in Russian with accurate natural lip-sync: \"Скорпион проверяет. Стрелец убегает. Почему? Число вашего дня.\" Soft cosmic music. No text, no letters, no watermarks."
  }
 ]
