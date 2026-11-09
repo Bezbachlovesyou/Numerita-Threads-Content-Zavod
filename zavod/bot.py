@@ -3242,6 +3242,19 @@ async def run_scheduler(
                 await notify_admins(bot, cfg, notice)
         except Exception:
             log.exception("Reminders failed")
+        try:  # «Школа астрологии» в канале: один урок раз в 3 дня, только русский экземпляр (слово владельца 09.11.2026)
+            if not EN and cfg.telegram_channel:
+                from . import astroschool
+                local = now.astimezone(cfg.timezone)
+                lesson = await astroschool.due(db, local)
+                if lesson:
+                    from aiogram.types import LinkPreviewOptions
+                    msg = await bot.send_message(cfg.telegram_channel, lesson, parse_mode="HTML",
+                                                 link_preview_options=LinkPreviewOptions(is_disabled=True))
+                    await tgchannel.react(bot, cfg.telegram_channel, msg.message_id)
+                    await astroschool.mark_sent(db, local)
+        except Exception:
+            log.exception("Astro school failed")
         try:  # контролёр прибыли: отдельный проход без нейросети, три раза в день, свои квитанции
             for notice in await profit.run_due(db, now, cfg.timezone):
                 await notify_admins(bot, cfg, notice)
