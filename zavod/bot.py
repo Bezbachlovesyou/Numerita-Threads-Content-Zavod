@@ -2625,6 +2625,15 @@ async def run_op(cmd: dict, db: Storage, threads: ThreadsClient | None, bot: Bot
         await notify_admins(bot, cfg, f"{tag}💰 Принято: " + ", ".join(
             [f"на «{cmd['label']}» разрешено ${float(cmd['usd']):.2f}"] * bool(cmd.get("label") and cmd.get("usd"))
             + [f"потолок убытка за неделю ${float(cmd['loss_budget']):.2f}"] * (cmd.get("loss_budget") is not None)))
+    elif action == "reel" and threads is not None and generator is not None and cmd.get("prompt"):
+        from . import reel
+        async def _send(data, caption):
+            from aiogram.types import BufferedInputFile
+            for admin_id in cfg.admin_ids:
+                await bot.send_video(admin_id, BufferedInputFile(data, "numerita_reel.mp4"), caption=caption[:1024], supports_streaming=True)
+        async def _note(t):
+            await notify_admins(bot, cfg, t)
+        asyncio.create_task(reel.make(db, generator.api_key, threads, cmd, _send, _note))
     elif action == "circle_preview":  # ролик «Найди числа от 1 до 31» — только владельцу на проверку, нигде не выкладываем ($0)
         async def _circle_job():
             from . import circle31
