@@ -876,5 +876,36 @@
   "action": "post",
   "rubric": "text_story6",
   "text": "A scene, made up, but you'll recognize it.\n\nAt 11:40 pm she texts a friend: \"He disappeared again.\" Hurt. She was born on the 7th: she goes quiet and analyzes. He was born on the 2nd: he waits for words. Each waits for the other to speak first.\n\nAnd then you see it: a 7's silence isn't coldness, it's thinking. A 2's isn't indifference, it's waiting.\n\nWhat do you call coldness? Tell me your day as a number, I'll say how you go quiet. Pair readings are in the bot, link in profile."
+ },
+ {
+  "id": "asc-ru-2026-11-09",
+  "action": "thread",
+  "rubric": "text_asc",
+  "items": [
+   "АСЦЕНДЕНТ: КАК ВАС ВИДЯТ ЗА ТРИ СЕКУНДЫ ✨\n\nЗнак Солнца: кто вы внутри. Асцендент: маска, с которой вас встречают люди.\n\nПримерное правило:\nродились на рассвете: асцендент = ваш знак\n+2 часа после рассвета: следующий знак\n+4 часа: через один\nоколо полудня: на три знака вперёд\nна закате: на шесть, противоположный\nвокруг полуночи: на девять",
+   "Пример: Скорпион, родился около полудня. Скорпион, Стрелец, Козерог, Водолей: асцендент Водолей. Люди видят свободного и немного странного, а внутри глубина и упрямство.\n\nЭто приблизительно: зависит от широты и сезона. Точный асцендент считается по времени и городу.\n\nНапишите знак Солнца и примерный час рождения: скажу ваш примерный асцендент."
+  ]
+ },
+ {
+  "id": "asc-en-2026-11-09",
+  "account": "en",
+  "action": "thread",
+  "rubric": "text_asc",
+  "items": [
+   "ASCENDANT: HOW PEOPLE SEE YOU IN THREE SECONDS ✨\n\nSun sign: who you are inside. Ascendant: the mask people meet first.\n\nRough rule:\nborn at sunrise: ascendant = your sign\n+2 hours after sunrise: the next sign\n+4 hours: two signs on\naround noon: three signs ahead\nat sunset: six ahead, the opposite sign\naround midnight: nine ahead",
+   "Example: Scorpio born around noon. Scorpio, Sagittarius, Capricorn, Aquarius: ascendant Aquarius. People see someone free and a little strange, while inside it's depth and stubbornness.\n\nThis is approximate: it depends on latitude and season. The exact ascendant needs birth time and city.\n\nTell me your Sun sign and rough birth hour: I'll name your approximate ascendant."
+  ]
+ },
+ {
+  "id": "chan-welcome-2026-11-09",
+  "action": "post",
+  "account": "tg",
+  "text": "✨ <b>Добро пожаловать в канал Нумериты</b>\n\nЗдесь мы говорим на языке чисел и звёзд: нумерология, астрология, матрица судьбы, игры «Угадай число», разборы и анонсы встреч.\n\nХотите свой разбор по дате рождения: <a href=\"https://t.me/Numeritabot?start=ad_tg_tgwelcome\">бот Нумериты</a>. Он отвечает за 10 секунд.\n\nА здесь напишите в комментариях знак и число дня рождения, отвечу лично 🤍"
+ },
+ {
+  "id": "chan-asc-2026-11-09",
+  "action": "post",
+  "account": "tg",
+  "text": "🔮 <b>Асцендент: как вас видят за три секунды</b>\n\nЗнак Солнца: кто вы внутри. Асцендент: маска, с которой встречают люди.\n\nПримерно: на рассвете асцендент равен знаку Солнца, и каждые ~2 часа сдвигается на знак вперёд (полдень +3, закат +6).\n\nПример: Скорпион, родился около полудня → Водолей.\n\nТочно считается по времени и городу рождения. Свой разбор: <a href=\"https://t.me/Numeritabot?start=ad_tg_tgasc\">бот Нумериты</a> ✨"
  }
 ]
