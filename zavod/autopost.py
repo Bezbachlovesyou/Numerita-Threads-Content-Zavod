@@ -200,6 +200,22 @@ def load_rubrics(path: Path) -> list[Rubric]:
 # Новые форматы по слову владельца — чаще, пока оптимизатор не наберёт по ним данных.
 PLANETS_RU = ["Солнце", "Луна", "Венера", "Асцендент", "Марс"]
 PLANETS_EN = ["Sun", "Moon", "Venus", "Ascendant", "Mars"]
+# Цели постов (слово владельца 10.11.2026: реже, но чётче; чередуем форматы под комментарии, пересылки/репосты и сердечки).
+GOAL_SHARES = {"text_gotaway", "text_loves", "text_heaven_pairs", "text_pair_week", "text_marriage", "text_sign_list", "text_flags", "text_celeb", "text_great", "text_tag_pair", "text_marry", "text_roles", "text_regret"}
+GOAL_LIKES = {"text_angel", "text_qualities", "text_rita", "text_goals_story", "text_matrix", "text_lessons", "text_baza", "text_howto", "text_insight", "text_secrets", "text_success", "text_levels", "text_wealth"}
+GOAL_MIX = {"comments": 2, "shares": 1, "likes": 1}  # на каждые 4 поста
+
+
+def goal_of(key: str) -> str:
+    return "shares" if key in GOAL_SHARES else "likes" if key in GOAL_LIKES else "comments"
+
+
+def goal_deficit(recent: list[str]) -> str:
+    """Цель, которой не хватает в последних 4 постах по целевой смеси (2 комментарии : 1 пересылки : 1 сердечки)."""
+    seen = [goal_of(k) for k in recent[:4]]
+    return max(GOAL_MIX, key=lambda g: GOAL_MIX[g] * (len(seen) + 1) / 4 - seen.count(g))
+
+
 SIGNS_EN = ["Aries", "Taurus", "Gemini", "Cancer", "Leo", "Virgo", "Libra", "Scorpio", "Sagittarius", "Capricorn", "Aquarius", "Pisces"]
 SIGNS_RU = ["Овны", "Тельцы", "Близнецы", "Раки", "Львы", "Девы", "Весы", "Скорпионы", "Стрельцы", "Козероги", "Водолеи", "Рыбы"]
 BOOST = {"text_baza": 2.5, "text_rollcall": 2.5, "text_one_digit": 2.0, "text_howto": 1.5, "text_myth": 2.0, "text_insight": 1.5, "text_who_told": 2.5, "text_heaven_pairs": 3.0, "text_what_next": 2.0, "text_tag_pair": 2.0, "text_hype": 3.0, "text_secrets": 3.0, "text_marry": 3.0, "text_celeb": 4.0, "text_aroma": 2.5, "text_roles": 2.5, "text_avoid": 2.5, "text_sunrise": 4.5, "text_seek": 4.0, "text_physics": 3.0, "text_year": 4.0, "text_fears": 3.0, "text_reaction": 3.0, "text_lessons": 3.0, "text_flags": 3.5, "text_rita": 3.0, "text_angel": 3.0, "text_vector": 3.0, "text_misread": 4.0, "text_sign": 4.0, "text_sign_good": 7.0, "text_sign_list": 5.0, "text_matrix": 3.0, "text_gotaway": 4.0, "text_sign_clash": 5.0, "text_story6": 3.0, "text_asc": 6.0, "text_sign_truth": 6.0, "text_mercury": 4.0, "text_planet": 4.0, "text_goals_story": 3.0, "text_free": 12.0, "text_pair": 4.0, "text_unknown": 3.0, "text_battery": 2.5, "text_outgrow": 2.5, "text_marriage": 4.0, "text_loves": 2.5, "text_gifts": 2.5, "text_eras": 2.5, "text_success": 2.5, "text_wealth": 2.5, "text_levels": 2.5, "grid": 8.0, "text_great": 2.0, "text_science": 2.0, "text_dna": 1.5, "text_sky": 1.5}  # не чаще раза в день — следит post_next
@@ -265,6 +281,9 @@ class ContentPlan:
             from . import series
             if series.in_grid_window(now) and "grid" not in recent[:2]:
                 weights = [w * (series.GRID_BOOST if r.key == "grid" else 1.0) for r, w in zip(pool, weights)]
+        if recent:  # чередование целей: рубрикам недостающей цели вес ×2,5 (не отменяет оптимизатор и сетку)
+            need = goal_deficit(recent)
+            weights = [w * (2.5 if goal_of(r.key) == need else 1.0) for r, w in zip(pool, weights)]
         return self.effective(rng.choices(pool, weights=weights)[0])
 
     def render(self, rubric: Rubric, now: datetime, rng: random.Random) -> Slot:

@@ -120,7 +120,8 @@ def plural(n: int, one: str, few: str, many: str) -> str:
 
 def post_score(row: dict) -> float:
     """Эвристические очки на сопоставимом 24ч замере; не гарантия охватов или продаж."""
-    return row["comments"] + 0.2 * row["likes"]
+    # слово владельца 10.11.2026: нужны и пересылки/репосты, не только лайки и комментарии: пересылка и репост весят больше всего (человек делится с другим)
+    return row["comments"] + 0.2 * row["likes"] + 3 * (row.get("shares") or 0) + 3 * (row.get("reposts") or 0)
 
 
 def score_rubrics(rows: list[dict]) -> dict[str, tuple[int, float]]:
