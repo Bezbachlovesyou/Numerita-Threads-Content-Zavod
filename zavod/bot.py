@@ -2268,6 +2268,10 @@ async def autopost_tick(
         next_at = now if last is None or now - last >= gap else last + gap
     if now < next_at:
         return
+    quiet = autopost.quiet_end(now)
+    if quiet:  # ночная тишина 01:00–10:00 (слово владельца 10.11.2026)
+        await db.kv_set("next_post_at", (quiet + timedelta(minutes=rng.randint(3, 25))).isoformat())
+        return
     pause_end = post_break_end(now)
     if pause_end:
         await db.kv_set("next_post_at", (pause_end + timedelta(minutes=rng.randint(3, 20))).isoformat())
