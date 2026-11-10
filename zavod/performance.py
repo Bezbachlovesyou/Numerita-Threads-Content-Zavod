@@ -195,7 +195,17 @@ async def daily_summary(db, client, now):
                 if old and old.isdigit():
                     parts.append(f'{name} было {int(old)} (разница {followers - int(old):+d})')
             head = parts[0] + (' · ' + '; '.join(parts[1:]) if len(parts) > 1 else ' (сравнить пока не с чем: счёт начат сегодня)')
-    head += ' (источник: Zernio, число может отставать от Threads на сутки и больше)' if followers is not None else ''
+    if followers is not None:
+        # слово владельца 10.11.2026: Zernio застрял на 105 (в Threads уже 127) — устаревшее число нельзя выдавать за факт
+        same = 0
+        for back in range(1, 6):
+            old = await db.kv_get(f'followers:{(now.date() - timedelta(days=back)).isoformat()}')
+            if old and old.isdigit() and int(old) == followers:
+                same += 1
+            else:
+                break
+        head += (f' (источник: Zernio; число не меняется уже {same + 1} дн., скорее всего устарело; реальное смотрите в профиле Threads или пришлите мне скриншот)'
+                 if same >= 2 else ' (источник: Zernio, число может отставать от Threads на сутки и больше)')
     manual = (await db.kv_get('followers:manual') or '').split('|')  # слово владельца 09.11.2026: бот показал 105, в Threads было 110 — истина только то, что видит владелец
     if len(manual) == 2 and manual[0].isdigit() and (now.date() - date.fromisoformat(manual[1])).days <= 7:
         zernio = f'; Zernio показывает {followers}, разница {int(manual[0]) - followers:+d}' if followers is not None else ''

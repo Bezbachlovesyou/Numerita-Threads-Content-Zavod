@@ -2658,6 +2658,9 @@ async def run_op(cmd: dict, db: Storage, threads: ThreadsClient | None, bot: Bot
         await tgchannel.react(bot, cfg.telegram_channel, msg.message_id)
         ch = str(cfg.telegram_channel).lstrip("@")
         await notify_admins(bot, cfg, f"✅ Ролик в канале: t.me/{ch}/{msg.message_id}" if not ch.startswith("-") else "✅ Ролик в канале: вышел")
+    elif action == "followers" and str(cmd.get("n", "")).isdigit():  # число подписчиков со скриншота владельца записываю сама (10.11.2026)
+        await db.kv_set("followers:manual", f"{int(cmd['n'])}|{datetime.now(cfg.timezone).date().isoformat()}")
+        await notify_admins(bot, cfg, f"{tag}✅ Записано: подписчиков {int(cmd['n'])} (по вашему скриншоту).")
     elif action == "circle_preview":  # ролик «Найди числа от 1 до 31» — только владельцу на проверку, нигде не выкладываем ($0)
         async def _circle_job():
             from . import circle31
