@@ -1161,5 +1161,30 @@
   "account": "tg",
   "force": true,
   "text": "🌑 <b>Новолуние в Скорпионе: это ваша ночь</b>\n\nНоволуние в астрологии это чистая страница. В Скорпионе это страница для самого честного: что мне больше не нужно и чего я хочу на самом деле.\n\nТри шага на эту неделю:\n1. Запишите одно, что вас больше не греет.\n2. Запишите одно, чего вы по-настоящему хотите.\n3. Бывшим не пишите 😉 (или пишите, но осознанно).\n\nЧисло дня сегодня 1, начало. Свой разбор по дате: <a href=\"https://t.me/Numeritabot?start=ad_tg_newmoon\">бот Нумериты</a>"
+ },
+ {
+  "id": "newmoon-unpub-ru-2026-11-10",
+  "account": "ru",
+  "action": "unpublish",
+  "fragment": "Новолуние в Скорпионе: Скорпионы, это ваша ночь"
+ },
+ {
+  "id": "newmoon-unpub-en-2026-11-10",
+  "account": "en",
+  "action": "unpublish",
+  "fragment": "New Moon in Scorpio: Scorpios, tonight is yours"
+ },
+ {
+  "id": "newmoon-v2-ru-2026-11-10",
+  "action": "post",
+  "rubric": "text_sign",
+  "text": "🌑 Новолуние в Скорпионе было вчера, и эти дни особенно честные для Скорпионов\n\nВ астрологии новолуние это чистая страница, а следующие дни время писать на ней первые строки. В Скорпионе это строки о самом честном: что мне больше не нужно и чего я хочу на самом деле.\n\nТри шага до конца недели:\n1. Запишите одно, что вас больше не греет.\n2. Запишите одно, чего вы по-настоящему хотите.\n3. Бывшим не пишите 😉 (или пишите, но осознанно).\n\nЧисло дня сегодня 1, начало. Скорпионы, напишите число дня рождения: скажу, какой шаг вам подходит ✨"
+ },
+ {
+  "id": "newmoon-v2-en-2026-11-10",
+  "account": "en",
+  "action": "post",
+  "rubric": "text_sign",
+  "text": "🌑 The New Moon in Scorpio was yesterday, and these days are especially honest for Scorpios\n\nIn astrology a New Moon is a clean page, and the days after are for writing its first lines. In Scorpio they're about the most honest things: what I no longer need and what I really want.\n\nThree steps before the week ends:\n1. Write down one thing that no longer warms you.\n2. Write down one thing you truly want.\n3. Don't text your ex 😉 (or do, but on purpose).\n\nToday's day number is 1, a beginning. Scorpios, tell me your birthday number: I'll say which step suits you ✨"
  }
 ]
