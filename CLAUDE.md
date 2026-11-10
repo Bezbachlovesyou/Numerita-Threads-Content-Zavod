@@ -36,7 +36,7 @@ Telegram-бот, который сам ведёт Threads Нумериты (RU @
 - `zavod/` — Python, aiogram 3, `python -m zavod`; Railway (NumeritaCZThreadsbot), деплой из `main`; Postgres.
 - Посты — OpenRouter по базе https://numerita.up.railway.app/kb.json; ответы — Haiku 5.5 в дневном бюджете
   REPLY_BUDGET_USD; ответы кодом выключены (CODE_SHARE = 0).
-- Ночная тишина (10.11, слово владельца): русский экземпляр не постит с 01:00 до 10:00 (autopost.QUIET_HOURS); английский по своему времени.
+- Ночная тишина (10.11, слово владельца): не постит с 01:00 до 10:00 (autopost.QUIET_HOURS): русский по времени бота, английский по времени Нью-Йорка (США и Британия).
 - Ритм: autopost.py сам выбирает время (днём 200–260 мин, вечером 18–23 МСК 45–60 мин, ночью реже), не больше
   20 постов в сутки; рубрики по весам; optimizer.py раз в сутки правит веса. Фиксированного расписания нет.
 - Промпты: brand_voice.md, reply_voice.md, playbook.md (хуки, цельность, юмор), threads_rules.md, content_plan.md

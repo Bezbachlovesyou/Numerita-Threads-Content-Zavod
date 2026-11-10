@@ -8,6 +8,14 @@ class T(unittest.TestCase):
         self.assertIsNone(autopost.quiet_end(datetime(2026, 11, 10, 10, 0)))
         self.assertIsNone(autopost.quiet_end(datetime(2026, 11, 10, 0, 59)))
         self.assertEqual(autopost.quiet_end(datetime(2026, 11, 10, 1, 0)), datetime(2026, 11, 10, 10, 0))
+        from unittest.mock import patch
+        from zoneinfo import ZoneInfo
+        msk = ZoneInfo("Europe/Moscow")
+        with patch.object(autopost, "_is_en", lambda: True):
+            # 10:00 МСК = 02:00 Нью-Йорк: тишина до 10:00 по Нью-Йорку = 18:00 МСК
+            end = autopost.quiet_end(datetime(2026, 11, 10, 10, 0, tzinfo=msk))
+            self.assertEqual(end.astimezone(msk), datetime(2026, 11, 10, 18, 0, tzinfo=msk))
+            self.assertIsNone(autopost.quiet_end(datetime(2026, 11, 10, 19, 0, tzinfo=msk)))
         print("OK")
 
 if __name__ == "__main__":
