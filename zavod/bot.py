@@ -30,7 +30,7 @@ from . import text_mode
 from . import lang
 from .optimizer import optimize
 from .dialogue import walk_comments
-from . import art, attribution, gitaqualities, fromcomments, pairweek, rework, series, physics, postmatrix, costs, constraint, funnel, profit, reminders, performance, approved_post, zero_research, api_budget, tgchannel, brandvideo, instagram, sketch, zero_cleanup
+from . import skyguard, art, attribution, gitaqualities, fromcomments, pairweek, rework, series, physics, postmatrix, costs, constraint, funnel, profit, reminders, performance, approved_post, zero_research, api_budget, tgchannel, brandvideo, instagram, sketch, zero_cleanup
 from .config import Config
 from .generator import GenerationError, Generator
 from .storage import PgStorage, Post, Storage
@@ -2051,7 +2051,7 @@ async def post_next(
             log.info("Формат «объяснительная» снят по слову владельца — пост отброшен")
             return False
         if not (grid and text_mode.enabled()):
-            text = await hook_gate(generator, text)
+            text = await hook_gate(generator, text, sky_checked=slot.rubric.key == "text_sky")
         text = await antidupe_gate(db, generator, text, now)
         if text is None:
             return False
@@ -2161,11 +2161,23 @@ async def en_editor_gate(generator: Generator, text: str) -> str:
     return result if len(result) <= MAX_LENGTH else text
 
 
-async def hook_gate(generator: Generator, text: str) -> str | None:
+def sky_gate(text: str) -> str:
+    """Предложения с неподтверждённым новолунием, полнолунием, ретроградом, затмением убираем (расчёт Swiss Ephemeris на момент выхода)."""
+    if not skyguard.verify(text):
+        return text
+    bad = re.compile("|".join(r.pattern for r in (skyguard.NEW, skyguard.FULL, skyguard.RETRO, skyguard.ECLIPSE)), re.I)
+    parts = re.split(r"(?<=[.!?…])\s+", text)
+    kept = " ".join(p for p in parts if not bad.search(p)).strip()
+    return kept or text
+
+
+async def hook_gate(generator: Generator, text: str, sky_checked: bool = False) -> str | None:
     """Каждый пост перед выходом проходит планку «арт-объект» (art.py; слово владельца 31.10.2026: усреднённого текста быть не
     должно): хук, интрига, юмор, факт или история, живость. Не дотянул — поднимаем по слабому месту; всё равно ниже — None
     (пост не выходит). Ссылки с меткой сохраняем. Перед оценкой — проверки цельности и безопасности."""
     text = await safe_gate(generator, await coherence_gate(generator, text))
+    if not sky_checked:  # рубрика text_sky получает факты из skyevents уже посчитанными
+        text = sky_gate(text)  # слово владельца 10.11.2026: утверждения о небе только по расчёту
     if lang.is_en():
         text = await en_editor_gate(generator, text)
     links = SCRIPT_LINK_LINE.findall(text)
@@ -2519,6 +2531,9 @@ async def run_op(cmd: dict, db: Storage, threads: ThreadsClient | None, bot: Bot
     elif action == "post" and cmd.get("account") == "tg":
         if not cfg.telegram_channel or not text:
             return
+        if (sky_bad := skyguard.verify(re.sub(r"<[^>]+>", "", text))) and not cmd.get("skip_sky_check"):
+            await notify_admins(bot, cfg, f"⚠️ Пост в канал не вышел: утверждение о небе не подтверждено расчётом: {'; '.join(sky_bad)}.")
+            return
         # слово создателя 09.11.2026: от завода в канал не больше одного поста в сутки (вечерние «Новости» идут из бота); исключение — force
         if not cmd.get("force") and not await db.claim_slot(f"tgch zavod day {datetime.now(cfg.timezone).date().isoformat()}"):
             await notify_admins(bot, cfg, "ℹ️ В канал сегодня уже вышел пост от завода (лимит 1 в сутки), этот перенесите на завтра или добавьте \"force\": true.")
@@ -2527,6 +2542,9 @@ async def run_op(cmd: dict, db: Storage, threads: ThreadsClient | None, bot: Bot
         await tgchannel.react(bot, cfg.telegram_channel, msg.message_id)
         ch = str(cfg.telegram_channel).lstrip("@")
         await notify_admins(bot, cfg, f"✅ Канал: t.me/{ch}/{msg.message_id}" if not ch.startswith("-") else "✅ Канал: вышло")
+    elif action == "post" and threads is not None and text and cmd.get("rubric") != "text_sky" and not cmd.get("skip_sky_check") \
+            and (sky_bad := skyguard.verify(text)):
+        await notify_admins(bot, cfg, f"{tag}⚠️ Пост не вышел: утверждение о небе не подтверждено расчётом: {'; '.join(sky_bad)}.")
     elif action == "post" and threads is not None and text:
         post_id = await db.add_draft(f"ops:{cmd['id']}", text, cmd.get("rubric") or "text_seed")
         post = await publish(await db.get(post_id), db, threads, bot, "", False)
