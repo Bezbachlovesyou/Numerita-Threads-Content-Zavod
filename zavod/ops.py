@@ -15,6 +15,7 @@ Claude записывает поручение в ops/commands.json в main. Б�
   send_assets — {"files": ["assets/cover/…"], "text": "..."}: файлы обложек владельцу документами (без пережатия).
   accounts_check — какие площадки подключены в Zernio (названия и числа), в том числе Facebook.
   asap      — {"asap": true} у post/thread: выйти сразу, без паузы после последнего поста (флагманский пост владельца).
+  video_post — {"media": "channel/….mp4", "text": "...", "items": [...], "rubric": "..."}: готовый ролик из assets/ в Threads, items — продолжение ветки.
   tell      — {"text": "..."} или {"file": "knowledge/…"}: длинный текст только владельцу в Telegram (без Threads, $0).
 """
 

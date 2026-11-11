@@ -2565,6 +2565,28 @@ async def run_op(cmd: dict, db: Storage, threads: ThreadsClient | None, bot: Bot
         await db.set_threads_id(post_id, remote or "published")
         await db.mark_published(post_id)
         asyncio.create_task(post_receipt(bot, cfg, db, threads, datetime.now(cfg.timezone)))
+    elif action == "video_post" and threads is not None and text and cmd.get("media"):
+        # готовый ролик из assets/ в Threads своего языка (слово владельца 11.11.2026: «Сердце зодиака» — выложить сразу); items — продолжение ветки
+        path = (Path(__file__).parent.parent / "assets" / str(cmd["media"])).resolve()
+        if (Path(__file__).parent.parent / "assets").resolve() not in path.parents or not path.is_file():
+            await notify_admins(bot, cfg, f"{tag}⚠️ Ролик не вышел: файла assets/{cmd['media']} нет.")
+            return
+        items = [text] + [str(t).strip() for t in cmd.get("items") or [] if str(t).strip()]
+        if text_mode.needs_visual("\n".join(items)) or (sky_bad := skyguard.verify("\n".join(items))):
+            await notify_admins(bot, cfg, f"{tag}⚠️ Ролик не вышел: текст не прошёл проверку (отсылка к кнопкам/картинке или неподтверждённое небо).")
+            return
+        rubric = cmd.get("rubric") or "text_seed"
+        url = await threads.upload_image(path.read_bytes(), f"video_{cmd['id']}.mp4", "video/mp4")
+        post_id = await db.add_draft(f"ops:{cmd['id']}", text, rubric)
+        try:
+            remote = await threads.publish_text(text, topic_tag_for(rubric, "\n".join(items)), None, None, url, media_kind="story_video",
+                                                thread_items=items if len(items) > 1 else None)
+        except ThreadsError as e:
+            await notify_admins(bot, cfg, f"{tag}⚠️ Ролик не вышел: {e}")
+            return
+        await db.set_threads_id(post_id, remote or "published")
+        await db.mark_published(post_id)
+        asyncio.create_task(post_receipt(bot, cfg, db, threads, datetime.now(cfg.timezone)))
     elif action == "grid" and cmd.get("shape") in GRID_STYLES:
         forced = json.loads(await db.kv_get("grid:force") or "[]")
         await db.kv_set("grid:force", json.dumps([cmd["shape"]] + forced))
