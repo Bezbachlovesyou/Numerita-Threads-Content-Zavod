@@ -1607,7 +1607,7 @@ CTA_RULES = {
     "none": "Без ссылок и без упоминания бота. " + COMMENT_HOOK,
 }
 REPLY_INTERVAL = timedelta(minutes=5)
-DAILY_POST_CAP = 20  # постов за сутки максимум (лимит Threads — 250, но живые авторы столько не пишут)
+DAILY_POST_CAP = autopost.DAILY_POSTS_MAX  # 11.11.2026: не больше 4 в сутки (было 20): реже, но в нужное время
 FAST_REPLY_INTERVAL = timedelta(minutes=2)
 OPTIMIZE_AT = time(4, 10)  # ежедневный разбор рубрик, когда трафик минимальный
 RETRY_AFTER_ERROR = timedelta(minutes=15)
@@ -2270,7 +2270,7 @@ async def autopost_tick(
             return
     last = await db.last_published_at()
     stored = await db.kv_get("next_post_at")
-    gap = min_gap(now)
+    gap = max(min_gap(now), autopost.WINDOW_MIN_GAP)
     if stored:
         next_at = datetime.fromisoformat(stored)
         if now.hour in autopost.PRIME_HOURS and last is not None and next_at > last + timedelta(minutes=80):
@@ -2279,6 +2279,10 @@ async def autopost_tick(
         # Первый запуск: если давно ничего не выходило — постим сразу.
         next_at = now if last is None or now - last >= gap else last + gap
     if now < next_at:
+        return
+    window = autopost.window_start(now)
+    if window:  # вне окон выхода (утро 10–13, вечер 18–22) автопосты молчат (слово владельца 11.11.2026)
+        await db.kv_set("next_post_at", (window + timedelta(minutes=rng.randint(3, 40))).isoformat())
         return
     quiet = autopost.quiet_end(now)
     if quiet:  # ночная тишина 01:00–10:00 (слово владельца 10.11.2026)

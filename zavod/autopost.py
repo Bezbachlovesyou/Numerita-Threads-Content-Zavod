@@ -76,6 +76,30 @@ NIGHT_GAP = (600, 720)  # минут, 00:00–06:59
 QUIET_HOURS = range(2, 10)  # слово владельца 10.11.2026: с 02:00 до 10:00 завод молчит (слово владельца 10.11, было с 01:00): ночные посты читают мало (русский — по времени бота, английский — по Нью-Йорку)
 
 
+# Окна выхода (слово владельца 11.11.2026: «посты не набирают, делать значительно реже, в нужное время, уникальные»): не больше 4 постов в сутки,
+# только в два окна: утро 10:00–13:00 и вечер 18:00–22:00 (русский по времени бота, английский по Нью-Йорку); между постами не меньше 4 часов.
+DAILY_POSTS_MAX = 4
+POST_WINDOWS = ((10, 13), (18, 22))
+WINDOW_MIN_GAP = timedelta(hours=4)
+
+
+def window_start(now: datetime):
+    """None, если сейчас окно выхода; иначе начало ближайшего окна (в часовом поясе now)."""
+    if _is_en():
+        from zoneinfo import ZoneInfo
+        local = now.astimezone(ZoneInfo("America/New_York")) if now.tzinfo else now
+    else:
+        local = now
+    for start, end in POST_WINDOWS:
+        if start <= local.hour < end:
+            return None
+    for start, _ in POST_WINDOWS:
+        if local.hour < start:
+            return local.replace(hour=start, minute=0, second=0, microsecond=0)
+    nxt = local + timedelta(days=1)
+    return nxt.replace(hour=POST_WINDOWS[0][0], minute=0, second=0, microsecond=0)
+
+
 def quiet_end(now: datetime):
     """Конец ночной тишины (10:00), если сейчас тихие часы; иначе None. Русский: по часовому поясу бота; английский (слово владельца 10.11.2026):
     по времени Нью-Йорка (США и Британия): с 01:00 до 10:00 молчим."""
@@ -268,7 +292,7 @@ class ContentPlan:
         """Следующая рубрика. recent — рубрики последних постов, свежие первыми."""
         by_key = {r.key: r for r in self.all_rubrics()}
         recent_ctas = [by_key[k].cta for k in recent[:5] if k in by_key]
-        pool = [r for r in self.all_rubrics() if not recent or r.key != recent[0]]
+        pool = [r for r in self.all_rubrics() if (r.key not in recent[:4] and r.key != 'grid') or (r.key == 'grid' and (not recent or recent[0] != 'grid'))] or [r for r in self.all_rubrics() if not recent or r.key != recent[0]]  # не повторять рубрику 4 поста подряд (11.11.2026: «одно и то же, чуть меняя»)
         pool = [r for r in pool if r.key not in ("text_pair_week", "text_from_comments", "text_qualities")] or pool  # «Пара недели» выходит только по расписанию (pairweek.due), не по жребию
         if _is_en():  # английский аккаунт: без русских лент новостей/хайпа, картинок с русским текстом
             from .lang import EN_SKIP_RUBRICS
