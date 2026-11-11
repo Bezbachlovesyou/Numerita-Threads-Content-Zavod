@@ -1239,5 +1239,29 @@
   "account": "ru",
   "action": "tell",
   "text": "💛 «Сердце зодиака» вышло с роликом, тема Astrology Threads, ссылка на бота первым комментарием:\nhttps://www.threads.com/@numerita.ai/post/DfnfR5HB9xZ"
+ },
+ {
+  "id": "mom-child-ru-2026-11-12",
+  "account": "ru",
+  "action": "thread",
+  "rubric": "text_mom_child",
+  "after": "2026-11-12T18:30:00+03:00",
+  "items": [
+   "Почему с одним ребёнком легко, а с другим — как с инопланетянином? 🤱\n\nСложите цифры дня рождения до одной: 24 → 2+4 = 6. Так считают и взрослого, и ребёнка.\nУ двух из девяти ребёнка-учителя нет совсем. У одного их пять. Найдите себя 👇\n\n✨ Мама 1 (дни 1, 10, 19, 28)\n• С полуслова: дети 2, 3\n• Ребёнок-учитель: 4\n\n✨ Мама 2 (дни 2, 11, 20, 29)\n• С полуслова: дети 1, 3, 9\n• Ребёнок-учитель: 4, 7\n\n✨ Мама 3 (дни 3, 12, 21, 30)\n• С полуслова: дети 1, 2, 3, 8, 9\n• Ребёнок-учитель: 7",
+   "✨ Мама 4 (дни 4, 13, 22, 31)\n• С полуслова: дети 5, 8\n• Ребёнок-учитель: 1, 2, 4, 6, 9\n\n✨ Мама 5 (дни 5, 14, 23)\n• С полуслова: дети 4, 6, 7\n• Ребёнка-учителя нет: ключ находится к любому\n\n✨ Мама 6 (дни 6, 15, 24)\n• С полуслова: дети 5, 9\n• Ребёнок-учитель: 4, 7\n\nДальше 👇",
+   "✨ Мама 7 (дни 7, 16, 25)\n• С полуслова: дети 5\n• Ребёнок-учитель: 2, 3, 6\n\n✨ Мама 8 (дни 8, 17, 26)\n• С полуслова: дети 3, 4, 9\n• Ребёнка-учителя нет: ключ находится к любому\n\n✨ Мама 9 (дни 9, 18, 27)\n• С полуслова: дети 2, 3, 6, 8\n• Ребёнок-учитель: 4\n\n⚠️ Ребёнок-учитель — не трудный ребёнок. Это тот, рядом с кем мама растёт сама. Остальные числа вас дополняют.\nЭто язык чисел, образ, а не диагноз.\n\nНапишите своё число и число ребёнка — скажу, чему вы учите друг друга."
+  ]
+ },
+ {
+  "id": "mom-child-en-2026-11-12",
+  "account": "en",
+  "action": "thread",
+  "rubric": "text_mom_child",
+  "after": "2026-11-12T18:30:00-05:00",
+  "items": [
+   "Why is one child easy, and the other feels like an alien? 🤱\n\nAdd the birthday digits down to one: 24 → 2+4 = 6. Same for parent and child.\nTwo of the nine have no teacher child at all. One has five. Find yourself 👇\n\n✨ Mom 1 (born on 1, 10, 19, 28)\n• Clicks instantly: kids 2, 3\n• Teacher child: 4\n\n✨ Mom 2 (born on 2, 11, 20, 29)\n• Clicks instantly: kids 1, 3, 9\n• Teacher child: 4, 7\n\n✨ Mom 3 (born on 3, 12, 21, 30)\n• Clicks instantly: kids 1, 2, 3, 8, 9\n• Teacher child: 7",
+   "✨ Mom 4 (born on 4, 13, 22, 31)\n• Clicks instantly: kids 5, 8\n• Teacher child: 1, 2, 4, 6, 9\n\n✨ Mom 5 (born on 5, 14, 23)\n• Clicks instantly: kids 4, 6, 7\n• No teacher child: you find a key to any\n\n✨ Mom 6 (born on 6, 15, 24)\n• Clicks instantly: kids 5, 9\n• Teacher child: 4, 7\n\nMore 👇",
+   "✨ Mom 7 (born on 7, 16, 25)\n• Clicks instantly: kids 5\n• Teacher child: 2, 3, 6\n\n✨ Mom 8 (born on 8, 17, 26)\n• Clicks instantly: kids 3, 4, 9\n• No teacher child: you find a key to any\n\n✨ Mom 9 (born on 9, 18, 27)\n• Clicks instantly: kids 2, 3, 6, 8\n• Teacher child: 4\n\n⚠️ A teacher child is not a difficult child. It's the one who makes a mom grow. The rest complement you.\nA language of numbers, not a diagnosis.\n\nShare your number and your child's — I'll tell you what you teach each other."
+  ]
  }
 ]
