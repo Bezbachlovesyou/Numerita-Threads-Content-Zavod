@@ -16,7 +16,7 @@ class FakeThreads:
 
     async def publish_text(self, text, topic_tag=None, first_comment=None, image_urls=None, video_url=None, *, media_kind=None,
                            thread_items=None):
-        self.published.append({"text": text, "topic": topic_tag, "video": video_url, "kind": media_kind, "items": thread_items})
+        self.published.append({"text": text, "topic": topic_tag, "video": video_url, "kind": media_kind, "items": thread_items, "first": first_comment})
         return "remote1"
 
 
@@ -48,6 +48,12 @@ class OpsVideoPost(unittest.IsolatedAsyncioTestCase):
         pub = th.published[0]
         self.assertEqual((pub["topic"], pub["video"], pub["kind"]), ("Astrology Threads", "https://cdn.example/video.mp4", "story_video"))
         self.assertEqual(pub["items"], ["Какой знак спрятан в сердце?", "Подсказка: стихии."])
+
+    async def test_link_goes_as_first_comment_and_plain_video_has_no_thread(self):
+        th = FakeThreads()
+        await self.run_cmd({"id": "v9", "action": "video_post", "media": "numerita_gas.mp4", "text": "Какой знак спрятан?",
+                            "first_comment": "t.me/Numeritabot?start=ad_th_zheart"}, th)
+        self.assertEqual((th.published[0]["first"], th.published[0]["items"]), ("t.me/Numeritabot?start=ad_th_zheart", None))
 
     async def test_missing_or_outside_file_is_refused(self):
         th = FakeThreads()

@@ -113,6 +113,9 @@ class ThreadsClient:
             body["mediaItems"] = [{"type": "video", "url": video_url}]
         elif image_urls:  # одна картинка или карусель до 10
             body["mediaItems"] = [{"type": "image", "url": url} for url in image_urls[:10]]
+        if thread_items and body.get("mediaItems"):
+            # 12.11.2026: ролик «Сердце зодиака» вышел без видео — при цепочке Zernio берёт медиа из её первого элемента, а не из поста
+            platform["platformSpecificData"]["threadItems"][0]["mediaItems"] = body["mediaItems"]
         _, payload = await self._request("POST", "/posts", json=body)
         post = payload.get("post") or {}
         # Threads может отказать, а Zernio ответит 207 — это тоже ошибка публикации.

@@ -2579,8 +2579,8 @@ async def run_op(cmd: dict, db: Storage, threads: ThreadsClient | None, bot: Bot
         url = await threads.upload_image(path.read_bytes(), f"video_{cmd['id']}.mp4", "video/mp4")
         post_id = await db.add_draft(f"ops:{cmd['id']}", text, rubric)
         try:
-            remote = await threads.publish_text(text, topic_tag_for(rubric, "\n".join(items)), None, None, url, media_kind="story_video",
-                                                thread_items=items if len(items) > 1 else None)
+            remote = await threads.publish_text(text, topic_tag_for(rubric, "\n".join(items)), (cmd.get("first_comment") or "").strip() or None,
+                                                None, url, media_kind="story_video", thread_items=items if len(items) > 1 else None)
         except ThreadsError as e:
             await notify_admins(bot, cfg, f"{tag}⚠️ Ролик не вышел: {e}")
             return
