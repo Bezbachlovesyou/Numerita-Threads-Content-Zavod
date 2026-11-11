@@ -24,17 +24,18 @@ from .gridvideo import FPS, ffmpeg
 from .pairstar3d import (FONTS_DIR, LOGO, MUSIC, WHITE, _bloom, _bold, _ease, _galaxy, _lux, _project, _rot_x,
                          _rot_y, _scale, _text)
 
-SECONDS = 15.0
+SECONDS = 23.0   # 11.11 владелец: «слишком быстро, не успеваешь; непонятно, куда смотреть» — медленнее и одна загадка
 CX, CY = W / 2, 590.0
 S = 262            # размер сердца
 N = 620            # цифр в сердце
 RING_R = 455       # радиус кольца знаков
 TILT = math.radians(22)
 BEAT = 0.875       # период удара сердца, с
-T0 = 3.2           # сердце собрано, начинаются стихии
-PHASE = 2 * BEAT   # одна стихия — два удара
+T_HINT = 3.2       # сердце собрано: три удара показываем, куда смотреть («?» на кольце)
+T0 = T_HINT + 3 * BEAT   # начинаются стихии
+PHASE = 3 * BEAT   # одна стихия — три удара, чтобы успеть прочитать
 T_STAR = T0 + 4 * PHASE   # 10,2 с — звезда из четырёх тригонов
-T_END = T_STAR + 0.9
+T_END = T_STAR + 1.0
 GOLD = (255, 208, 128)
 ROSE = (255, 96, 130)
 SIGNS = "♈♉♊♋♌♍♎♏♐♑♒♓"
@@ -51,13 +52,13 @@ ELEMENTS_EN = [
     ("Water", "loves with feeling", "Cancer · Scorpio · Pisces", (170, 140, 255)),
 ]
 TEXT = {
-    "ru": {"hook": "Какой знак спрятан в сердце?", "sub": "на кольце 11 знаков · подсказка — в стихиях",
-           "end": "Какой знак в сердце?", "end_sub": "? + твоё число дня рождения",
-           "lines": ["Напиши спрятанный знак,", "свой знак и число дня рождения —", "расскажу, как любит твоё сердце"],
+    "ru": {"hook": "Какой знак спрятан?", "sub": "на кольце 11 знаков и один вопрос",
+           "hint": ["Вместо одного знака — «?»", "стихии подскажут, кто это"],
+           "lines": ["Напиши, какой знак спрятан,", "и свой знак с числом рождения —", "расскажу, как любит твоё сердце"],
            "elements": ELEMENTS},
-    "en": {"hook": "Which sign hides in the heart?", "sub": "11 signs on the ring · the elements are your clue",
-           "end": "Which sign is in the heart?", "end_sub": "? + your birthday number",
-           "lines": ["Name the hidden sign,", "your sign and your birthday number —", "I'll tell you how your heart loves"],
+    "en": {"hook": "Which sign is hidden?", "sub": "11 signs on the ring and one question mark",
+           "hint": ["One sign is replaced by «?»", "the elements will tell you who"],
+           "lines": ["Name the hidden sign,", "add your sign and birthday number —", "I'll tell you how your heart loves"],
            "elements": ELEMENTS_EN},
 }
 HIDDEN = 7  # какой знак спрятан (0 — Овен … 11 — Рыбы): на кольце вместо него «?», в подписи стихии тоже
@@ -117,7 +118,7 @@ def _mix(a, b, k):
 
 
 def _ring_pos(i: int, t: float):
-    spin = 0.42 * t + 0.6 * _ease((t - T_STAR) / 1.2) * (t - T_STAR)
+    spin = 0.26 * t
     a = 2 * math.pi * i / 12 - spin
     return _project(_rot_x((RING_R * math.cos(a), 0.0, RING_R * math.sin(a)), TILT)), math.sin(a)
 
@@ -147,11 +148,10 @@ def frames(lang: str = "ru", seconds: float = SECONDS, seed: str = "zodiacheart"
     origin = [(rng.uniform(-620, 620), rng.uniform(-900, -520) if rng.random() < 0.7 else rng.uniform(-500, 700),
                rng.uniform(-300, 500), rng.uniform(0.0, 1.5)) for _ in range(N)]
     sparks = [(rng.uniform(0, 2 * math.pi), rng.uniform(0.5, 1.0), rng.random(), rng.randrange(4)) for _ in range(150)]
-    examples = [("?", rng.randrange(1, 32)) for _ in range(12)]
     f_hook = _lux(60, "Bold", "JetBrainsMono.ttf")
     f_sub = _lux(30, "Regular", "JetBrainsMono.ttf")
     f_el = _lux(54, "Bold", "JetBrainsMono.ttf")
-    f_names = _lux(30, "Medium", "JetBrainsMono.ttf")
+    f_names = _lux(42, "Bold", "JetBrainsMono.ttf")
     f_line = _lux(40, "Bold", "JetBrainsMono.ttf")
     f_tag = _lux(26, "Regular", "JetBrainsMono.ttf")
     total = int(seconds * FPS)
@@ -178,7 +178,7 @@ def frames(lang: str = "ru", seconds: float = SECONDS, seed: str = "zodiacheart"
                 sd.line((sx - 9, sy, sx + 9, sy), fill=(255, 255, 255, int(120 * tw)))
                 sd.line((sx, sy - 9, sx, sy + 9), fill=(255, 255, 255, int(120 * tw)))
         img = Image.alpha_composite(img, sky)
-        img = Image.alpha_composite(img, rain.layer(t, 0.85 - 0.4 * built + 0.25 * pulse - 0.3 * end))
+        img = Image.alpha_composite(img, rain.layer(t, 0.85 - 0.5 * built + 0.15 * pulse - 0.1 * end))
         for sprite, gx, gy, spin_g, sp, phs in galaxies:
             g = sprite.rotate(spin_g * t, resample=Image.BICUBIC)
             tw = 0.7 + 0.3 * math.sin(2 * math.pi * sp * t + phs)
@@ -218,9 +218,11 @@ def frames(lang: str = "ru", seconds: float = SECONDS, seed: str = "zodiacheart"
                     rr = size * 0.95
                     sdr.ellipse((x - rr, y - rr, x + rr, y + rr), fill=_scale(col_el, 0.45 * min(1.0, lit)))
                 if i == hidden:  # спрятанный знак: на его месте мерцает вопрос
-                    q = 0.55 + 0.45 * math.sin(2 * math.pi * 1.1 * t)
-                    ld.text((x, y), "?", font=_glyph_font(int(size * 1.15)), fill=_scale(_mix(col, WHITE, 0.5), min(1.0, (br + 0.25) * q)),
-                            anchor="mm")
+                    q = ring_in * (0.8 + 0.2 * math.sin(2 * math.pi * t / BEAT))
+                    rr = (52 + 8 * pulse) * kk
+                    ld.ellipse((x - rr, y - rr, x + rr, y + rr), outline=_scale(WHITE, 0.9 * q), width=4)
+                    sdr.ellipse((x - rr, y - rr, x + rr, y + rr), fill=_scale(GOLD, 0.5 * q))
+                    ld.text((x, y), "?", font=_glyph_font(int(72 * kk)), fill=_scale(WHITE, q), anchor="mm")
                     continue
                 ld.text((x, y), SIGNS[i], font=_glyph_font(size), fill=_scale(col, min(1.0, br)), anchor="mm")
 
@@ -299,11 +301,12 @@ def frames(lang: str = "ru", seconds: float = SECONDS, seed: str = "zodiacheart"
         # --- надписи
         ov = Image.new("RGBA", (W, H), (0, 0, 0, 0))
         od = ImageDraw.Draw(ov)
-        hook = _ease(t / 0.5) * (1 - _ease((t - T_STAR + 0.1) / 0.5))
+        hook = _ease(t / 0.5)
         _text(od, (W / 2, 92), tx["hook"], f_hook, WHITE, 255 * hook)
         _text(od, (W / 2, 166), tx["sub"], f_sub, (230, 214, 245), 230 * hook)
-        _text(od, (W / 2, 92), tx["end"], f_hook, WHITE, 255 * end)
-        _text(od, (W / 2, 166), tx["end_sub"], f_sub, (255, 226, 180), 240 * end)
+        hint = _ease((t - T_HINT) / 0.4) * (1 - _ease((t - T0 + 0.35) / 0.3))
+        _text(od, (W / 2, 1030), tx["hint"][0], f_el, (255, 226, 160), 255 * hint)
+        _text(od, (W / 2, 1100), tx["hint"][1], f_names, (236, 226, 246), 235 * hint)
         if ph >= 0:
             name, how, names, col = tx["elements"][ph]
             if hidden % 4 == ph:
@@ -311,22 +314,14 @@ def frames(lang: str = "ru", seconds: float = SECONDS, seed: str = "zodiacheart"
                 parts_n[hidden // 4] = "?"
                 names = " · ".join(parts_n)
             _text(od, (W / 2, 1030), f"{name} {how}", f_el, _mix(col, WHITE, 0.25), 255 * ph_k)
-            _text(od, (W / 2, 1100), names, f_names, (236, 226, 246), 235 * ph_k)
-        if end > 0:  # в сердце мелькают примеры «знак + число»: подсказка, что писать
-            sign, num = examples[int((t - T_END) / 0.95) % len(examples)]
-            local = ((t - T_END) % 0.95) / 0.95
-            a = end * min(1.0, local * 6) * min(1.0, (1 - local) * 6)
-            gf, nf = _glyph_font(96), _lux(92, "Bold", "JetBrainsMono.ttf")
-            parts = [(sign, gf), (" + ", nf), (str(num), nf)]
-            width = sum(od.textlength(s_, font=f_) for s_, f_ in parts)
-            x = W / 2 - width / 2
-            for s_, f_ in parts:
-                od.text((x + 3, CY - 17), s_, font=f_, fill=(40, 6, 24, int(200 * a)), anchor="lm")
-                od.text((x, CY - 20), s_, font=f_, fill=(255, 244, 224, int(255 * a)), anchor="lm")
-                x += od.textlength(s_, font=f_)
-        for n, line in enumerate(tx["lines"]):
+            _text(od, (W / 2, 1104), names, f_names, (255, 240, 214), 255 * ph_k)
+        if end > 0:  # в сердце — один спокойный вопрос
+            q = end * (0.85 + 0.15 * math.sin(2 * math.pi * t / BEAT))
+            od.text((W / 2 + 4, CY - 16), "?", font=_glyph_font(190), fill=(40, 6, 24, int(190 * q)), anchor="mm")
+            od.text((W / 2, CY - 20), "?", font=_glyph_font(190), fill=(255, 244, 224, int(255 * q)), anchor="mm")
+        for n, line in enumerate(tx["lines"]):  # финал стоит неподвижно до конца ролика, все строки сразу
             _text(od, (W / 2, H - 300 + n * 56), line, f_line, WHITE if n < 2 else (255, 214, 140),
-                  255 * _ease((t - T_END - 0.5 - 0.6 * n) / 0.5))
+                  255 * _ease((t - T_END - 0.3) / 0.6))
         tw_ = od.textlength("@Numeritabot", font=f_tag)
         x0 = W / 2 - (tw_ + LOGO.width + 12) / 2
         ov.paste(LOGO, (int(x0), int(H - 64 - LOGO.height / 2)), LOGO)
@@ -341,9 +336,9 @@ def heartbeat_wav(path: Path, seconds: float = SECONDS, rate: int = 44100) -> No
     """Низкий «тук-тук» в такт кадру: синтез кодом, $0."""
     n = int(seconds * rate)
     buf = [0.0] * n
-    t = T0 - 3 * BEAT
+    t = T_HINT - 3 * BEAT
     while t < seconds - 0.4:
-        gain = (0.35 + 0.65 * _ease((t - 0.3) / 2.6)) * (1 - 0.6 * _ease((t - T_END - 2.2) / 1.6))
+        gain = (0.35 + 0.65 * _ease((t - 0.3) / 2.6)) * (1 - 0.5 * _ease((t - seconds + 2.5) / 1.6))
         for shift, f0, amp, dur in ((0.0, 62.0, 1.0, 0.22), (0.26, 78.0, 0.62, 0.16)):
             i0 = int((t + shift) * rate)
             for j in range(int(dur * rate)):
