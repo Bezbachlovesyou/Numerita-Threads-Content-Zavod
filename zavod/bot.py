@@ -2545,6 +2545,8 @@ async def run_op(cmd: dict, db: Storage, threads: ThreadsClient | None, bot: Bot
     elif action == "post" and threads is not None and text and cmd.get("rubric") != "text_sky" and not cmd.get("skip_sky_check") \
             and (sky_bad := skyguard.verify(text)):
         await notify_admins(bot, cfg, f"{tag}⚠️ Пост не вышел: утверждение о небе не подтверждено расчётом: {'; '.join(sky_bad)}.")
+    elif action == "post" and threads is not None and text and not cmd.get("allow_similar") and (dup := await similar_recent(db, text)):
+        await notify_admins(bot, cfg, f"{tag}⚠️ Пост не вышел: почти такой же уже опубликован за последние 3 дня («{dup[:50]}…»). Чтобы заменить пост, сначала снимите старый и добавьте \"allow_similar\": true.")
     elif action == "post" and threads is not None and text:
         post_id = await db.add_draft(f"ops:{cmd['id']}", text, cmd.get("rubric") or "text_seed")
         post = await publish(await db.get(post_id), db, threads, bot, "", False)
@@ -2721,6 +2723,17 @@ async def run_op(cmd: dict, db: Storage, threads: ThreadsClient | None, bot: Bot
     elif action == "unpublish" and threads is not None and cmd.get("fragment"):
         for line in await unpublish_matching(db, threads, [cmd["fragment"]]) or ["⚠️ Пост не найден"]:
             await notify_admins(bot, cfg, tag + line)
+
+
+async def similar_recent(db: Storage, text: str, days: int = 3, threshold: float = 0.8) -> str | None:
+    """Команда пульта не должна выпускать почти копию недавнего поста (10.11.2026: две «вечеринки» подряд, почти спам). Возвращает текст похожего поста."""
+    import difflib
+    norm = lambda t: re.sub(r"\s+", " ", re.sub(r"[^\w\s]", "", t.lower())).strip()
+    mine = norm(text)
+    for post in await db.recent_published(datetime.now(timezone.utc) - timedelta(days=days)):
+        if difflib.SequenceMatcher(None, mine, norm(post.text or "")).ratio() >= threshold:
+            return post.text
+    return None
 
 
 async def post_receipt(bot: Bot, cfg: Config, db: Storage, threads: ThreadsClient, since: datetime) -> None:
