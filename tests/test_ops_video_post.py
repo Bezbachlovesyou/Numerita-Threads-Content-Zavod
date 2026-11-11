@@ -57,6 +57,28 @@ class OpsVideoPost(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(th.published, [])
 
 
+class LinkUnder(OpsVideoPost):
+    async def test_link_goes_as_reply_to_our_own_thread_item(self):
+        th = FakeThreads()
+        await self.run_cmd({"id": "v1", "action": "video_post", "media": "numerita_gas.mp4", "text": "Какой знак спрятан в сердце?"}, th)
+        th.replies, th.roots = [], []
+
+        async def comments(target, max_pages=10):
+            return [{"id": "c1", "from": {"isOwner": False}, "message": "Скорпион"}, {"id": "c2", "from": {"isOwner": True}, "message": "Подсказка"}]
+
+        async def reply(target, comment_id, message):
+            th.replies.append((target, comment_id, message))
+
+        th.comments, th.reply = comments, reply
+        sent = await self.run_cmd({"id": "l1", "action": "link_under", "fragment": "спрятан в сердце", "text": "t.me/Numeritabot?start=ad_th_zheart"}, th)
+        self.assertEqual(th.replies, [("remote1", "c2", "t.me/Numeritabot?start=ad_th_zheart")])
+        self.assertIn("поставлена", sent[0])
+
+    async def test_static_label_is_registered(self):
+        from zavod import attribution as A
+        self.assertEqual(A.parse("ad_th_zheart")["kind"], "static")
+
+
 class _Cfg:
     import zoneinfo
     timezone = zoneinfo.ZoneInfo("Europe/Moscow")

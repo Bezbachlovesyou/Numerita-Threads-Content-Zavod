@@ -2587,6 +2587,26 @@ async def run_op(cmd: dict, db: Storage, threads: ThreadsClient | None, bot: Bot
         await db.set_threads_id(post_id, remote or "published")
         await db.mark_published(post_id)
         asyncio.create_task(post_receipt(bot, cfg, db, threads, datetime.now(cfg.timezone)))
+    elif action == "link_under" and threads is not None and text and cmd.get("fragment"):
+        # ссылка-комментарий под уже вышедшим постом (слово владельца 11.11.2026: «под сердце поставь ссылку»): сначала ответом на наше же
+        # продолжение ветки (проверенный путь ответа на комментарий), иначе — комментарием прямо под постом
+        frag = str(cmd["fragment"])
+        mine = next((p for p in await db.recent_published(datetime.now(cfg.timezone) - timedelta(days=3)) if frag in p.text), None)
+        target = mine.threads_id if mine else next((p.get("_id") for p in await threads.find_posts(frag, datetime.now(timezone.utc) - timedelta(days=3))
+                                                    if p.get("status") != "failed"), None)
+        if not target or target == "published":
+            await notify_admins(bot, cfg, f"{tag}⚠️ Ссылка не поставлена: пост с «{frag[:40]}» не найден среди вышедших.")
+            return
+        try:
+            own = [c for c, _p, _r in walk_comments(await threads.comments(target, max_pages=2)) if (c.get("from") or {}).get("isOwner") and c.get("id")]
+            if own:
+                await threads.reply(target, own[-1]["id"], text)
+            else:
+                await threads.comment_on_post(target, text)
+        except ThreadsError as e:
+            await notify_admins(bot, cfg, f"{tag}⚠️ Ссылка под постом не поставлена: {e}")
+            return
+        await notify_admins(bot, cfg, f"{tag}✅ Ссылка под постом «{frag[:40]}» поставлена.")
     elif action == "grid" and cmd.get("shape") in GRID_STYLES:
         forced = json.loads(await db.kv_get("grid:force") or "[]")
         await db.kv_set("grid:force", json.dumps([cmd["shape"]] + forced))

@@ -204,6 +204,13 @@ class ThreadsClient:
             headers={"Idempotency-Key": f"reply-{comment_id}-{hashlib.sha1(message.encode()).hexdigest()[:12]}"},
         )
 
+    async def comment_on_post(self, post_id: str, message: str) -> None:
+        """Наш комментарий прямо под постом (без commentId) — для ссылки под уже вышедшим постом."""
+        if lang.is_en() and lang.has_cyrillic(message):
+            raise ThreadsError("Русские буквы в английском комментарии — не отправлен.")
+        await self._request("POST", f"/inbox/comments/{post_id}", json={"accountId": self.account_id, "message": message},
+                            headers={"Idempotency-Key": f"own-{post_id}-{hashlib.sha1(message.encode()).hexdigest()[:12]}"})
+
     async def account_stats(self, limit: int = 10) -> dict:
         """Сводка и последние посты аккаунта: {"overview": {...}, "posts": [...]}."""
         _, payload = await self._request(
