@@ -22,7 +22,12 @@ log = logging.getLogger(__name__)
 RUN_HOURS = (11, 15, 19)  # как у обхода по Голдратту
 STAR_USD = 0.013  # оценка: Telegram выплачивает разработчику около 1,3 цента за ⭐; уточняется по факту выплат
 EXPERIMENT_SHARE = 0.3  # какую долю недельной выручки можно пускать на новые опыты
-ALARM_EVERY = timedelta(days=3)
+ALARM_EVERY = timedelta(days=7)
+# Слово владельца 11.11.2026: «два отчёта с разницей в минуту и разными цифрами; не слать так часто — смотреть на минусы
+# по нескольку раз в день негативно влияет на психику». Цифры были верные, но у каждого экземпляра свои (RU и EN
+# считают свои расходы). Теперь владельцу пишет только русский экземпляр, раз в неделю (понедельник, вечерний проход),
+# бережным тоном; английский считает молча. Подробности — по команде в пульте, когда владелец сам захочет.
+REPORT_WEEKDAY = 0  # понедельник
 
 
 def _day(now: datetime) -> str:
@@ -108,6 +113,14 @@ async def allow(db, label: str, usd: float, now: datetime) -> tuple[bool, str]:
     return False, f"отказ: {why}, на ${usd:.2f} нет «да» владельца"
 
 
+def weekly_line(st: dict) -> str:
+    """Одна бережная строка владельцу раз в неделю: вложено в рост и что пришло, без «в минусе сверх потолка»."""
+    cost, rev = st["cost"], st["revenue"]
+    got = f"оплат пока ${rev['usd']:.2f}" if rev["known"] else "оплаты пока не видны в данных"
+    return (f"🌱 Неделя завода (русский Threads): вложено в рост ${cost['total']:.2f}, {got}. "
+            "Новые платные опыты — только по вашему «да» на сумму.")
+
+
 def lines(st: dict) -> list[str]:
     cost, rev = st["cost"], st["revenue"]
     if not rev["known"]:
@@ -158,11 +171,12 @@ async def run_due(db, now: datetime, tz) -> list[str]:
             await chain.snapshot(db, now, c)
             st = await state(db, now, c)
             await db.kv_set("profit:last", json.dumps({"at": now.isoformat(), "status": st["status"], "net": st["net"]}))
-            notice = await alarm(db, st, now)
-            if notice:
-                notices.append(notice)
-            elif hour == RUN_HOURS[-1]:
-                notices.append("\n".join(lines(st)))
+            from . import lang
+            weekly = not lang.is_en() and now.weekday() == REPORT_WEEKDAY and hour == RUN_HOURS[-1]
+            if weekly:  # раз в неделю, только русский экземпляр, одна бережная строка (11.11.2026)
+                await db.kv_set("profit:alarm_status", st["status"])
+                await db.kv_set("profit:alarm_at", now.isoformat())
+                notices.append(weekly_line(st))
             await db.kv_set(key, "success")
         except Exception:
             log.exception("Контролёр прибыли: проход %s не удался", key)

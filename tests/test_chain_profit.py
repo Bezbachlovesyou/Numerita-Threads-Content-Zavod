@@ -110,18 +110,21 @@ class ProfitController(unittest.IsolatedAsyncioTestCase):
             self.assertTrue((await profit.allow(self.db, "ads", 3.0, NOW))[0])
             self.assertFalse((await profit.allow(self.db, "ads", 3.0, NOW))[0])  # доля выручки уже потрачена
 
-    async def test_minus_alarm_once_per_three_days_and_receipt_per_slot(self):
+    async def test_minus_is_quiet_daily_and_one_gentle_line_on_monday(self):
+        # 11.11.2026: минусы не шлём каждый день — одна бережная строка в понедельник вечером, только RU-экземпляр
         await self.ledger(5.0)
-        with patch.object(chain.funnel, "fetch", AsyncMock(return_value=funnel_data(stars=99, paid=1))):
-            first = await profit.run_due(self.db, NOW, TZ)
-            self.assertTrue(first and first[0].startswith("‼️ Контролёр прибыли"))
-            self.assertEqual(await profit.run_due(self.db, NOW, TZ), [])  # тот же слот — не повторять
-            later = NOW.replace(hour=11) + timedelta(days=1)  # другой слот, но алярм не чаще раза в 3 дня
-            self.assertEqual([n for n in await profit.run_due(self.db, later, TZ) if n.startswith("‼️")], [])
-            much_later = NOW.replace(hour=11) + timedelta(days=4)
-            await self.db.kv_set(f"cost:{much_later.date().isoformat()}", json.dumps({"post": [1, 5.0, 0, 0, 0]}))
-            again = await profit.run_due(self.db, much_later, TZ)
-            self.assertTrue(again and again[0].startswith("‼️"))
+        with patch.object(chain.funnel, "fetch", AsyncMock(return_value=funnel_data(stars=99, paid=1))), \
+                patch("zavod.lang.is_en", return_value=False):
+            self.assertEqual(await profit.run_due(self.db, NOW, TZ), [])  # суббота — тишина
+            monday = NOW + timedelta(days=(7 - NOW.weekday()) % 7)
+            first = await profit.run_due(self.db, monday, TZ)
+            self.assertTrue(first and first[0].startswith("🌱 Неделя завода"))
+            self.assertFalse(any(n.startswith("‼️") for n in first))
+            self.assertEqual(await profit.run_due(self.db, monday, TZ), [])  # тот же слот — не повторять
+            self.assertEqual(await profit.run_due(self.db, monday.replace(hour=11), TZ), [])  # утро — тишина
+        with patch.object(chain.funnel, "fetch", AsyncMock(return_value=funnel_data(stars=99, paid=1))), \
+                patch("zavod.lang.is_en", return_value=True):
+            self.assertEqual(await profit.run_due(self.db, monday + timedelta(days=7), TZ), [])  # EN молчит
 
     async def test_loss_budget_keeps_small_minus_quiet(self):
         await self.ledger(2.0)
