@@ -1,7 +1,8 @@
 """Сердце зодиака — арт-ролик (слово владельца 11.11.2026: «обыграть сердце, цифры и знаки зодиака; красиво, мощно;
 чтобы писали под постом и шли в ветку, дальше — канал и бот»).
 
-Сюжет 15 с: хук «Какой знак любит сильнее?» → золотые цифры слетаются из цифрового дождя в объёмное сердце → оно
+Сюжет 15 с: хук-загадка «Какой знак спрятан в сердце?» (на кольце 11 знаков, вместо двенадцатого — «?»; подсказка —
+подпись стихии «Рак · ? · Рыбы») → золотые цифры слетаются из цифрового дождя в объёмное сердце → оно
 бьётся, вокруг плывёт кольцо из 12 знаков → по очереди загораются четыре стихии: три знака стихии соединяет
 светящийся треугольник (тригон — так стихии и устроены в круге зодиака), сердце берёт её цвет, подпись «Огонь любит
 поступком» → четыре треугольника складываются в двенадцатилучевую звезду → «А как любит твоё? Знак + число дня
@@ -50,15 +51,16 @@ ELEMENTS_EN = [
     ("Water", "loves with feeling", "Cancer · Scorpio · Pisces", (170, 140, 255)),
 ]
 TEXT = {
-    "ru": {"hook": "Какой знак любит сильнее?", "sub": "у каждой стихии — своё сердце", "end": "А как любит твоё?",
-           "end_sub": "знак + число дня рождения",
-           "lines": ["Напиши свой знак", "и число дня рождения —", "расскажу, как любит твоё сердце"],
+    "ru": {"hook": "Какой знак спрятан в сердце?", "sub": "на кольце 11 знаков · подсказка — в стихиях",
+           "end": "Какой знак в сердце?", "end_sub": "? + твоё число дня рождения",
+           "lines": ["Напиши спрятанный знак,", "свой знак и число дня рождения —", "расскажу, как любит твоё сердце"],
            "elements": ELEMENTS},
-    "en": {"hook": "Which sign loves hardest?", "sub": "every element has its own heart", "end": "How does yours love?",
-           "end_sub": "your sign + your birthday number",
-           "lines": ["Tell me your sign", "and the day you were born —", "I'll tell you how your heart loves"],
+    "en": {"hook": "Which sign hides in the heart?", "sub": "11 signs on the ring · the elements are your clue",
+           "end": "Which sign is in the heart?", "end_sub": "? + your birthday number",
+           "lines": ["Name the hidden sign,", "your sign and your birthday number —", "I'll tell you how your heart loves"],
            "elements": ELEMENTS_EN},
 }
+HIDDEN = 7  # какой знак спрятан (0 — Овен … 11 — Рыбы): на кольце вместо него «?», в подписи стихии тоже
 _G: dict = {}
 
 
@@ -120,7 +122,8 @@ def _ring_pos(i: int, t: float):
     return _project(_rot_x((RING_R * math.cos(a), 0.0, RING_R * math.sin(a)), TILT)), math.sin(a)
 
 
-def frames(lang: str = "ru", seconds: float = SECONDS, seed: str = "zodiacheart", start: int = 0, stop: int | None = None):
+def frames(lang: str = "ru", seconds: float = SECONDS, seed: str = "zodiacheart", start: int = 0, stop: int | None = None,
+           hidden: int = HIDDEN):
     tx = TEXT[lang]
     rng = random.Random(seed)
     bg = _gradient((5, 4, 18), (34, 8, 40)).convert("RGBA")
@@ -144,7 +147,7 @@ def frames(lang: str = "ru", seconds: float = SECONDS, seed: str = "zodiacheart"
     origin = [(rng.uniform(-620, 620), rng.uniform(-900, -520) if rng.random() < 0.7 else rng.uniform(-500, 700),
                rng.uniform(-300, 500), rng.uniform(0.0, 1.5)) for _ in range(N)]
     sparks = [(rng.uniform(0, 2 * math.pi), rng.uniform(0.5, 1.0), rng.random(), rng.randrange(4)) for _ in range(150)]
-    examples = [(SIGNS[rng.randrange(12)], rng.randrange(1, 32)) for _ in range(12)]
+    examples = [("?", rng.randrange(1, 32)) for _ in range(12)]
     f_hook = _lux(60, "Bold", "JetBrainsMono.ttf")
     f_sub = _lux(30, "Regular", "JetBrainsMono.ttf")
     f_el = _lux(54, "Bold", "JetBrainsMono.ttf")
@@ -214,6 +217,11 @@ def frames(lang: str = "ru", seconds: float = SECONDS, seed: str = "zodiacheart"
                 if lit > 0.05:
                     rr = size * 0.95
                     sdr.ellipse((x - rr, y - rr, x + rr, y + rr), fill=_scale(col_el, 0.45 * min(1.0, lit)))
+                if i == hidden:  # спрятанный знак: на его месте мерцает вопрос
+                    q = 0.55 + 0.45 * math.sin(2 * math.pi * 1.1 * t)
+                    ld.text((x, y), "?", font=_glyph_font(int(size * 1.15)), fill=_scale(_mix(col, WHITE, 0.5), min(1.0, (br + 0.25) * q)),
+                            anchor="mm")
+                    continue
                 ld.text((x, y), SIGNS[i], font=_glyph_font(size), fill=_scale(col, min(1.0, br)), anchor="mm")
 
         def draw_trine(el: int, kq: float):
@@ -298,6 +306,10 @@ def frames(lang: str = "ru", seconds: float = SECONDS, seed: str = "zodiacheart"
         _text(od, (W / 2, 166), tx["end_sub"], f_sub, (255, 226, 180), 240 * end)
         if ph >= 0:
             name, how, names, col = tx["elements"][ph]
+            if hidden % 4 == ph:
+                parts_n = names.split(" · ")
+                parts_n[hidden // 4] = "?"
+                names = " · ".join(parts_n)
             _text(od, (W / 2, 1030), f"{name} {how}", f_el, _mix(col, WHITE, 0.25), 255 * ph_k)
             _text(od, (W / 2, 1100), names, f_names, (236, 226, 246), 235 * ph_k)
         if end > 0:  # в сердце мелькают примеры «знак + число»: подсказка, что писать
@@ -365,12 +377,13 @@ def mux(silent: Path, out: Path, seconds: float = SECONDS) -> None:
         subprocess.run(args, check=True)
 
 
-def render_silent(out: Path, lang: str = "ru", seconds: float = SECONDS, start: int = 0, stop: int | None = None) -> None:
+def render_silent(out: Path, lang: str = "ru", seconds: float = SECONDS, start: int = 0, stop: int | None = None,
+                  hidden: int = HIDDEN) -> None:
     args = [ffmpeg(), "-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}", "-r", str(FPS),
             "-i", "-", "-c:v", "libx264", "-preset", "medium", "-crf", "17", "-pix_fmt", "yuv420p", str(out)]
     proc = subprocess.Popen(args, stdin=subprocess.PIPE)
     try:
-        for frame in frames(lang, seconds, start=start, stop=stop):
+        for frame in frames(lang, seconds, start=start, stop=stop, hidden=hidden):
             proc.stdin.write(frame.tobytes())
     finally:
         proc.stdin.close()
