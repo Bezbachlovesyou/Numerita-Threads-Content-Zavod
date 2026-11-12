@@ -2571,18 +2571,35 @@ async def run_op(cmd: dict, db: Storage, threads: ThreadsClient | None, bot: Bot
         await db.set_threads_id(post_id, remote or "published")
         await db.mark_published(post_id)
         asyncio.create_task(post_receipt(bot, cfg, db, threads, datetime.now(cfg.timezone)))
-    elif action == "video_post" and threads is not None and text and cmd.get("media"):
+    elif action == "video_post" and threads is not None and text and (cmd.get("media") or cmd.get("media_url")):
         # готовый ролик из assets/ в Threads своего языка (слово владельца 11.11.2026: «Сердце зодиака» — выложить сразу); items — продолжение ветки
-        path = (Path(__file__).parent.parent / "assets" / str(cmd["media"])).resolve()
-        if (Path(__file__).parent.parent / "assets").resolve() not in path.parents or not path.is_file():
-            await notify_admins(bot, cfg, f"{tag}⚠️ Ролик не вышел: файла assets/{cmd['media']} нет.")
-            return
+        video_bytes = None
+        if cmd.get("media_url"):  # ролик с нашего сайта (13.11.2026: ролики игры лежат на www.numerita.ru/m/) — только наш домен
+            murl = str(cmd["media_url"])
+            if not re.fullmatch(r"https://www\.numerita\.ru/m/[\w.-]+\.mp4", murl):
+                await notify_admins(bot, cfg, f"{tag}⚠️ Ролик не вышел: адрес ролика не с нашего сайта.")
+                return
+            try:
+                import httpx
+                async with httpx.AsyncClient(timeout=120, follow_redirects=True) as http:
+                    r = await http.get(murl)
+                    r.raise_for_status()
+                    video_bytes = r.content
+            except Exception as e:
+                await notify_admins(bot, cfg, f"{tag}⚠️ Ролик не вышел: файл с сайта не скачался ({type(e).__name__}).")
+                return
+        else:
+            path = (Path(__file__).parent.parent / "assets" / str(cmd["media"])).resolve()
+            if (Path(__file__).parent.parent / "assets").resolve() not in path.parents or not path.is_file():
+                await notify_admins(bot, cfg, f"{tag}⚠️ Ролик не вышел: файла assets/{cmd['media']} нет.")
+                return
+            video_bytes = path.read_bytes()
         items = [text] + [str(t).strip() for t in cmd.get("items") or [] if str(t).strip()]
         if text_mode.needs_visual("\n".join(items)) or (sky_bad := skyguard.verify("\n".join(items))):
             await notify_admins(bot, cfg, f"{tag}⚠️ Ролик не вышел: текст не прошёл проверку (отсылка к кнопкам/картинке или неподтверждённое небо).")
             return
         rubric = cmd.get("rubric") or "text_seed"
-        url = await threads.upload_image(path.read_bytes(), f"video_{cmd['id']}.mp4", "video/mp4")
+        url = await threads.upload_image(video_bytes, f"video_{cmd['id']}.mp4", "video/mp4")
         post_id = await db.add_draft(f"ops:{cmd['id']}", text, rubric)
         try:
             remote = await threads.publish_text(text, topic_tag_for(rubric, "\n".join(items)), (cmd.get("first_comment") or "").strip() or None,

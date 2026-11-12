@@ -55,6 +55,12 @@ class OpsVideoPost(unittest.IsolatedAsyncioTestCase):
                             "first_comment": "t.me/Numeritabot?start=ad_th_zheart"}, th)
         self.assertEqual((th.published[0]["first"], th.published[0]["items"]), ("t.me/Numeritabot?start=ad_th_zheart", None))
 
+    async def test_foreign_media_url_is_refused(self):
+        th = FakeThreads()
+        sent = await self.run_cmd({"id": "v7", "action": "video_post", "media_url": "https://evil.example/m/x.mp4", "text": "Текст"}, th)
+        self.assertIn("не с нашего сайта", sent[0])
+        self.assertEqual(th.published, [])
+
     async def test_missing_or_outside_file_is_refused(self):
         th = FakeThreads()
         for media in ("channel/no_such.mp4", "../zavod/config.py"):
