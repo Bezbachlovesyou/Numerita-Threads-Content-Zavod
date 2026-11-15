@@ -26,7 +26,9 @@ class PostGuard(unittest.IsolatedAsyncioTestCase):
         await self.db.kv_set(key, json.dumps({"reply·haiku": [900, 0.45, 1, 1, 0], "summary": [9, 0.05, 1, 1, 0], "post": [2, 0.16, 1, 1, 0]}))
         self.assertLess(await guard(), costs.HARD_USD)          # 0.30 + 0.16 = 0.46: посты идут, хотя всего потрачено 0.66
         await self.db.kv_set(key, json.dumps({"reply·haiku": [10, 0.01, 1, 1, 0], "post": [4, 0.26, 1, 1, 0]}))
-        self.assertGreaterEqual(await guard(), costs.HARD_USD)  # 0.30 + 0.26 = 0.56: доля постов исчерпана
+        self.assertLess(await guard(), costs.HARD_USD)          # ответов мало (0.01): их запас достаётся постам, всего 0.27
+        await self.db.kv_set(key, json.dumps({"reply·haiku": [600, 0.30, 1, 1, 0], "post": [4, 0.26, 1, 1, 0]}))
+        self.assertGreaterEqual(await guard(), costs.HARD_USD)  # и общий потолок (0.56), и доля постов (0.26) исчерпаны
 
 
 if __name__ == "__main__":

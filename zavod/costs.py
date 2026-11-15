@@ -379,7 +379,11 @@ async def today_for_posts(db, tz) -> float:
     потолок $0,55 в сутки, но ответы больше не могут съесть долю постов ($0,25)."""
     raw = await db.kv_get(day_key(datetime.now(tz)))
     ledger = json.loads(raw) if raw else {}
-    return REPLY_RESERVE_USD + sum(v[1] for k, v in ledger.items() if not k.startswith(("reply", "summary")))
+    total = sum(v[1] for v in ledger.values())
+    other = sum(v[1] for k, v in ledger.items() if not k.startswith(("reply", "summary")))
+    # меньшее из двух: посты встают, только когда исчерпан и общий потолок, и их собственная доля ($0,25);
+    # если ответов мало (английский аккаунт), их неиспользованный запас достаётся постам
+    return min(total, REPLY_RESERVE_USD + other)
 
 
 def make_guard(db, tz):
