@@ -1342,5 +1342,27 @@
   "account": "ru",
   "action": "unpublish",
   "fragment": "ПОКОЛЕНИЕ ПЛУТОНА: найдите свой год"
+ },
+ {
+  "id": "longevity-mice-ru-2026-11-16",
+  "account": "ru",
+  "action": "post",
+  "rubric": "text_science",
+  "after": "2026-11-16T18:30:00+03:00",
+  "text": "Мыши опять всех обогнали 🐭\n\nОдна добавка продлила им жизнь на 7%.\nОдин ген — на 14%.\nМыши довольны.\n\nНам рано: что помогает мышке, человеку бывает вредно.\n\nПока учёные спорят, работает старое:\nдвижение, сон и люди рядом.\n\nБез побочных эффектов. Проверено поколениями.\n\nЧто из этих трёх у вас сегодня уже было?"
+ },
+ {
+  "id": "longevity-mice-en-2026-11-16",
+  "account": "en",
+  "action": "post",
+  "rubric": "text_science",
+  "after": "2026-11-16T18:30:00-05:00",
+  "text": "Mice have outrun us again 🐭\n\nOne supplement extended their life by 7%.\nOne gene, by 14%.\nThe mice are happy.\n\nFor us it is too early: what helps a mouse can harm a human.\n\nWhile scientists debate, the old trio still works:\nmovement, sleep and people around you.\n\nNo side effects. Tested by generations.\n\nWhich of the three have you had today?"
+ },
+ {
+  "id": "pluto-gen-ru-unpub2-2026-11-15",
+  "account": "ru",
+  "action": "unpublish",
+  "fragment": "Плутон идёт по одному знаку от 12 до 30 лет"
  }
 ]
