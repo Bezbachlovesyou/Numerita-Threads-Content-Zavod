@@ -1365,5 +1365,17 @@
   "account": "ru",
   "action": "unpublish",
   "fragment": "Плутон идёт по одному знаку от 12 до 30 лет"
+ },
+ {
+  "id": "costs-ru-2026-11-15",
+  "account": "ru",
+  "action": "costs_days",
+  "days": 3
+ },
+ {
+  "id": "costs-en-2026-11-15",
+  "account": "en",
+  "action": "costs_days",
+  "days": 3
  }
 ]
