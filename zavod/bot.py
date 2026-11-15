@@ -1584,6 +1584,32 @@ async def _mirror_log(text: str) -> None:
         log.debug("Журнал завода: копия не отправлена", exc_info=True)
 
 
+class _ErrorMirror(logging.Handler):
+    """Ошибки из журнала сервера — тоже в закрытую сводку (без владельца): один и тот же текст не чаще раза в 10 минут."""
+    def __init__(self):
+        super().__init__(level=logging.ERROR)
+        self._seen: dict[str, float] = {}
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            text = record.getMessage()
+            if record.exc_info and record.exc_info[1] is not None:
+                text += f" | {type(record.exc_info[1]).__name__}: {record.exc_info[1]}"
+            now = time.monotonic()
+            if now - self._seen.get(text[:120], -1e9) < 600:
+                return
+            self._seen[text[:120]] = now
+            if len(self._seen) > 200:
+                self._seen.clear()
+            asyncio.get_running_loop().create_task(_mirror_log("🐞 " + text))
+        except Exception:
+            pass  # журнал не должен ничего ломать (нет цикла событий — пропускаем)
+
+
+if not any(isinstance(h, _ErrorMirror) for h in logging.getLogger().handlers):
+    logging.getLogger().addHandler(_ErrorMirror())
+
+
 async def notify_admins(bot: Bot, cfg: Config, text: str, post: Post | None = None) -> None:
     asyncio.create_task(_mirror_log(text))
     label = os.getenv("INSTANCE_LABEL", "")
