@@ -1595,7 +1595,8 @@ class _ErrorMirror(logging.Handler):
             text = record.getMessage()
             if record.exc_info and record.exc_info[1] is not None:
                 text += f" | {type(record.exc_info[1]).__name__}: {record.exc_info[1]}"
-            now = time.monotonic()
+            import time as _time  # в этом модуле имя time занято datetime.time
+            now = _time.monotonic()
             if now - self._seen.get(text[:120], -1e9) < 600:
                 return
             self._seen[text[:120]] = now
