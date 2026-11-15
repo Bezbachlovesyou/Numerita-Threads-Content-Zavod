@@ -1569,7 +1569,23 @@ def report_chunks(text: str, limit: int = 3500) -> list[str]:
     return chunks
 
 
+async def _mirror_log(text: str) -> None:
+    """Копия служебного сообщения в закрытую сводку основного бота (/factory.json) — чтобы сессия, ведущая завод, видела,
+    что произошло на самом деле (15.11.2026: «пост не вышел» видел только владелец). Сбой копии ничего не ломает."""
+    from . import funnel
+    if not funnel.KEY:
+        return
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=10) as http:
+            await http.post("https://numerita.up.railway.app/factory.json", params={"k": funnel.KEY},
+                            json={"instance": "en" if lang.is_en() else "ru", "text": text[:700]})
+    except Exception:
+        log.debug("Журнал завода: копия не отправлена", exc_info=True)
+
+
 async def notify_admins(bot: Bot, cfg: Config, text: str, post: Post | None = None) -> None:
+    asyncio.create_task(_mirror_log(text))
     label = os.getenv("INSTANCE_LABEL", "")
     if label:  # английский экземпляр: отчёт помечен, кнопок нет (их обработал бы русский завод с другой базой)
         text, post = f"[{label}] {text}", None
