@@ -370,7 +370,19 @@ async def today_total(db, tz) -> float:
     return sum(v[1] for v in json.loads(raw).values()) if raw else 0.0
 
 
+REPLY_RESERVE_USD = 0.30  # дневной запас автоответов (config.reply_budget_usd): в потолке постов считается целиком и заранее
+
+
+async def today_for_posts(db, tz) -> float:
+    """Расход для потолка постов (15.11.2026: 13–15.11 ответы людям выбирали общий потолок, и посты вставали на весь
+    день). Ответы живут в своём запасе: сюда входит всё, кроме ответов, плюс их запас целиком. Итог — тот же общий
+    потолок $0,55 в сутки, но ответы больше не могут съесть долю постов ($0,25)."""
+    raw = await db.kv_get(day_key(datetime.now(tz)))
+    ledger = json.loads(raw) if raw else {}
+    return REPLY_RESERVE_USD + sum(v[1] for k, v in ledger.items() if not k.startswith(("reply", "summary")))
+
+
 def make_guard(db, tz):
     async def guard() -> float:
-        return await today_total(db, tz)
+        return await today_for_posts(db, tz)
     return guard
