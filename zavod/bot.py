@@ -3063,6 +3063,21 @@ async def report_autoreply_error(bot: Bot, cfg: Config, db: Storage) -> None:
     previous = await db.kv_get("autoreply_error_sent") or ""
     if fingerprint == previous:
         return
+    # 16.11.2026 (покой владельца): короткая заминка нейросети или сети — не повод писать ему каждые полчаса (за ночь 16.11
+    # пришло 12 таких сообщений). Пишем, только если та же причина держится 30 минут; лимиты и отказы площадки — сразу.
+    low = reason.lower()
+    if reason and not any(x in low for x in ("zernio http 429", "zernio http 403", "80016")):
+        mark = await db.kv_get("autoreply_error_first") or ""
+        fp0, _, since = mark.partition("|")
+        now_ = datetime.now(timezone.utc)
+        if fp0 != fingerprint or not since:
+            await db.kv_set("autoreply_error_first", f"{fingerprint}|{now_.isoformat()}")
+            asyncio.create_task(_mirror_log("(тихо) автоответы, заминка: " + reason[:200]))
+            return
+        if now_ - datetime.fromisoformat(since) < timedelta(minutes=30):
+            return
+    elif not reason and await db.kv_get("autoreply_error_first"):
+        await db.kv_set("autoreply_error_first", "")
     success = await db.kv_get('autoreply:last_success') or ''
     if not reason:
         if not success or success == (await db.kv_get('autoreply:success_at_warning') or ''):
@@ -3291,7 +3306,8 @@ async def run_scheduler(
                 await db.kv_set("next_post_at", datetime.now(cfg.timezone).isoformat())
             if now.hour in autopost.PRIME_HOURS and threads is not None:  # самопроверка: посты не стоят
                 last = await db.last_published_at()
-                if (last is None or now - last > timedelta(minutes=100)) and await db.claim_slot(f"stall {now:%Y-%m-%d %H}"):
+                capped = await generator.spend_guard() >= costs.HARD_USD if getattr(generator, "spend_guard", None) else False
+                if not capped and (last is None or now - last > timedelta(minutes=100)) and await db.claim_slot(f"stall {now:%Y-%m-%d %H}"):
                     nxt = await db.kv_get("next_post_at") or "?"
                     await notify_admins(bot, cfg, f"{'[EN] ' if EN else ''}⚠️ Посты стоят: последний "
                                                   f"{last.astimezone(cfg.timezone):%H:%M}, следующий по плану {nxt[11:16]}"

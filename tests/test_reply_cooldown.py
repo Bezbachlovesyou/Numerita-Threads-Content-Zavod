@@ -89,6 +89,25 @@ class CooldownTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(notify.await_count,2)
             self.assertIn('успешная отправка нового ответа',notify.call_args.args[2])
 
+    async def test_short_hiccup_is_silent_and_long_one_is_reported_once(self):
+        notify, mirror = AsyncMock(), AsyncMock()
+        with patch('zavod.bot.notify_admins',notify), patch('zavod.bot._mirror_log',mirror):
+            await self.db.kv_set('autoreply_error','01.01 00:00 ответ: нейросеть не ответила')
+            await report_autoreply_error(None,None,self.db)
+            await report_autoreply_error(None,None,self.db)
+            self.assertEqual(notify.await_count,0)   # заминка короче 30 минут — владельца не тревожим
+            await self.db.kv_set('autoreply_error','')
+            await report_autoreply_error(None,None,self.db)
+            self.assertEqual(notify.await_count,0)   # и «всё починилось» не шлём: тревоги не было
+            await self.db.kv_set('autoreply_error','01.01 00:00 ответ: нейросеть не ответила')
+            await report_autoreply_error(None,None,self.db)
+            mark = await self.db.kv_get('autoreply_error_first')
+            fp, _, _since = mark.partition('|')
+            await self.db.kv_set('autoreply_error_first', fp + '|' + (datetime.now(timezone.utc)-timedelta(minutes=31)).isoformat())
+            await report_autoreply_error(None,None,self.db)
+            await report_autoreply_error(None,None,self.db)
+            self.assertEqual(notify.await_count,1)   # держится полчаса — одно сообщение
+
 @unittest.skipUnless(os.getenv('TEST_POSTGRES_DSN'),'requires isolated PostgreSQL')
 class CooldownPostgres(CooldownTests):
     async def asyncSetUp(self):
