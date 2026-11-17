@@ -2716,6 +2716,13 @@ async def run_op(cmd: dict, db: Storage, threads: ThreadsClient | None, bot: Bot
                             else f"{tag}⚠️ Instagram ответил «{status}»")
     elif action == "reply_to" and threads is not None and text and cmd.get("author") and cmd.get("fragment"):
         await reply_to_comment(db, threads, bot, cfg, str(cmd["author"]), str(cmd["fragment"]), text, tag)
+    elif action == "perf_report":  # что сработало за N дней: топ постов, рубрики, приход в бота, расход (17.11.2026)
+        from . import perfreport
+        body = await perfreport.report(db, datetime.now(cfg.timezone), int(cmd.get("days") or 7),
+                                       funnel.own_language(await funnel.fetch_raw(int(cmd.get("days") or 7))))
+        await notify_admins(bot, cfg, tag + body)
+        for i in range(0, len(body), 650):  # целиком — и в закрытую сводку, чтобы сессия, ведущая завод, видела цифры
+            await _mirror_log(f"perf_report {i // 650 + 1}: " + body[i:i + 650])
     elif action == "humans_report":  # живые ли комментаторы: признаки ботов по базе ответов
         from . import humans
         await notify_admins(bot, cfg, tag + await humans.report(db, datetime.now(timezone.utc)))

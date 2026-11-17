@@ -1396,5 +1396,17 @@
   "account": "ru",
   "action": "costs_days",
   "days": 1
+ },
+ {
+  "id": "perf-ru-2026-11-17",
+  "account": "ru",
+  "action": "perf_report",
+  "days": 7
+ },
+ {
+  "id": "perf-en-2026-11-17",
+  "account": "en",
+  "action": "perf_report",
+  "days": 7
  }
 ]
