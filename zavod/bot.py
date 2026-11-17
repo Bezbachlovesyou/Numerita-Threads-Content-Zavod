@@ -1586,8 +1586,10 @@ async def _mirror_log(text: str) -> None:
     try:
         import httpx
         async with httpx.AsyncClient(timeout=10) as http:
-            await http.post("https://numerita.up.railway.app/factory.json", params={"k": funnel.KEY},
-                            json={"instance": "en" if lang.is_en() else "ru", "text": text[:700]})
+            r = await http.post("https://numerita.up.railway.app/factory.json", params={"k": funnel.KEY},
+                                json={"instance": "en" if lang.is_en() else "ru", "text": text[:700]})
+            if r.status_code >= 300:  # 404 — ключ не тот (сервер так отвечает нарочно); в журнал сервера, не владельцу
+                log.warning("Журнал завода: копия не принята, HTTP %s", r.status_code)
     except Exception:
         log.debug("Журнал завода: копия не отправлена", exc_info=True)
 
