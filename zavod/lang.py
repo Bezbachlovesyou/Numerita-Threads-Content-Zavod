@@ -11,7 +11,7 @@ import re
 
 LANG = (os.getenv("FACTORY_LANG", "ru").strip().lower() or "ru")
 PUBLIC_KINDS = {"post", "reply", "coherence", "sharpen", "strengthen", "note", "elevate"}
-EN_SKIP_RUBRICS = {"news", "text_hype", "text_note", "text_story", "text_story_call", "text_court",
+EN_SKIP_RUBRICS = {"text_pdf", "news", "text_hype", "text_note", "text_story", "text_story_call", "text_court",
                    "text_protocol", "jackpot", "video", "carousel"}
 EN_RULE = (
     "\n\nLANGUAGE: Write the final public text in natural, warm, witty American English for an international "

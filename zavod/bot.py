@@ -30,7 +30,7 @@ from . import text_mode
 from . import lang
 from .optimizer import optimize
 from .dialogue import walk_comments
-from . import skyguard, art, attribution, gitaqualities, fromcomments, pairweek, rework, series, physics, postmatrix, costs, constraint, funnel, profit, reminders, performance, approved_post, zero_research, api_budget, tgchannel, brandvideo, instagram, sketch, zero_cleanup
+from . import pdfpost, skyguard, art, attribution, gitaqualities, fromcomments, pairweek, rework, series, physics, postmatrix, costs, constraint, funnel, profit, reminders, performance, approved_post, zero_research, api_budget, tgchannel, brandvideo, instagram, sketch, zero_cleanup
 from .config import Config
 from .generator import GenerationError, Generator
 from .storage import PgStorage, Post, Storage
@@ -225,6 +225,14 @@ async def ensure_images(post: Post, db: Storage, threads: ThreadsClient) -> list
     """Рисует карточку (или карусель) к посту и загружает в Zernio. При ошибке пост выйдет без картинок."""
     if post.image_url:
         return post.image_url.split("\n")
+    if post.rubric == "text_pdf":  # настоящая страница демо-PDF с нашего сайта (17.11.2026); не скачалась — пост выйдет текстом
+        try:
+            url = await threads.upload_image(await pdfpost.hero_bytes(), f"numerita_{post.id}_pdf.jpg")
+        except Exception:
+            log.exception("Превью PDF к посту #%s не загружено, публикую без него", post.id)
+            return []
+        await db.set_image(post.id, url)
+        return [url]
     try:
         puzzle = json.loads(post.card) if post.card else None
         if puzzle and "grid" in puzzle:  # головоломка «какие числа ты видишь первыми»
@@ -1065,7 +1073,7 @@ async def publish(
             media_kind = 'number_grid_video' if grid_video else 'number_grid'
             video_url = grid_video or video_url
             image_urls = await ensure_images(post, db, threads) if not video_url and (
-                (cards and not text_mode.enabled()) or grid_exception) else []
+                (cards and not text_mode.enabled()) or grid_exception or post.rubric == "text_pdf") else []
             if grid_exception and not grid_video and post.rubric == "grid" and (json.loads(post.card or "{}") or {}).get("anim"):
                 raise ThreadsError("Живая матрица не собралась — картинкой не выпускаю (слово владельца 30.10).")
             if grid_exception and not grid_video and len(image_urls)!=1:
@@ -1077,7 +1085,7 @@ async def publish(
             text = strip_credits(text)  # без «по мотивам @…» и чужих @упоминаний
             threads_id = await threads.publish_text(
                 text, topic_tag_for(post.rubric, text), first_comment, image_urls, video_url,
-                **({'media_kind':media_kind} if grid_exception else {})
+                **({'media_kind':media_kind} if grid_exception else {'media_kind':'note_image'} if post.rubric == "text_pdf" and image_urls else {})
             )
             await db.set_threads_id(post.id, threads_id or "published")
         except ThreadsError as e:
@@ -1965,6 +1973,11 @@ async def post_next(
             n = int(await db.kv_get("list:fmt") or 0)
             await db.kv_set("list:fmt", str(n + 1))
             rubric = have[keys[n % len(keys)]]
+        pdf_rubric = next((r for r in plan.all_rubrics() if r.key == "text_pdf"), None)  # презентация PDF-разбора: раз в неделю, только RU (17.11)
+        if pdf_rubric and not dead and not lang.is_en() and rubric.key != "text_pair_week" and text_mode.enabled() \
+                and await pdfpost.due(db, now) and await attribution.link_post_allowed(db, now):
+            rubric = plan.effective(pdf_rubric)
+            await pdfpost.mark(db, now)
         slot = plan.render(rubric, now, rng)
         if "[[QUALITY]]" in slot.topic:  # качество из Гиты — по порядку (gitaqualities.py)
             slot = replace(slot, topic=slot.topic.replace("[[QUALITY]]", gitaqualities.block(await gitaqualities.take(db, now), lang.is_en())))
@@ -2080,6 +2093,8 @@ async def post_next(
             return False
         if slot.rubric.key == "text_flags" and first_comment is None and await attribution.link_post_allowed(db, now):  # игра вдвоём из бота (ветка бота, 04.11): ссылка открывает игру, метка game_redflag
             first_comment = ("Play it together — you and your person: " if lang.is_en() else "Сыграть вдвоём, ты и твой человек: ") + BOT_LINK + "game_redflag"
+        if slot.rubric.key == "text_pdf":  # презентация PDF-разбора: ссылка на пример и условия в боте, метка ad_th_pdf
+            first_comment = "Пример страниц и условия — в боте: " + BOT_LINK + "pdf"
         if slot.rubric.key == "text_pair_week" and first_comment is None:  # ссылка «проверь свою пару» — первым комментарием, метка ad_[en_]th_pair
             first_comment = ("Check your own pair in a minute: " if lang.is_en() else "Проверь свою пару за минуту: ") + BOT_LINK + "pair"
         if first_comment is None and slot.rubric.cta != "link" and (slot.rubric.key.startswith("text_") or slot.rubric.key == "grid") \
