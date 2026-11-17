@@ -34,4 +34,6 @@ async def report(db, now: datetime, days: int = 7, raw: dict | None = None) -> s
         spent += sum(v[1] for v in ledger.values())
     came = sum(t["came"] for t in table)
     out.append(f"\nРасход завода: ${spent:.2f}" + (f", на одного пришедшего ${spent / came:.2f}" if came else ", пришедших по меткам нет"))
+    from . import pdfpost
+    out.append(pdfpost.describe(await pdfpost.best_slots(db, now)))
     return "\n".join(out)

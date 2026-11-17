@@ -18,16 +18,43 @@ class KV:
         self.d[k] = v
 
 
+async def _rows(rows):
+    return rows
+
+
 class PdfPost(unittest.TestCase):
+    def test_best_days_come_from_history(self):
+        from datetime import timezone
+        rows = []
+        base = datetime(2026, 11, 2, 16, 0, tzinfo=timezone.utc)  # пн 19:00 МСК
+        for week in range(4):
+            for wd in range(7):
+                t = base + timedelta(days=7 * week + wd)
+                hit = wd in (2, 6)  # ср и вс — сильные дни
+                rows.append({"published_at": t.isoformat(), "comments": 9 if hit else 1, "likes": 30 if hit else 3, "views": 2000 if hit else 200})
+        db = KV()
+        db.engagement = lambda since: _rows(rows)
+        now = datetime(2026, 11, 29, 16, 30, tzinfo=timezone.utc)  # вс 19:30 МСК
+        slots = asyncio.run(pdfpost.best_slots(db, now))
+        self.assertTrue(slots["enough"])
+        self.assertEqual(sorted(slots["weekdays"]), [2, 6])
+        self.assertEqual(slots["part"], "evening")
+        self.assertIn("ср", pdfpost.describe(slots))
+        self.assertTrue(asyncio.run(pdfpost.due(db, now)))
+        self.assertFalse(asyncio.run(pdfpost.due(db, now - timedelta(days=1))))  # суббота — не лучший день
+        self.assertFalse(asyncio.run(pdfpost.due(db, now.replace(hour=8))))  # утро — не то окно
+
+
     def test_rubric_rules_and_weekly_gate(self):
         rubrics = {r.key: r for r in autopost.load_rubrics(Path("prompts/content_plan.md"))}
         text = rubrics["text_pdf"].text
-        for part in ("больше 100 страниц", "Цену, скидки", "не диагноз", "Ссылку не пиши"):
+        for part in ("больше 100 страниц", "Цену, скидки", "не диагноз", "Ссылку не пиши", "ХУК", "ЗАВЯЗКА", "РАЗВЯЗКА", "ИСКРОМЁТНАЯ", "пример страниц"):
             self.assertIn(part, text)
         self.assertIn("text_pdf", EN_SKIP_RUBRICS)
         label = A.parse(autopost.BOT_LINK + "pdf")
         self.assertEqual((label["kind"], label["name"]), ("static", "pdf"))
         db, now = KV(), datetime(2026, 11, 18, 13)
+        db.engagement = lambda since: _rows([])  # данных мало — любой день, 12–22
 
         async def run():
             self.assertFalse(await pdfpost.due(db, now.replace(hour=9)))
