@@ -2317,6 +2317,10 @@ def post_break_end(now: datetime) -> datetime | None:
     return None
 
 
+class _PostsPaused(Exception):
+    """Посты на паузе (пульт posts_off): пропускаем очередь и автопосты в этом проходе."""
+
+
 async def autopost_tick(
     bot: Bot, cfg: Config, db: Storage, threads: ThreadsClient | None, generator: Generator,
     plan: ContentPlan, rng: random.Random,
@@ -2528,6 +2532,8 @@ async def op_ready(cmd: dict, db: Storage, cfg: Config) -> bool:
                 return False
         except (TypeError, ValueError):
             return False  # время не разобрать — не выпускаем наугад
+    if cmd.get("action") in ("post", "thread", "video_post") and cmd.get("account") != "tg" and await db.kv_get("posts:paused") == "1":
+        return False  # посты на паузе (posts_off): команда ждёт в очереди и выйдет после posts_on
     if cmd.get("action") not in ("post", "thread") or cmd.get("account") == "tg" or cmd.get("asap"):
         return True  # asap: флагманский пост владельца выходит сразу, не дожидаясь паузы
     last = await db.last_published_at()
@@ -2853,6 +2859,11 @@ async def run_op(cmd: dict, db: Storage, threads: ThreadsClient | None, bot: Bot
                 lines.append(f"{row['key'][12:]}: {url}")
         await db.kv_set("welcome:raw_urls", json.dumps(lines, ensure_ascii=False))
         await notify_admins(bot, cfg, "🎞 Исходники роликов без надписей (уже оплачены, $0):\n" + "\n".join(lines or ["нет"]))
+    elif action in ("posts_on", "posts_off"):  # пауза всех постов в Threads своего языка (18.11.2026: упал бот — посты тормозим); ответы идут
+        await db.kv_set("posts:paused", "1" if action == "posts_off" else "0")
+        if threads is not None:
+            threads.paused = action == "posts_off"
+        await notify_admins(bot, cfg, f"{tag}{'▶️ Посты в Threads снова выходят.' if action == 'posts_on' else '⏸ Посты в Threads на паузе (ответы на комментарии идут). Включить: posts_on.'}")
     elif action in ("reels_on", "reels_off"):
         await db.kv_set("reels:on", "1" if action == "reels_on" else "0")
         await notify_admins(bot, cfg, f"{tag}🎬 Публикация рилсов {'включена' if action == 'reels_on' else 'выключена'}.")
@@ -3209,7 +3220,14 @@ async def run_scheduler(
         except Exception:
             log.exception("Снятие неудачных постов не удалось")
     while True:
+        if threads is not None:
+            try:  # пауза постов (posts_off) переживает перезапуск: флаг в базе
+                threads.paused = await db.kv_get("posts:paused") == "1"
+            except Exception:
+                log.exception("Флаг паузы постов не прочитан")
         try:
+            if threads is not None and threads.paused:
+                raise _PostsPaused
             priority_pending = False if text_mode.enabled() else await approved_post.tick(
                 db, threads, datetime.now(timezone.utc), lambda text: notify_admins(bot, cfg, text))
             if not priority_pending:
@@ -3223,6 +3241,8 @@ async def run_scheduler(
                 await autopost_tick(bot, cfg, db, threads, generator, plan, rng)
             if cfg.video and not text_mode.enabled() and cfg.fal_key and threads is not None and not priority_pending:
                 await video_tick(bot, cfg, db, threads, generator, rng)
+        except _PostsPaused:
+            pass  # посты на паузе: очередь и автопосты ждут, остальное (ответы, пульт) идёт ниже
         except Exception:
             log.exception("Scheduler iteration failed")
         now = datetime.now(cfg.timezone)

@@ -28,6 +28,7 @@ class ThreadsClient:
     def __init__(self, api_key: str, account_id: str, storage=None):
         self.api_key = api_key
         self.account_id = account_id
+        self.paused = False  # пауза постов (пульт posts_off, 18.11.2026: упал бот — посты не ведут в пустоту); ответы не трогает
         self.storage = storage
         self.budget = RequestBudget(storage)
 
@@ -79,6 +80,8 @@ class ThreadsClient:
         *, media_kind: str | None = None, thread_items: list[str] | None = None,
     ) -> str:
         """Публикует пост. topic_tag — тема Threads (показ подписчикам темы), first_comment — первый комментарий."""
+        if self.paused:
+            raise ThreadsError("Посты на паузе (пульт posts_off) — пост не отправлен.")
         if len(text) > MAX_LENGTH:
             raise ThreadsError(f"Пост длиннее {MAX_LENGTH} символов ({len(text)}).")
         if lang.is_en() and (lang.has_cyrillic(text) or lang.has_cyrillic(first_comment)):
