@@ -1454,5 +1454,15 @@
   "id": "posts-off-en-2026-11-18",
   "account": "en",
   "action": "posts_off"
+ },
+ {
+  "id": "replies-off-ru-2026-11-18",
+  "account": "ru",
+  "action": "replies_off"
+ },
+ {
+  "id": "replies-off-en-2026-11-18",
+  "account": "en",
+  "action": "replies_off"
  }
 ]

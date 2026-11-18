@@ -2863,7 +2863,10 @@ async def run_op(cmd: dict, db: Storage, threads: ThreadsClient | None, bot: Bot
         await db.kv_set("posts:paused", "1" if action == "posts_off" else "0")
         if threads is not None:
             threads.paused = action == "posts_off"
-        await notify_admins(bot, cfg, f"{tag}{'▶️ Посты в Threads снова выходят.' if action == 'posts_on' else '⏸ Посты в Threads на паузе (ответы на комментарии идут). Включить: posts_on.'}")
+        await notify_admins(bot, cfg, f"{tag}{'▶️ Посты в Threads снова выходят.' if action == 'posts_on' else '⏸ Посты в Threads на паузе. Включить: posts_on.'}")
+    elif action in ("replies_on", "replies_off"):  # пауза автоответов на комментарии (18.11.2026: бот лежит — ответы тормозим); reply_to владельца идёт
+        await db.kv_set("replies:paused", "1" if action == "replies_off" else "0")
+        await notify_admins(bot, cfg, f"{tag}{'▶️ Ответы на комментарии снова идут.' if action == 'replies_on' else '⏸ Ответы на комментарии на паузе. Включить: replies_on.'}")
     elif action in ("reels_on", "reels_off"):
         await db.kv_set("reels:on", "1" if action == "reels_on" else "0")
         await notify_admins(bot, cfg, f"{tag}🎬 Публикация рилсов {'включена' if action == 'reels_on' else 'выключена'}.")
@@ -3507,7 +3510,8 @@ async def run_scheduler(
                 await notify_admins(bot, cfg, notice)
         except Exception:
             log.exception("Profit controller failed")
-        if threads is not None and cfg.autoreply and datetime.now() >= next_replies:
+        if threads is not None and cfg.autoreply and datetime.now() >= next_replies \
+                and await db.kv_get("replies:paused") != "1":  # пауза автоответов (пульт replies_off, 18.11.2026: бот лежит)
             # Первые 15–30 минут решают, покажет ли Threads пост шире: в первый час после поста отвечаем быстрее.
             last = await db.last_published_at()
             fresh = last is not None and datetime.now(cfg.timezone) - last < timedelta(hours=1)
