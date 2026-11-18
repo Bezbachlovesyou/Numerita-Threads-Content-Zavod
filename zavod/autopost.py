@@ -152,7 +152,8 @@ GRID_SHARE = 0.22  # вес матрицы при допуске (раз в 3 п
 # Данные Threads 03.11.2026: «сценки», «протоколы», «суд», ситкомы дают 4–60 просмотров и нули лайков — почти не выпускаем (×0,15), остальные форматы держат охват.
 SUPPRESSED = {"text_court", "text_protocol", "text_chat", "text_office", "text_venus", "text_tag_family", "text_review", "text_choices"}
 DATING_RUBRICS = {"text_gotaway", "text_flags", "text_loves", "text_marriage", "text_marry", "text_heaven_pairs", "text_pair", "text_pair_week", "text_tag_pair", "love", "pair", "ex"}  # только настоящие рубрики про любовь и пары: «Ищу тех, кто родился…» (text_seek) — продажа, не про отношения (03.11)
-PSYCH_RUBRICS = {"text_traits", "text_qualities", "text_rita", "text_angel", "text_vector", "text_goals_story", "text_lessons", "text_fears", "text_reaction", "text_outgrow", "text_success", "text_levels", "text_gifts", "text_battery", "text_roles", "text_avoid", "text_great", "text_unknown"}
+# 18.11.2026 (вопрос владельца «уместно ли нумерология в психологии?»): духовные рубрики — Гита, Рита, ангелы — не психология, идут в общую тему.
+PSYCH_RUBRICS = {"text_traits", "text_vector", "text_goals_story", "text_lessons", "text_fears", "text_reaction", "text_outgrow", "text_success", "text_levels", "text_gifts", "text_battery", "text_roles", "text_avoid", "text_great", "text_unknown"}
 
 
 ASTRO_RUBRICS = {"video_zodiac_heart", "text_pluto_gen", "text_sign", "text_sign_good", "text_sign_list", "text_sign_clash", "text_asc", "text_sign_truth", "text_mercury", "text_planet", "text_sky"}  # слово владельца 08.11.2026: «Знак × число» должен попадать в тему «Астрология», а не «Нумерология»
