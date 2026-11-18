@@ -1408,5 +1408,41 @@
   "account": "en",
   "action": "perf_report",
   "days": 7
+ },
+ {
+  "id": "destiny-work-ru-2026-11-19",
+  "account": "ru",
+  "action": "thread",
+  "rubric": "text_roles",
+  "after": "2026-11-19T10:30:00+03:00",
+  "items": [
+   "Какое у тебя дело по судьбе — по дню рождения 🌟\n(нумерология не выдаёт диплом, она подсвечивает, где ты сияешь)\n\n1, 10, 19, 28 — ВЕСТИ И ЗАПУСКАТЬ ☀️\nТвоё дело — начинать. Ты видишь цель раньше, чем остальные нашли карту, и за тобой идут, даже когда ты просто вышел за хлебом.\nТебе подходит всё, где нужно решать и брать ответственность: своё дело, управление, запуск проектов, наставничество.",
+   "2, 11, 20, 29 — СОЕДИНЯТЬ И МИРИТЬ 🕊\nТвоё дело — быть мостом между людьми. Там, где двое уже хлопнули дверью, ты находишь слово, после которого они вместе пьют чай.\nТебе подходит всё, где важны отношения: переговоры, психология, работа с людьми, примирение сторон, сообщества.",
+   "3, 12, 21, 30 — ГОВОРИТЬ И ЗАЖИГАТЬ 🎤\nТвоё дело — доносить идеи так, чтобы люди загорались. Ты превращаешь сложное в простое, а скучное — в историю, которую потом пересказывают за ужином.\nТебе подходит всё, где нужен голос: блоги, преподавание, реклама, сцена, тексты.",
+   "4, 13, 22, 31 — СТРОИТЬ И УПОРЯДОЧИВАТЬ 🏛\nТвоё дело — делать порядок из хаоса. Чужая «гениальная идея» у тебя становится планом, план — работающей системой, а система — результатом.\nТебе подходит всё, где нужны структура и надёжность: управление проектами, финансы, инженерия, логистика, программирование.",
+   "5, 14, 23 — ДВИГАТЬ И ОТКРЫВАТЬ ✈️\nТвоё дело — приносить новое. Где другие видят тупик, ты видишь поворот, и заражаешь смелостью всех, кто рядом.\nТебе подходит всё, где есть движение: путешествия, продажи, журналистика, связи между странами, свободный график.",
+   "6, 15, 24 — ЗАБОТИТЬСЯ И УКРАШАТЬ 🌹\nТвоё дело — создавать место, где людям хорошо. После тебя в доме уютнее, в команде теплее, а на столе красивее.\nТебе подходит всё, где важны забота и красота: дизайн, кулинария, индустрия красоты, воспитание, помогающие профессии.",
+   "7, 16, 25 — ИССЛЕДОВАТЬ И ОБЪЯСНЯТЬ 🔭\nТвоё дело — докапываться до сути. Пока все обсуждают заголовок, ты уже прочитал первоисточник, сноски и мелкий шрифт.\nТебе подходит всё, где нужна глубина: наука, аналитика, исследования, экспертиза, книги.",
+   "8, 17, 26 — УПРАВЛЯТЬ И ПРИУМНОЖАТЬ 💎\nТвоё дело — работать с ресурсами и масштабом. Ты умеешь из малого делать большое и держишь слово, даже когда это дорого стоит.\nТебе подходит всё, где ты отвечаешь за результат: бизнес, финансы, инвестиции, недвижимость, руководство.",
+   "9, 18, 27 — ЗАВЕРШАТЬ И ОСВОБОЖДАТЬ 🔥\nТвоё дело — помогать людям отпускать старое и начинать заново. Ты видишь картину целиком и берёшься за то, что другие боятся тронуть.\nТебе подходит всё, где есть смысл и служение: благотворительность, психология, образование, творчество с миссией.\n\nСовпало с тем, чем ты занимаешься? Напиши свой день рождения и своё дело 👇"
+  ]
+ },
+ {
+  "id": "destiny-work-en-2026-11-18",
+  "account": "en",
+  "action": "thread",
+  "rubric": "text_roles",
+  "after": "2026-11-18T18:30:00-05:00",
+  "items": [
+   "What you were born to do — by your birthday 🌟\n(numerology doesn't hand out diplomas, it just shows where you shine)\n\n1, 10, 19, 28 — LEAD AND LAUNCH ☀️\nYour thing is starting. You see the goal before others find the map, and people follow you even when you're just going out for coffee.\nYou thrive wherever someone has to decide and own it: your own business, management, launching projects, mentoring.",
+   "2, 11, 20, 29 — CONNECT AND MAKE PEACE 🕊\nYour thing is being the bridge between people. Where two have already slammed the door, you find the one sentence that gets them back at the same table.\nYou thrive wherever relationships matter: negotiation, psychology, HR, mediation, building communities.",
+   "3, 12, 21, 30 — SPEAK AND SPARK 🎤\nYour thing is sharing ideas so people light up. You turn the complicated into simple, and the boring into a story people retell at dinner.\nYou thrive wherever a voice is needed: content, teaching, advertising, the stage, writing.",
+   "4, 13, 22, 31 — BUILD AND ORGANIZE 🏛\nYour thing is turning chaos into order. Someone's \"genius idea\" becomes your plan, the plan becomes a working system, the system becomes a result.\nYou thrive wherever structure and reliability matter: project management, finance, engineering, logistics, tech.",
+   "5, 14, 23 — MOVE AND DISCOVER ✈️\nYour thing is bringing in the new. Where others see a dead end, you see a turn, and your courage is contagious.\nYou thrive wherever there's motion: travel, sales, journalism, international work, freelance life.",
+   "6, 15, 24 — CARE AND BEAUTIFY 🌹\nYour thing is creating a place where people feel good. After you, the home is cozier, the team is warmer, and the table looks better.\nYou thrive wherever care and beauty matter: design, cooking, the beauty industry, education, helping professions.",
+   "7, 16, 25 — EXPLORE AND EXPLAIN 🔭\nYour thing is getting to the bottom of it. While everyone argues about the headline, you've already read the source, the footnotes and the fine print.\nYou thrive wherever depth is needed: science, analytics, research, expertise, books.",
+   "8, 17, 26 — MANAGE AND MULTIPLY 💎\nYour thing is resources and scale. You know how to grow small into big, and you keep your word even when it costs you.\nYou thrive wherever you own the outcome: business, finance, investing, real estate, leadership.",
+   "9, 18, 27 — COMPLETE AND SET FREE 🔥\nYour thing is helping people let go of the old and begin again. You see the whole picture and take on what others are afraid to touch.\nYou thrive wherever there's meaning and service: charity, psychology, education, creative work with a mission.\n\nDoes it match what you actually do? Drop your birthday and your job 👇"
+  ]
  }
 ]
