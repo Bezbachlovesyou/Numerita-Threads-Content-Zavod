@@ -1660,7 +1660,7 @@ CTA_RULES = {
     "none": "Без ссылок и без упоминания бота. " + COMMENT_HOOK,
 }
 REPLY_INTERVAL = timedelta(minutes=5)
-DAILY_POST_CAP = autopost.DAILY_POSTS_MAX  # 11.11.2026: не больше 4 в сутки (было 20): реже, но в нужное время
+DAILY_POST_CAP = autopost.DAILY_POSTS_MAX  # 19.11.2026: не больше 2 в сутки (было 4, до 11.11 — 20): реже, только шедевры
 FAST_REPLY_INTERVAL = timedelta(minutes=2)
 OPTIMIZE_AT = time(4, 10)  # ежедневный разбор рубрик, когда трафик минимальный
 RETRY_AFTER_ERROR = timedelta(minutes=15)
