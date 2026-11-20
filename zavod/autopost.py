@@ -171,6 +171,10 @@ def looks_astrological(text: str | None) -> bool:
 
 
 def topic_tag_for(rubric: str | None, text: str | None = None) -> str:
+    if rubric == "text_three":  # «Три числа»: сообщество по теме (hottopics.py, 20.11.2026)
+        from . import hottopics
+        if (tag := hottopics.topic(_is_en())):
+            return tag
     if rubric == "text_deep":  # у глубокой серии своё сообщество (deepseries.py, 20.11.2026)
         from . import deepseries
         if (tag := deepseries.topic(_is_en())):

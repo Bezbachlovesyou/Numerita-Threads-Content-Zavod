@@ -25,7 +25,7 @@ from .cards import (
     render_grid, soul_carousel, GRID_STYLES, SHAPES,
 )
 from .autoreply import answer_comments, finish_reply
-from . import digest, deepseries, c2b
+from . import digest, deepseries, c2b, hottopics
 from . import autoreply
 from . import text_mode
 from . import lang
@@ -1913,6 +1913,13 @@ async def post_next(
     Возвращает False, только если пост не удалось написать (тогда повторим скоро).
     """
     recent = await db.recent_rubrics(6)
+    if text_mode.enabled() and hottopics.turn(recent):  # 20.11.2026: «Три числа» на острые темы — через день с глубокой серией, $0
+        text = hottopics.compose(await hottopics.take(db), lang.is_en())
+        if not await similar_recent(db, text):
+            post = await publish(await db.get(await db.add_draft("hottopics", text, hottopics.RUBRIC)), db, threads, bot, "", cfg.cards)
+            if post.status == "failed":
+                await notify_admins(bot, cfg, "⚠️ Пост «Три числа» не опубликован\n\n" + post_card(post, cfg), post)
+            return True
     queued = await text_mode.next_seed(db) if text_mode.enabled() else await db.next_queued()
     en_grid_first = lang.is_en() and not await db.kv_get("en:first_grid")  # слово владельца: спираль — первой
     # Слово владельца 30.10.2026: «Guess the number · issue 2» (вышел ночью, без реакций) снять и повторить днём —
