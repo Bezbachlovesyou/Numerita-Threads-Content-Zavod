@@ -38,12 +38,40 @@ def parse(payload):
     return result
 
 
+async def keep(db, post_id, result):
+    """20.11.2026: лайки и просмотры не доходили до post_metrics (отчёты, оптимизатор и выводы видели нули).
+    Пишем последнее наблюдение площадки; пропуск площадки — не ноль: без лайков не пишем."""
+    likes = result.get('likes')
+    if likes is None:
+        return
+    views = result.get('views') if result.get('views') is not None else result.get('impressions')
+    await db.save_metrics(post_id, likes, views or 0)
+
+
+async def backfill(db, now, days=30):
+    """Один раз: уже собранные наблюдения (kv performance:<id>:latest) — в post_metrics."""
+    if await db.kv_get('performance:backfilled'):
+        return 0
+    n = 0
+    for post in await db.recent_published(now - timedelta(days=days)):
+        raw = await db.kv_get(f'performance:{post.id}:latest')
+        if raw:
+            try:
+                await keep(db, post.id, json.loads(raw))
+                n += 1
+            except ValueError:
+                pass
+    await db.kv_set('performance:backfilled', now.isoformat())
+    return n
+
+
 async def collect(db, threads, now):
     """At most one bounded pass/30min; no LLM calls and no new paid subscription."""
     last = await db.kv_get('performance:last_attempt')
     if last and now - stamp(last) < timedelta(minutes=30):
         return 0
     await db.kv_set('performance:last_attempt', now.isoformat())
+    await backfill(db, now)
     updated = attempted = 0
     posts = await db.recent_published(now - timedelta(days=7))
     for post in reversed(posts):
@@ -66,6 +94,7 @@ async def collect(db, threads, now):
             continue
         result.update(observed_at=now.isoformat(), age_hours=round(age, 3), source='zernio:threads')
         await db.kv_set(f'performance:{post.id}:latest', json.dumps(result))
+        await keep(db, post.id, result)
         source_age = age
         if result.get('source_updated_at'):
             try:

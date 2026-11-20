@@ -1512,5 +1512,19 @@
   "account": "en",
   "action": "perf_report",
   "days": 7
+ },
+ {
+  "id": "perf-ru-2026-11-21",
+  "account": "ru",
+  "action": "perf_report",
+  "days": 7,
+  "after": "2026-11-21T10:00:00+03:00"
+ },
+ {
+  "id": "perf-en-2026-11-21",
+  "account": "en",
+  "action": "perf_report",
+  "days": 7,
+  "after": "2026-11-21T10:00:00+03:00"
  }
 ]
