@@ -58,3 +58,15 @@ class Digest(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class QuietDay(unittest.IsolatedAsyncioTestCase):
+    async def test_calm_day_sends_nothing(self):
+        db = Storage(os.path.join(tempfile.mkdtemp(), "q.db"))
+        await db.init()
+        digest._buf = None
+        await digest.add(db, "✅ Пост вышел")
+        await digest.add(db, "📈 Из комментариев в бота: 4,0%")
+        self.assertIsNone(await digest.due(db, datetime(2026, 11, 21, 19, 31, tzinfo=TZ)))
+        digest._buf = None
+        self.assertEqual(await db.kv_get(digest.KV_BUF), "[]")

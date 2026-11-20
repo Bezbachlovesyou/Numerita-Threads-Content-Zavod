@@ -2775,7 +2775,7 @@ async def run_op(cmd: dict, db: Storage, threads: ThreadsClient | None, bot: Bot
         from . import perfreport
         body = await perfreport.report(db, datetime.now(cfg.timezone), int(cmd.get("days") or 7),
                                        funnel.own_language(await funnel.fetch_raw(int(cmd.get("days") or 7))))
-        await notify_admins(bot, cfg, tag + body)
+        await notify_admins(bot, cfg, tag + body, urgent=True)  # отчёт владелец просит сам — не в сводку
         for i in range(0, len(body), 650):  # целиком — и в закрытую сводку, чтобы сессия, ведущая завод, видела цифры
             await _mirror_log(f"perf_report {i // 650 + 1}: " + body[i:i + 650])
     elif action == "humans_report":  # живые ли комментаторы: признаки ботов по базе ответов
@@ -3282,6 +3282,16 @@ async def run_scheduler(
                 await notify_admins(bot, cfg, c2b.line(m, await c2b.past(db, local_now)))
         except Exception:
             log.exception("Метрика «из комментариев в бота» не посчитана")
+        try:  # недельный отчёт владельцу по воскресеньям (20.11.2026: «мониторить, не вчитываться») — цифры, топ, выводы
+            local_now = datetime.now(cfg.timezone)
+            if local_now.weekday() == digest.WEEKLY_DAY and local_now.time() >= digest.DIGEST_AT \
+                    and await db.claim_slot(f"weekly report {local_now.date().isoformat()}"):
+                from . import funnel, perfreport
+                body = await perfreport.report(db, local_now, 7, funnel.own_language(await funnel.fetch_raw(7)))
+                m = await c2b.measure(db, local_now, await funnel.fetch(c2b.DAYS))
+                await notify_admins(bot, cfg, c2b.line(m, await c2b.past(db, local_now)) + "\n\n" + body, urgent=True)
+        except Exception:
+            log.exception("Недельный отчёт не собран")
         try:  # сводка владельцу раз в день вместо потока сообщений (слово владельца 20.11.2026)
             if (summary := await digest.due(db, datetime.now(cfg.timezone))):
                 await notify_admins(bot, cfg, summary, urgent=True)

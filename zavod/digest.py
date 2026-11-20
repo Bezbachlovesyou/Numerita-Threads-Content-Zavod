@@ -17,6 +17,8 @@ URGENT_MARKS = ("‼️", "🆘")
 DIGEST_AT = time(19, 30)  # до 21:00, когда владельца пора отправлять спать
 MAX_LINES = 6  # слово владельца 05.11: 3–6 коротких строк
 LINE_LIMIT = 170
+QUIET_UNLESS_PROBLEM = True  # слово владельца 20.11.2026: «просто мониторить, не вчитываться каждый день»
+WEEKLY_DAY = 6  # воскресенье: один недельный отчёт с цифрами (perfreport + метрика из комментариев в бота)
 KV_BUF = "digest:buf"
 KV_MODE = "notify:mode"
 
@@ -81,6 +83,10 @@ async def due(db, now: datetime) -> str | None:
     async with _lock:
         buf = await _load(db)
         if not buf or not await db.claim_slot(f"digest {now.date().isoformat()}"):
+            return None
+        if QUIET_UNLESS_PROBLEM and not any(line.startswith(PRIORITY) for line in buf):
+            buf.clear()  # 20.11.2026: всё спокойно — владельцу ничего не шлём (цифры — в недельном отчёте по воскресеньям)
+            await db.kv_set(KV_BUF, "[]")
             return None
         text = build(buf)
         buf.clear()
