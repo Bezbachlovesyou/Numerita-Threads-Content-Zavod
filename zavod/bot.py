@@ -25,7 +25,7 @@ from .cards import (
     render_grid, soul_carousel, GRID_STYLES, SHAPES,
 )
 from .autoreply import answer_comments, finish_reply
-from . import digest, deepseries
+from . import digest, deepseries, c2b
 from . import autoreply
 from . import text_mode
 from . import lang
@@ -1578,6 +1578,7 @@ def report_chunks(text: str, limit: int = 3500) -> list[str]:
     return chunks
 
 
+C2B_AT = time(19, 20)  # метрика считается перед вечерней сводкой (19:30) и попадает в неё первой строкой
 _DIGEST_DB: dict = {}  # база для тихого режима; задаётся в run_scheduler
 
 
@@ -3265,6 +3266,15 @@ async def run_scheduler(
             log.exception("Снятие неудачных постов не удалось")
     _DIGEST_DB["db"] = db
     while True:
+        try:  # метрика «из комментариев в бота» раз в день перед сводкой (слово владельца 20.11.2026: растим её)
+            local_now = datetime.now(cfg.timezone)
+            if local_now.time() >= C2B_AT and await db.claim_slot(f"c2b {local_now.date().isoformat()}"):
+                from . import funnel
+                m = await c2b.measure(db, local_now, await funnel.fetch(c2b.DAYS))
+                await c2b.record(db, local_now, m)
+                await notify_admins(bot, cfg, c2b.line(m, await c2b.past(db, local_now)))
+        except Exception:
+            log.exception("Метрика «из комментариев в бота» не посчитана")
         try:  # сводка владельцу раз в день вместо потока сообщений (слово владельца 20.11.2026)
             if (summary := await digest.due(db, datetime.now(cfg.timezone))):
                 await notify_admins(bot, cfg, summary, urgent=True)

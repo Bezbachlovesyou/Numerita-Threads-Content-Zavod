@@ -16,7 +16,7 @@ from datetime import datetime, time
 URGENT_MARKS = ("‼️", "🆘")
 DIGEST_AT = time(19, 30)  # до 21:00, когда владельца пора отправлять спать
 MAX_LINES = 6  # слово владельца 05.11: 3–6 коротких строк
-LINE_LIMIT = 140
+LINE_LIMIT = 170
 KV_BUF = "digest:buf"
 KV_MODE = "notify:mode"
 
@@ -66,7 +66,7 @@ def build(lines: list[str]) -> str:
     counts: dict[str, int] = {}
     for line in lines:
         counts[line] = counts.get(line, 0) + 1
-    ordered = sorted(counts, key=lambda l: (not l.startswith(PRIORITY), lines.index(l)))
+    ordered = sorted(counts, key=lambda l: (not l.startswith("📈"), not l.startswith(PRIORITY), lines.index(l)))  # главная метрика — первой
     shown = [f"{l} (×{counts[l]})" if counts[l] > 1 else l for l in ordered[:MAX_LINES]]
     rest = len(ordered) - len(shown)
     word = "мелочь" if rest % 10 == 1 and rest % 100 != 11 else "мелочи" if rest % 10 in (2, 3, 4) and rest % 100 not in (12, 13, 14) else "мелочей"

@@ -119,6 +119,15 @@ async def metrics(db: Storage, now: datetime, tz) -> str:
             spent = ", ".join(f"{k} ${v[1]:.2f} ({v[0]} запр.)" for k, v in ledger.items())
             lines.append(f"расходы {day.astimezone(tz):%d.%m}: {spent}")
     lines += funnel.lines(await funnel.fetch(7))
+    try:  # главная метрика владельца (20.11.2026): доля комментаторов, пришедших в бота, — обход ищет, как её поднять без давления
+        from . import c2b
+        m = await c2b.measure(db, now, await funnel.fetch(c2b.DAYS))
+        arm = c2b.best_arm(m)
+        lines.append("ГЛАВНАЯ МЕТРИКА (слово владельца 20.11): " + c2b.line(m, await c2b.past(db, now)).lstrip("📈 ")
+                     + (f" Лучше ведёт вариант ответа: {arm}." if arm else "")
+                     + " Растим её ценностью ответа (дар по названному числу, честное «чего не видно», спокойное приглашение), не числом ссылок.")
+    except Exception:
+        log.exception("Метрика «из комментариев в бота» не собрана для обхода")
     lines.append(art.stats_line())
     try:  # какая рубрика сколько людей ведёт в бота (каркас атрибуции)
         from .optimizer import RUBRIC_NAMES
