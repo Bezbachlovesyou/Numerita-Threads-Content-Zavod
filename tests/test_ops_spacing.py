@@ -82,8 +82,10 @@ class AsapAndChannel(unittest.IsolatedAsyncioTestCase):
         await db.mark_published(pid)
         cfg = SimpleNamespace(timezone=ZoneInfo("Europe/Moscow"))
         self.assertFalse(await B.op_ready({"action": "post", "account": "ru"}, db, cfg))
-        self.assertTrue(await B.op_ready({"action": "post", "account": "ru", "asap": True}, db, cfg))
-        self.assertTrue(await B.op_ready({"action": "thread", "account": "en", "asap": True}, db, cfg))
+        # 20.11.2026: пост за сутки уже был — asap ждёт (одна публикация в сутки), пропускает только over_cap
+        self.assertFalse(await B.op_ready({"action": "post", "account": "ru", "asap": True}, db, cfg))
+        self.assertTrue(await B.op_ready({"action": "post", "account": "ru", "asap": True, "over_cap": True}, db, cfg))
+        self.assertTrue(await B.op_ready({"action": "thread", "account": "en", "asap": True, "over_cap": True}, db, cfg))
         tmp.cleanup()
 
     def test_grids_never_go_to_the_telegram_channel(self):

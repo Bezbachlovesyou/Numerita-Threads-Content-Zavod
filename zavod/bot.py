@@ -25,7 +25,7 @@ from .cards import (
     render_grid, soul_carousel, GRID_STYLES, SHAPES,
 )
 from .autoreply import answer_comments, finish_reply
-from . import digest
+from . import digest, deepseries
 from . import autoreply
 from . import text_mode
 from . import lang
@@ -1672,7 +1672,7 @@ CTA_RULES = {
     "none": "Без ссылок и без упоминания бота. " + COMMENT_HOOK,
 }
 REPLY_INTERVAL = timedelta(minutes=5)
-DAILY_POST_CAP = autopost.DAILY_POSTS_MAX  # 19.11.2026: не больше 2 в сутки (было 4, до 11.11 — 20): реже, только шедевры
+DAILY_POST_CAP = autopost.DAILY_POSTS_MAX  # 20.11.2026: одна публикация в сутки (19.11 — 2, до этого 4 и 20): глубже, а не массой
 FAST_REPLY_INTERVAL = timedelta(minutes=2)
 OPTIMIZE_AT = time(4, 10)  # ежедневный разбор рубрик, когда трафик минимальный
 RETRY_AFTER_ERROR = timedelta(minutes=15)
@@ -1992,7 +1992,12 @@ async def post_next(
                 and await pdfpost.due(db, now) and await attribution.link_post_allowed(db, now):
             rubric = plan.effective(pdf_rubric)
             await pdfpost.mark(db, now)
+        deep_rubric = next((r for r in plan.all_rubrics() if r.key == deepseries.RUBRIC), None)
+        if deepseries.ENABLED and deep_rubric and text_mode.enabled():  # 20.11.2026: каждый пост — эпизод глубокой серии (deepseries.py)
+            rubric = deep_rubric  # без правок оптимизатора: бриф серии — точный
         slot = plan.render(rubric, now, rng)
+        if "[[DEEP]]" in slot.topic:  # эпизод исследования по порядку (knowledge/series/deep_series.json)
+            slot = replace(slot, topic=slot.topic.replace("[[DEEP]]", deepseries.block(await deepseries.take(db), lang.is_en())))
         if "[[QUALITY]]" in slot.topic:  # качество из Гиты — по порядку (gitaqualities.py)
             slot = replace(slot, topic=slot.topic.replace("[[QUALITY]]", gitaqualities.block(await gitaqualities.take(db, now), lang.is_en())))
         if "[[COMMENTS]]" in slot.topic:  # настоящие недавние комментарии (без имён и ссылок)
@@ -2000,7 +2005,7 @@ async def post_next(
         if "[[PAIR]]" in slot.topic:  # данные пары недели посчитаны кодом (pairweek.py)
             week_pair = await pairweek.take(db, now, lang.is_en())
             slot = replace(slot, topic=slot.topic.replace("[[PAIR]]", pairweek.block(week_pair, lang.is_en())))
-        if now.hour in autopost.PRIME_HOURS and slot.rubric.key != "grid":  # вечер: каждый пост — новый приём
+        if now.hour in autopost.PRIME_HOURS and slot.rubric.key not in ("grid", deepseries.RUBRIC):  # вечер: каждый пост — новый приём
             n = int(await db.kv_get("prime:angle") or 0)
             await db.kv_set("prime:angle", str(n + 1))
             slot = replace(slot, topic=slot.topic + "\nВечерний приём (не повторяй прошлые посты): "
@@ -2150,6 +2155,8 @@ async def post_next(
             ).to_json()
         if slot.rubric.key in ("text_marriage", "text_roles", "text_pair_week") and (slot.rubric.key == "text_pair_week" or series.window_rubric(now)):
             text = series.with_label(text, slot.rubric.key, lang.is_en())  # название серии последней строкой
+        if slot.rubric.key == deepseries.RUBRIC:
+            text = deepseries.with_label(text, lang.is_en())  # «🔭 Название · N/M» — человек видит, что это серия
         post_id = await db.add_draft(slot.topic, text, slot.rubric.key, first_comment, card_json)
         if profile:
             await postmatrix.record(db, post_id, profile)  # какие значения профиля дали какие комментарии — видно в /params
@@ -2546,6 +2553,9 @@ async def op_ready(cmd: dict, db: Storage, cfg: Config) -> bool:
             return False  # время не разобрать — не выпускаем наугад
     if cmd.get("action") in ("post", "thread", "video_post") and cmd.get("account") != "tg" and await db.kv_get("posts:paused") == "1":
         return False  # посты на паузе (posts_off): команда ждёт в очереди и выйдет после posts_on
+    if cmd.get("action") in ("post", "thread", "video_post") and cmd.get("account") != "tg" and not cmd.get("over_cap") \
+            and len(await db.recent_published(datetime.now(cfg.timezone) - timedelta(days=1))) >= DAILY_POST_CAP:
+        return False  # 20.11.2026: одна публикация в сутки и для пульта — команда ждёт следующих суток
     if cmd.get("action") not in ("post", "thread") or cmd.get("account") == "tg" or cmd.get("asap"):
         return True  # asap: флагманский пост владельца выходит сразу, не дожидаясь паузы
     last = await db.last_published_at()
@@ -2623,7 +2633,7 @@ async def run_op(cmd: dict, db: Storage, threads: ThreadsClient | None, bot: Bot
             await notify_admins(bot, cfg, f"⚠️ Пост в канал не вышел: утверждение о небе не подтверждено расчётом: {'; '.join(sky_bad)}.")
             return
         # слово создателя 09.11.2026: от завода в канал не больше одного поста в сутки (вечерние «Новости» идут из бота); исключение — force
-        if not cmd.get("force") and not await db.claim_slot(f"tgch zavod day {datetime.now(cfg.timezone).date().isoformat()}"):
+        if not await db.claim_slot(f"tgch zavod day {datetime.now(cfg.timezone).date().isoformat()}") and not cmd.get("force"):  # force тоже занимает слот дня (20.11: 1 пост в сутки)
             await notify_admins(bot, cfg, "ℹ️ В канал сегодня уже вышел пост от завода (лимит 1 в сутки), этот перенесите на завтра или добавьте \"force\": true.")
             return
         if cmd.get("media_url"):  # ролик с нашего сайта в канал (19.11.2026: ролик обновлённой игры) — только наш домен, подпись до 1024
@@ -2832,7 +2842,7 @@ async def run_op(cmd: dict, db: Storage, threads: ThreadsClient | None, bot: Bot
         asyncio.create_task(reel.revoice(db, generator.api_key, cmd, _send2, _note2))
     elif action == "reel_channel" and generator is not None and cmd.get("from") and cmd.get("text") and cfg.telegram_channel:
         from . import reel
-        if not cmd.get("force") and not await db.claim_slot(f"tgch zavod day {datetime.now(cfg.timezone).date().isoformat()}"):
+        if not await db.claim_slot(f"tgch zavod day {datetime.now(cfg.timezone).date().isoformat()}") and not cmd.get("force"):  # force тоже занимает слот дня (20.11: 1 пост в сутки)
             await notify_admins(bot, cfg, "ℹ️ В канал сегодня уже вышел пост от завода (лимит 1 в сутки), ролик перенесите на завтра или добавьте \"force\": true.")
             return
         data = await reel.fetch_video(db, generator.api_key, cmd["from"])

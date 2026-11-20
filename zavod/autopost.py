@@ -78,8 +78,8 @@ QUIET_HOURS = range(2, 10)  # слово владельца 10.11.2026: с 02:00
 
 # Окна выхода (слово владельца 11.11.2026: «посты не набирают, делать значительно реже, в нужное время, уникальные»): не больше 4 постов в сутки,
 # только в два окна: утро 10:00–13:00 и вечер 18:00–22:00 (русский по времени бота, английский по Нью-Йорку); между постами не меньше 4 часов.
-DAILY_POSTS_MAX = 2  # 19.11.2026, слово владельца: «1–2 поста, только шедевральных» (было 4)
-POST_WINDOWS = ((10, 13), (18, 22))
+DAILY_POSTS_MAX = 1  # 20.11.2026, слово владельца: «одно в сутки, не больше; глубже, а не массой» (19.11 — 2, раньше 4)
+POST_WINDOWS = ((18, 22),)  # 20.11.2026: один пост в сутки — в лучшие часы, вечером (было ещё 10–13)
 WINDOW_MIN_GAP = timedelta(hours=4)
 
 
@@ -171,6 +171,10 @@ def looks_astrological(text: str | None) -> bool:
 
 
 def topic_tag_for(rubric: str | None, text: str | None = None) -> str:
+    if rubric == "text_deep":  # у глубокой серии своё сообщество (deepseries.py, 20.11.2026)
+        from . import deepseries
+        if (tag := deepseries.topic(_is_en())):
+            return tag
     if rubric == "text_matrix":
         return "Tarot Threads"  # 22 аркана Таро: сообщество «Tarot Threads» (слово владельца 08.11.2026 нашёл его; отдельного синего про матрицу судьбы пока нет)
     if rubric in ASTRO_RUBRICS or looks_astrological(text):
