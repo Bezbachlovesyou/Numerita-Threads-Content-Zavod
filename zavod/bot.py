@@ -2542,6 +2542,14 @@ def chain_lines(c: dict) -> list[str]:
     return ["", *chain.lines(c)]
 
 
+async def channel_day(db: Storage, local: datetime) -> bool:
+    """Слот канала на сутки: от завода один пост в день (20.11.2026); воскресенье — день «Новостей Нумериты» из бота (19:47),
+    завод в канал не пишет (пульт с force — исключение)."""
+    if local.weekday() == 6:
+        return False
+    return await db.claim_slot(f"tgch zavod day {local.date().isoformat()}")
+
+
 async def op_ready(cmd: dict, db: Storage, cfg: Config) -> bool:
     """Пост/цепочка из пульта выходит не раньше обычной паузы после последнего поста (слово владельца: регулярность, не пачка):
     команда ждёт в очереди и уходит на следующем проходе (раз в 5 минут), остальные действия — сразу."""
@@ -2633,7 +2641,7 @@ async def run_op(cmd: dict, db: Storage, threads: ThreadsClient | None, bot: Bot
             await notify_admins(bot, cfg, f"⚠️ Пост в канал не вышел: утверждение о небе не подтверждено расчётом: {'; '.join(sky_bad)}.")
             return
         # слово создателя 09.11.2026: от завода в канал не больше одного поста в сутки (вечерние «Новости» идут из бота); исключение — force
-        if not await db.claim_slot(f"tgch zavod day {datetime.now(cfg.timezone).date().isoformat()}") and not cmd.get("force"):  # force тоже занимает слот дня (20.11: 1 пост в сутки)
+        if not await channel_day(db, datetime.now(cfg.timezone)) and not cmd.get("force"):  # force тоже занимает слот дня (20.11: 1 пост в сутки)
             await notify_admins(bot, cfg, "ℹ️ В канал сегодня уже вышел пост от завода (лимит 1 в сутки), этот перенесите на завтра или добавьте \"force\": true.")
             return
         if cmd.get("media_url"):  # ролик с нашего сайта в канал (19.11.2026: ролик обновлённой игры) — только наш домен, подпись до 1024
@@ -2842,7 +2850,7 @@ async def run_op(cmd: dict, db: Storage, threads: ThreadsClient | None, bot: Bot
         asyncio.create_task(reel.revoice(db, generator.api_key, cmd, _send2, _note2))
     elif action == "reel_channel" and generator is not None and cmd.get("from") and cmd.get("text") and cfg.telegram_channel:
         from . import reel
-        if not await db.claim_slot(f"tgch zavod day {datetime.now(cfg.timezone).date().isoformat()}") and not cmd.get("force"):  # force тоже занимает слот дня (20.11: 1 пост в сутки)
+        if not await channel_day(db, datetime.now(cfg.timezone)) and not cmd.get("force"):  # force тоже занимает слот дня (20.11: 1 пост в сутки)
             await notify_admins(bot, cfg, "ℹ️ В канал сегодня уже вышел пост от завода (лимит 1 в сутки), ролик перенесите на завтра или добавьте \"force\": true.")
             return
         data = await reel.fetch_video(db, generator.api_key, cmd["from"])
@@ -3536,7 +3544,7 @@ async def run_scheduler(
                 from . import astroschool
                 local = now.astimezone(cfg.timezone)
                 lesson = await astroschool.due(db, local)
-                if lesson and await db.claim_slot(f"tgch zavod day {local.date().isoformat()}"):  # общий лимит: 1 пост в сутки от завода
+                if lesson and await channel_day(db, local):  # общий лимит: 1 пост в сутки от завода
                     from aiogram.types import LinkPreviewOptions
                     msg = await bot.send_message(cfg.telegram_channel, lesson, parse_mode="HTML",
                                                  link_preview_options=LinkPreviewOptions(is_disabled=True))
