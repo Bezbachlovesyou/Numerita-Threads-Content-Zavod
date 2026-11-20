@@ -21,6 +21,7 @@ Claude записывает поручение в ops/commands.json в main. Б�
   replies_off / replies_on — пауза / возобновление автоответов на комментарии (ответ владельца reply_to идёт).
   posts_off / posts_on — пауза / возобновление всех постов в Threads своего языка (ответы на комментарии идут; посты из пульта ждут).
   post + account tg + media_url — ролик с www.numerita.ru/m/…mp4 в канал, text — подпись (до 1024 знаков).
+  notify_digest / notify_live — владельцу сводка раз в день в 19:30 (по умолчанию) / все сообщения сразу; ‼️ и 🆘 — всегда сразу.
   tell      — {"text": "..."} или {"file": "knowledge/…"}: длинный текст только владельцу в Telegram (без Threads, $0).
 """
 

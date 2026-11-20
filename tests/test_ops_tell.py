@@ -19,7 +19,7 @@ class OpsTell(unittest.IsolatedAsyncioTestCase):
 
     async def run_tell(self, cmd):
         sent = []
-        with patch.object(B, "notify_admins", AsyncMock(side_effect=lambda b, c, t: sent.append(t))):
+        with patch.object(B, "notify_admins", AsyncMock(side_effect=lambda b, c, t, *a, **k: sent.append(t))):
             await B.run_op(cmd, self.db, None, None, None)
         return sent
 

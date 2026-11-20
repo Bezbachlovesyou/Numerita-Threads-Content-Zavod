@@ -25,6 +25,7 @@ from .cards import (
     render_grid, soul_carousel, GRID_STYLES, SHAPES,
 )
 from .autoreply import answer_comments, finish_reply
+from . import digest
 from . import autoreply
 from . import text_mode
 from . import lang
@@ -1577,6 +1578,9 @@ def report_chunks(text: str, limit: int = 3500) -> list[str]:
     return chunks
 
 
+_DIGEST_DB: dict = {}  # база для тихого режима; задаётся в run_scheduler
+
+
 async def _mirror_log(text: str) -> None:
     """Копия служебного сообщения в закрытую сводку основного бота (/factory.json) — чтобы сессия, ведущая завод, видела,
     что произошло на самом деле (15.11.2026: «пост не вышел» видел только владелец). Сбой копии ничего не ломает."""
@@ -1621,8 +1625,16 @@ if not any(isinstance(h, _ErrorMirror) for h in logging.getLogger().handlers):
     logging.getLogger().addHandler(_ErrorMirror())
 
 
-async def notify_admins(bot: Bot, cfg: Config, text: str, post: Post | None = None) -> None:
+async def notify_admins(bot: Bot, cfg: Config, text: str, post: Post | None = None, *, urgent: bool = False) -> None:
     asyncio.create_task(_mirror_log(text))
+    db = _DIGEST_DB.get("db")
+    if db is not None and not urgent and not digest.is_urgent(text):  # тихий режим (20.11.2026): владельцу — сводка раз в день
+        try:
+            if not await digest.live(db):
+                await digest.add(db, text)
+                return
+        except Exception:
+            log.exception("Сводка: сообщение не отложено, отправляю сразу")
     label = os.getenv("INSTANCE_LABEL", "")
     if label:  # английский экземпляр: отчёт помечен, кнопок нет (их обработал бы русский завод с другой базой)
         text, post = f"[{label}] {text}", None
@@ -2752,7 +2764,7 @@ async def run_op(cmd: dict, db: Storage, threads: ThreadsClient | None, bot: Bot
         if not body:
             await notify_admins(bot, cfg, f"{tag}⚠️ Команда {cmd['id']}: нечего отправить")
         for part in pack_blocks(body):
-            await notify_admins(bot, cfg, tag + part)
+            await notify_admins(bot, cfg, tag + part, urgent=True)  # tell — нарочно владельцу, не в сводку
     elif action == "stories_preview":  # истории подписчиц и черновики постов — только владельцу, без публикации и отметок
         from . import stories
         batch = await stories.fetch() or []
@@ -2868,6 +2880,8 @@ async def run_op(cmd: dict, db: Storage, threads: ThreadsClient | None, bot: Bot
                 lines.append(f"{row['key'][12:]}: {url}")
         await db.kv_set("welcome:raw_urls", json.dumps(lines, ensure_ascii=False))
         await notify_admins(bot, cfg, "🎞 Исходники роликов без надписей (уже оплачены, $0):\n" + "\n".join(lines or ["нет"]))
+    elif action in ("notify_live", "notify_digest"):  # тихий режим владельца (20.11.2026): сводка раз в день или всё сразу
+        await db.kv_set(digest.KV_MODE, "live" if action == "notify_live" else "digest")
     elif action in ("posts_on", "posts_off"):  # пауза всех постов в Threads своего языка (18.11.2026: упал бот — посты тормозим); ответы идут
         await db.kv_set("posts:paused", "1" if action == "posts_off" else "0")
         if threads is not None:
@@ -3231,7 +3245,13 @@ async def run_scheduler(
                 await notify_admins(bot, cfg, line)
         except Exception:
             log.exception("Снятие неудачных постов не удалось")
+    _DIGEST_DB["db"] = db
     while True:
+        try:  # сводка владельцу раз в день вместо потока сообщений (слово владельца 20.11.2026)
+            if (summary := await digest.due(db, datetime.now(cfg.timezone))):
+                await notify_admins(bot, cfg, summary, urgent=True)
+        except Exception:
+            log.exception("Сводка владельцу не отправлена")
         if threads is not None:
             try:  # пауза постов (posts_off) переживает перезапуск: флаг в базе
                 threads.paused = await db.kv_get("posts:paused") == "1"
