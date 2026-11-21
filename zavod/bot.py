@@ -1582,11 +1582,25 @@ C2B_AT = time(19, 20)  # метрика считается перед вечер
 _DIGEST_DB: dict = {}  # база для тихого режима; задаётся в run_scheduler
 
 
+async def _mirror_problem(why: str) -> None:
+    """21.11.2026: русский экземпляр двое суток не писал в журнал сессий, и никто этого не видел. Раз в сутки — строка-проблема
+    в вечернюю сводку владельцу (напрямую в буфер, не через notify_admins: иначе копия зациклится)."""
+    db = _DIGEST_DB.get("db")
+    if db is None:
+        return
+    try:
+        if await db.claim_slot(f"mirror problem {datetime.now(timezone.utc).date().isoformat()}"):
+            await digest.add(db, f"⚠️ {'[EN] ' if lang.is_en() else ''}Сессии не видят отчёты завода: {why}. Без ключа завод не видит и переходы в бота.")
+    except Exception:
+        log.debug("Сводка: проблема журнала не записана", exc_info=True)
+
+
 async def _mirror_log(text: str) -> None:
     """Копия служебного сообщения в закрытую сводку основного бота (/factory.json) — чтобы сессия, ведущая завод, видела,
     что произошло на самом деле (15.11.2026: «пост не вышел» видел только владелец). Сбой копии ничего не ломает."""
     from . import funnel
     if not funnel.KEY:
+        await _mirror_problem("ключа NUMERITA_THREADS_KEY нет в настройках этого экземпляра")
         return
     try:
         import httpx
@@ -1595,6 +1609,7 @@ async def _mirror_log(text: str) -> None:
                                 json={"instance": "en" if lang.is_en() else "ru", "text": text[:700]})
             if r.status_code >= 300:  # 404 — ключ не тот (сервер так отвечает нарочно); в журнал сервера, не владельцу
                 log.warning("Журнал завода: копия не принята, HTTP %s", r.status_code)
+                await _mirror_problem(f"бот Нумериты не принял ключ NUMERITA_THREADS_KEY (код {r.status_code})")
     except Exception:
         log.debug("Журнал завода: копия не отправлена", exc_info=True)
 
