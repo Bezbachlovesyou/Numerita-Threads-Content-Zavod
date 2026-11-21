@@ -1,7 +1,7 @@
 """Сводка «что сработало» за N дней (слово владельца 17.11.2026: «табличка о самых больших достижениях и какие форматы их
 спровоцировали»): топ постов, рубрики по просмотрам/комментариям/приходу в бота, расходы. $0 — только база и учёт бота."""
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from . import attribution
 
@@ -72,4 +72,11 @@ async def report(db, now: datetime, days: int = 7, raw: dict | None = None) -> s
     out.append(f"\nРасход завода: ${spent:.2f}" + (f", на одного пришедшего ${spent / came:.2f}" if came else ", пришедших по меткам нет"))
     from . import pdfpost
     out.append(pdfpost.describe(await pdfpost.best_slots(db, now)))
-    return "\n".join(out)
+    # 21.11.2026, слово владельца: отчёт меряет три цели — ценность людям, рост пользующихся, оплаты; они — первыми строками
+    since = (now - timedelta(days=days)).astimezone(timezone.utc).isoformat()
+    rep = await db._rows("SELECT COUNT(*) AS n, COUNT(DISTINCT author) AS people FROM comment_replies WHERE status = 'replied' AND created_at >= ?", (since,))
+    paid = sum(t["paid"] for t in table)
+    goals = [f"1️⃣ Ценность: ответили людям {int(rep[0]['n'] or 0)} раз ({int(rep[0]['people'] or 0)} человек), комментариев под постами {sum(int(p['comments'] or 0) for p in posts)}",
+             f"2️⃣ Пользуются: пришли в бота из Threads {came}" + (f", расход на одного ${spent / came:.2f}" if came else ""),
+             f"3️⃣ Оплаты: {paid}"]
+    return "\n".join(out[:1] + goals + out[1:])
