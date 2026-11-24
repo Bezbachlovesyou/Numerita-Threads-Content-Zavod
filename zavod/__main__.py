@@ -27,6 +27,7 @@ async def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     cfg = load_config()
 
+    logging.info("Контент-завод (%s) подключается к базе", "EN" if os.getenv("FACTORY_LANG") == "en" else "RU")
     storage = PgStorage(cfg.database_url) if cfg.database_url else Storage(cfg.db_path)
     await storage.init()
     from . import text_mode

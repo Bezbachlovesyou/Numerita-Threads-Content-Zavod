@@ -3288,6 +3288,7 @@ async def run_scheduler(
         except Exception:
             log.exception("Снятие неудачных постов не удалось")
     _DIGEST_DB["db"] = db
+    first_pass = True
     while True:
         try:  # метрика «из комментариев в бота» раз в день перед сводкой (слово владельца 20.11.2026: растим её)
             local_now = datetime.now(cfg.timezone)
@@ -3614,6 +3615,9 @@ async def run_scheduler(
                 log.exception("Autoreply iteration failed")
             # Переответы с одинаковым началом «Прости, мой прошлый ответ…» похожи на рассылку — после повторных
             # 403/80016 владелец решил «красиво ехать»: выключены 28.10.2026 (redo_code_replies оставлен в коде).
+        if first_pass:
+            log.info("Первый проход расписания завершён (%s)", "EN" if EN else "RU")
+            first_pass = False
         await asyncio.sleep(30)
 
 
