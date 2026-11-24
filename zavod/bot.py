@@ -3292,7 +3292,6 @@ async def run_scheduler(
         try:  # метрика «из комментариев в бота» раз в день перед сводкой (слово владельца 20.11.2026: растим её)
             local_now = datetime.now(cfg.timezone)
             if local_now.time() >= C2B_AT and await db.claim_slot(f"c2b {local_now.date().isoformat()}"):
-                from . import funnel
                 m = await c2b.measure(db, local_now, await funnel.fetch(c2b.DAYS))
                 await c2b.record(db, local_now, m)
                 await notify_admins(bot, cfg, c2b.line(m, await c2b.past(db, local_now)))
@@ -3302,7 +3301,7 @@ async def run_scheduler(
             local_now = datetime.now(cfg.timezone)
             if local_now.weekday() == digest.WEEKLY_DAY and local_now.time() >= digest.DIGEST_AT \
                     and await db.claim_slot(f"weekly report {local_now.date().isoformat()}"):
-                from . import funnel, perfreport
+                from . import perfreport
                 body = await perfreport.report(db, local_now, 7, funnel.own_language(await funnel.fetch_raw(7)))
                 m = await c2b.measure(db, local_now, await funnel.fetch(c2b.DAYS))
                 await notify_admins(bot, cfg, c2b.line(m, await c2b.past(db, local_now)) + "\n\n" + body, urgent=True)
