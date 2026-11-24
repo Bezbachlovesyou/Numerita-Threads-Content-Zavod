@@ -183,9 +183,15 @@ def _find_followers(obj, depth=0, account_id=None):
         acc = obj.get('accountId') or obj.get('account_id')
         if acc and account_id and str(acc) != str(account_id):
             return None
+        accounts = obj.get('accounts')
+        if not acc and account_id and isinstance(accounts, list) and accounts:
+            for entry in accounts:
+                if isinstance(entry, dict) and str(entry.get('accountId') or entry.get('account_id')) == account_id:
+                    return _find_followers(entry, depth + 1, account_id)
+            return None
         for k, v in obj.items():
             name = str(k).lower().replace('_', '')
-            if 'follower' in name and not any(w in name for w in ('gain', 'growth', 'new', 'change', 'lost', 'delta')) and number(v) is not None:
+            if name in ('followers', 'totalfollowers', 'followercount') and number(v) is not None:
                 return number(v)
         for v in obj.values():
             got = _find_followers(v, depth + 1, account_id)
@@ -199,10 +205,16 @@ def _find_followers(obj, depth=0, account_id=None):
     return None
 
 
+def followers_prefix(client) -> str:
+    account_id = getattr(client, 'account_id', None)
+    return f'followers:{account_id}:' if isinstance(account_id, str) and account_id else 'followers:'
+
+
 async def daily_summary(db, client, now):
     """Ежедневная сводка (слово владельца 02.11.2026), коротко (04.11.2026: «много информации, глаза устают»): подписчики и посты без реакции в трёх строках."""
     from . import zero_cleanup
     from .optimizer import short_name
+    prefix = followers_prefix(client)
     followers = None
     try:
         followers = _find_followers(await client.account_stats(limit=1), account_id=getattr(client, 'account_id', None))
@@ -212,15 +224,15 @@ async def daily_summary(db, client, now):
     if followers is None:
         head = 'Подписчики: Zernio не отдал число — пришлите скриншот профиля, посчитаю по нему.'
     else:
-        prev = await db.kv_get(f'followers:{(now.date() - timedelta(days=1)).isoformat()}')
+        prev = await db.kv_get(f'{prefix}{(now.date() - timedelta(days=1)).isoformat()}')
         if prev and prev.isdigit() and abs(followers - int(prev)) > max(20, int(prev) * 0.3):
-            head = (f'Подписчики: площадка отдала {followers}, вчера было {prev}. Скачок слишком большой, '
-                    'не верю и не записываю: пришлите скриншот профиля, сверю.')
+            head = (f'Подписчики: аналитика Zernio показала {followers}, вчера для этого профиля было {prev}. '
+                    'Скачок слишком большой. Сохраняю предыдущий показатель до сверки с профилем Threads.')
         else:
-            await db.kv_set(f'followers:{today}', str(followers))
+            await db.kv_set(f'{prefix}{today}', str(followers))
             parts = [f'Подписчики сейчас: {followers}']
             for days, name in ((1, 'вчера'), (7, '7 дней назад')):
-                old = await db.kv_get(f'followers:{(now.date() - timedelta(days=days)).isoformat()}')
+                old = await db.kv_get(f'{prefix}{(now.date() - timedelta(days=days)).isoformat()}')
                 if old and old.isdigit():
                     parts.append(f'{name} было {int(old)} (разница {followers - int(old):+d})')
             head = parts[0] + (' · ' + '; '.join(parts[1:]) if len(parts) > 1 else ' (сравнить пока не с чем: счёт начат сегодня)')
@@ -228,14 +240,14 @@ async def daily_summary(db, client, now):
         # слово владельца 10.11.2026: Zernio застрял на 105 (в Threads уже 127) — устаревшее число нельзя выдавать за факт
         same = 0
         for back in range(1, 6):
-            old = await db.kv_get(f'followers:{(now.date() - timedelta(days=back)).isoformat()}')
+            old = await db.kv_get(f'{prefix}{(now.date() - timedelta(days=back)).isoformat()}')
             if old and old.isdigit() and int(old) == followers:
                 same += 1
             else:
                 break
         head += (f' (источник: Zernio; число не меняется уже {same + 1} дн., скорее всего устарело; реальное смотрите в профиле Threads или пришлите мне скриншот)'
                  if same >= 2 else ' (источник: Zernio, число может отставать от Threads на сутки и больше)')
-    manual = (await db.kv_get('followers:manual') or '').split('|')  # слово владельца 09.11.2026: бот показал 105, в Threads было 110 — истина только то, что видит владелец
+    manual = (await db.kv_get(f'{prefix}manual') or '').split('|')
     if len(manual) == 2 and manual[0].isdigit() and (now.date() - date.fromisoformat(manual[1])).days <= 7:
         zernio = f'; Zernio показывает {followers}, разница {int(manual[0]) - followers:+d}' if followers is not None else ''
         head = f'Подписчики по вашему замеру {date.fromisoformat(manual[1]):%d.%m}: {manual[0]}{zernio}'

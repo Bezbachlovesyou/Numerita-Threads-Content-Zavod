@@ -158,6 +158,23 @@ class DailySummary(DeliveryTests):
         self.assertIn('Zernio показывает 105, разница +5', text)
         print('OK')
 
+    async def test_scoped_snapshot_ignores_other_profile_and_legacy_total(self):
+        yesterday = (self.now.date() - timedelta(days=1)).isoformat()
+        await self.db.kv_set(f'followers:{yesterday}', '158')
+        await self.db.kv_set(f'followers:ru:{yesterday}', '158')
+        await self.db.kv_set(f'followers:en:{yesterday}', '36')
+        client = AsyncMock(account_id='en')
+        client.account_stats.return_value = {'overview': {'totalFollowers': 195}, 'accounts': [
+            {'accountId': 'ru', 'followers': 158},
+            {'accountId': 'en', 'activeFollowers': 33, 'followerCount': 37},
+        ]}
+        text = await performance.daily_summary(self.db, client, self.now)
+        self.assertIn('Подписчики сейчас: 37', text)
+        self.assertIn('вчера было 36 (разница +1)', text)
+        self.assertNotIn('158', text)
+        self.assertEqual(await self.db.kv_get(f'followers:en:{self.now.date().isoformat()}'), '37')
+        print('OK')
+
     async def test_missing_followers_field_is_stated_not_guessed(self):
         client = AsyncMock()
         client.account_stats.return_value = {'overview': {'views': 5}}

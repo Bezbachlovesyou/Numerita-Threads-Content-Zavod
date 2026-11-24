@@ -1229,14 +1229,14 @@ def create_router(cfg: Config, plan: ContentPlan) -> Router:
         await message.answer(await performance.daily_summary(db, threads, datetime.now(timezone.utc)), parse_mode=None)
 
     @router.message(Command("followers"))
-    async def followers_handler(message: Message, db: Storage):
+    async def followers_handler(message: Message, db: Storage, threads: ThreadsClient | None = None):
         """/followers 110 — владелец называет настоящее число подписчиков из Threads; сводка показывает его как истину и честно сверяет с Zernio."""
         arg = (message.text or "").split(maxsplit=1)[1:] or [""]
         if not arg[0].strip().isdigit():
             await message.answer("Напишите число из профиля Threads, например: /followers 110", parse_mode=None)
             return
         n, today = int(arg[0].strip()), datetime.now(cfg.timezone).date()
-        await db.kv_set("followers:manual", f"{n}|{today.isoformat()}")
+        await db.kv_set(performance.followers_prefix(threads) + "manual", f"{n}|{today.isoformat()}")
         await message.answer(f"Записано: подписчиков {n} на {today:%d.%m}. В сводке это теперь главное число, а Zernio сверяется с ним.", parse_mode=None)
 
     router.callback_query.filter(F.from_user.id.in_(cfg.admin_ids))
@@ -2887,7 +2887,8 @@ async def run_op(cmd: dict, db: Storage, threads: ThreadsClient | None, bot: Bot
         ch = str(cfg.telegram_channel).lstrip("@")
         await notify_admins(bot, cfg, f"✅ Ролик в канале: t.me/{ch}/{msg.message_id}" if not ch.startswith("-") else "✅ Ролик в канале: вышел")
     elif action == "followers" and str(cmd.get("n", "")).isdigit():  # число подписчиков со скриншота владельца записываю сама (10.11.2026)
-        await db.kv_set("followers:manual", f"{int(cmd['n'])}|{datetime.now(cfg.timezone).date().isoformat()}")
+        await db.kv_set(performance.followers_prefix(threads) + "manual",
+                        f"{int(cmd['n'])}|{datetime.now(cfg.timezone).date().isoformat()}")
         await notify_admins(bot, cfg, f"{tag}✅ Записано: подписчиков {int(cmd['n'])} (по вашему скриншоту).")
     elif action == "circle_preview":  # ролик «Найди числа от 1 до 31» — только владельцу на проверку, нигде не выкладываем ($0)
         async def _circle_job():
