@@ -102,7 +102,7 @@ async def startup_snapshot(dsn: str, account: str, mirror) -> None:
                                        "FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock'")
             await mirror("Ожидание блокировок БД: " + json.dumps([dict(r) for r in waiting], default=str))
             quota = await conn.fetch(f"SELECT key,value FROM {schema}.kv WHERE key IN "
-                                     "('api:next_request','api:quota:general','api:quota:analytics')")
+                                     "('api:next_request','api:last_403')")
             await mirror("Ожидание API: " + json.dumps([dict(r) for r in quota], ensure_ascii=False)[:650])
             for cmd in commands:
                 for ident in [str(i) for i in cmd.get("ids", [])][:10]:

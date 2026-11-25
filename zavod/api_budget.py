@@ -53,7 +53,7 @@ class RequestBudget:
                 'reply' if method == 'POST' and path.startswith('/inbox/comments') else
                 'analytics' if analytics else 'other')
         snapshot = {'at':datetime.fromtimestamp(now,timezone.utc).isoformat(),
-                    'status':response.status_code,'kind':kind,'limit':limit,'remaining':remaining,
+                    'status':response.status_code,'kind':kind,'method':method,'path':path,'limit':limit,'remaining':remaining,
                     'reset':reset,'reserve':reserve,'layer':layer}
         await self.storage.kv_set('api:quota:'+('analytics' if analytics else 'general'),json.dumps(snapshot))
         if response.status_code in (403, 429):
