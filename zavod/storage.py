@@ -395,8 +395,9 @@ class Storage:
         return rows[0]["value"] if rows else None
 
     async def kv_set(self, key: str, value: str) -> None:
-        await self._execute("DELETE FROM kv WHERE key = ?", (key,))
-        await self._execute("INSERT INTO kv (key, value) VALUES (?, ?)", (key, value))
+        # Одна операция: DELETE + INSERT конфликтовали у параллельных проверок API.
+        await self._execute("INSERT INTO kv (key, value) VALUES (?, ?) "
+                            "ON CONFLICT (key) DO UPDATE SET value = excluded.value", (key, value))
 
     async def recent_rubrics(self, limit: int) -> list[str]:
         """Рубрики последних опубликованных постов, свежие первыми."""
