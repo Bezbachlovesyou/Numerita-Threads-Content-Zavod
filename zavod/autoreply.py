@@ -284,10 +284,11 @@ async def answer_comments(
     ab_model: str | None = None,
     ab_share: float = 0,
     tz=None,
+    recovery_target: tuple | None = None,
 ) -> int:
     """Отвечает на новые комментарии. Возвращает, сколько ответов отправлено за этот прогон."""
     now = datetime.now(timezone.utc)
-    if await reply_cooldown.blocked(db, now):
+    if recovery_target is None and await reply_cooldown.blocked(db, now):
         return 0
     daily_usd = BUDGET_DAYS.get(datetime.now(tz).date().isoformat(), daily_usd) if daily_usd else daily_usd
     if daily_usd and await spent_on_replies(db, tz) >= daily_usd:
@@ -305,14 +306,14 @@ async def answer_comments(
     # Собираем всё, на что ещё не ответили, со всех постов: и новые комментарии, и ответы людей
     # на наши ответы (живой диалог). Свежие — первыми: первые 15–30 минут решают охват поста.
     queue: list[tuple[str, int | None, str, dict]] = []
-    targets = await reply_targets(db, threads, now)
+    targets = [recovery_target] if recovery_target is not None else await reply_targets(db, threads, now)
     try: scans = json.loads(await db.kv_get('comments:last_scans') or '{}')
     except ValueError: scans = {}
     # Least recently checked first. Bound each pass without abandoning older threads.
     selected = sorted(targets,key=lambda t:scans.get(t[0],''))[:6]
     for target_id, post_id, post_text in selected:
         try:
-            comments = await threads.comments(target_id)
+            comments = await threads.comments(target_id, max_pages=1) if recovery_target is not None else await threads.comments(target_id)
         except ThreadsError as e:
             if await reply_cooldown.defer(db, e, now):
                 return 0
@@ -330,7 +331,8 @@ async def answer_comments(
         await archive_comments(db, target_id, comments)
         scans[target_id] = now.isoformat()
         await db.kv_set('comments:last_scans',json.dumps({k:scans[k] for k,_,_ in targets if k in scans}))
-        await repair_fragments(db, threads, target_id, comments)
+        if recovery_target is None:
+            await repair_fragments(db, threads, target_id, comments)
         for item, our_last in reply_candidates(comments):
             context = post_text + (f"\n\nТвой прошлый ответ этому человеку в ветке:\n{our_last}" if our_last else "")
             queue.append((target_id, post_id, context, item))
@@ -363,6 +365,9 @@ async def answer_comments(
     # Содержательные продолжения важны наравне с первым вопросом или датой.
     queue.sort(key=lambda q: 0 if gave_number(q[3]["message"]) or "?" in q[3]["message"]
                or "Твой прошлый ответ" in q[2] else 1)
+    if recovery_target is not None:
+        queue = queue[:1]  # Одна проверочная отправка по явному поручению; не серия обходов ограничения.
+        budget = min(budget, 1)
     tight = bool(daily_usd) and await spent_on_replies(db, tz) >= TIGHT_SPEND * daily_usd
     free_per_day = TIGHT_PER_DAY if tight else FREE_PER_DAY
     reply_focus = await focus(db, "reply_focus")  # обход по Голдратту: фокус ответов на 12 часов

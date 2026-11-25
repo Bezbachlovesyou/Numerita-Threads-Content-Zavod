@@ -2786,6 +2786,18 @@ async def run_op(cmd: dict, db: Storage, threads: ThreadsClient | None, bot: Bot
                             else f"{tag}⚠️ Instagram ответил «{status}»")
     elif action == "reply_to" and threads is not None and text and cmd.get("author") and cmd.get("fragment"):
         await reply_to_comment(db, threads, bot, cfg, str(cmd["author"]), str(cmd["fragment"]), text, tag)
+    elif action == "recover_sagittarius_replies" and threads is not None and generator is not None:
+        # Узкая однократная проверка по поручению владельца: только новый пост своего аккаунта.
+        ident = 'astro-sagittarius-hit-20261125-' + ('en' if lang.is_en() else 'ru')
+        rows = await db._rows('SELECT id FROM posts WHERE topic=? ORDER BY id DESC LIMIT 1', ('ops:' + ident,))
+        if rows:
+            post = await db.get(rows[0]['id'])
+            sent = await autoreply.answer_comments(db, threads, generator, cfg.autoreply_per_hour, per_run=1,
+                daily_usd=cfg.reply_budget_usd, ab_model=cfg.reply_ab_model, ab_share=cfg.reply_ab_share,
+                tz=cfg.timezone, recovery_target=(post.threads_id, post.id, post.text))
+            await _mirror_log('Проверочная отправка ответа ' + ('en' if lang.is_en() else 'ru') + ': ' + str(sent)
+                              + '; последнее подтверждение=' + str(await db.kv_get('autoreply:last_success') or 'нет')
+                              + '; состояние=' + str(await db.kv_get('autoreply_error') or 'ошибок нет'))
     elif action == "publication_receipts":  # только чтение; никаких повторных POST в Threads
         from . import ops
         for line in await ops.publication_receipts(db, threads, [str(i) for i in cmd.get("ids", [])]):
