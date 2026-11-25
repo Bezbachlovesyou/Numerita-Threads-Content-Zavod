@@ -86,6 +86,33 @@ async def receipt_probe(db, threads, account: str, mirror) -> None:
         log.exception("Чтение запрошенных квитанций не завершено")
 
 
+async def startup_snapshot(dsn: str, account: str, mirror) -> None:
+    """Только SELECT через отдельное соединение: диагностика доступна даже при ожидании миграции."""
+    import asyncpg
+    conn = None
+    try:
+        commands = [c for c in await fetch() if c.get("action") == "publication_receipts"
+                    and c.get("account", "ru") == account and c.get("startup_snapshot")]
+        if not commands or not dsn:
+            return
+        conn = await asyncpg.connect(dsn, timeout=15, command_timeout=15)
+        schema = "en" if account == "en" else "public"
+        async with conn.transaction(readonly=True):
+            waiting = await conn.fetch("SELECT pid, state, wait_event_type, wait_event, pg_blocking_pids(pid) AS blockers "
+                                       "FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock'")
+            await mirror("Ожидание блокировок БД: " + json.dumps([dict(r) for r in waiting], default=str))
+            for cmd in commands:
+                for ident in [str(i) for i in cmd.get("ids", [])][:10]:
+                    row = await conn.fetchrow(f"SELECT id,status,threads_id,error FROM {schema}.posts "
+                                             "WHERE topic=$1 ORDER BY id DESC LIMIT 1", "ops:" + ident)
+                    await mirror("Снимок публикации " + ident + ": " + json.dumps(dict(row) if row else {}, ensure_ascii=False))
+    except Exception as e:
+        await mirror("Снимок публикации недоступен: " + type(e).__name__)
+    finally:
+        if conn:
+            await conn.close()
+
+
 async def tick(db, account: str, run, ready=None) -> None:
     """account — «ru» или «en» (канал tg выполняет русский экземпляр). run(command) -> строка квитанции.
     ready(command) -> False: команда пока ждёт (не занята), вернётся на следующем проходе — так посты из пульта не идут пачкой."""

@@ -26,13 +26,16 @@ VOICE_PROMPT = PROMPTS / "brand_voice.md"
 async def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     cfg = load_config()
+    from . import ops
+    from .bot import _mirror_log
+    snapshot_task = asyncio.create_task(ops.startup_snapshot(
+        cfg.database_url, "en" if os.getenv("FACTORY_LANG") == "en" else "ru", _mirror_log))
+    snapshot_task.add_done_callback(lambda task: task.exception() if not task.cancelled() else None)
 
     logging.info("Контент-завод (%s) подключается к базе", "EN" if os.getenv("FACTORY_LANG") == "en" else "RU")
     storage = PgStorage(cfg.database_url) if cfg.database_url else Storage(cfg.db_path)
     await storage.init()
     # Только запрошенные квитанции: независимы от ожидания API в очереди автопостинга.
-    from . import ops
-    from .bot import _mirror_log
     receipt_task = asyncio.create_task(ops.receipt_probe(
         storage, ThreadsClient(cfg.zernio_api_key, cfg.zernio_account_id, storage) if cfg.threads_enabled else None,
         "en" if os.getenv("FACTORY_LANG") == "en" else "ru", _mirror_log))

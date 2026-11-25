@@ -1573,6 +1573,7 @@
   "action": "publication_receipts",
   "ids": [
    "astro-sagittarius-hit-20261125-ru"
-  ]
+  ],
+  "startup_snapshot": true
  }
 ]
