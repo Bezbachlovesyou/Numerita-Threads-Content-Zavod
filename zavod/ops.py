@@ -47,6 +47,28 @@ async def fetch() -> list[dict]:
     return [c for c in data if isinstance(c, dict) and c.get("id")] if isinstance(data, list) else []
 
 
+async def publication_receipts(db, threads, ids: list[str]) -> list[str]:
+    """Только чтение: точечные квитанции порученных публикаций, без повторной отправки."""
+    out = ["Публикации: пауза=" + str(await db.kv_get("posts:paused") or "0")]
+    for ident in ids[:10]:
+        rows = await db._rows("SELECT id FROM posts WHERE topic = ? ORDER BY id DESC LIMIT 1", ("ops:" + ident,))
+        if not rows:
+            out.append(f"{ident}: запись ещё не создана")
+            continue
+        post = await db.get(rows[0]["id"])
+        line = f"{ident}: локально={post.status}"
+        if post.threads_id and post.threads_id != "published" and threads:
+            try:
+                status, link, error = await threads.post_status(post.threads_id)
+                line += f"; Threads={status}; {link or error or 'ссылки пока нет'}"
+            except Exception as e:
+                line += "; квитанция недоступна: " + type(e).__name__
+        elif post.error:
+            line += "; " + post.error[:180]
+        out.append(line)
+    return out
+
+
 async def tick(db, account: str, run, ready=None) -> None:
     """account — «ru» или «en» (канал tg выполняет русский экземпляр). run(command) -> строка квитанции.
     ready(command) -> False: команда пока ждёт (не занята), вернётся на следующем проходе — так посты из пульта не идут пачкой."""

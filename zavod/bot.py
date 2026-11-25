@@ -2786,6 +2786,10 @@ async def run_op(cmd: dict, db: Storage, threads: ThreadsClient | None, bot: Bot
                             else f"{tag}⚠️ Instagram ответил «{status}»")
     elif action == "reply_to" and threads is not None and text and cmd.get("author") and cmd.get("fragment"):
         await reply_to_comment(db, threads, bot, cfg, str(cmd["author"]), str(cmd["fragment"]), text, tag)
+    elif action == "publication_receipts":  # только чтение; никаких повторных POST в Threads
+        from . import ops
+        for line in await ops.publication_receipts(db, threads, [str(i) for i in cmd.get("ids", [])]):
+            await _mirror_log(line)
     elif action == "perf_report":  # что сработало за N дней: топ постов, рубрики, приход в бота, расход (17.11.2026)
         from . import perfreport
         body = await perfreport.report(db, datetime.now(cfg.timezone), int(cmd.get("days") or 7),
