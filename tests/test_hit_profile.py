@@ -26,6 +26,10 @@ class HitProfileTest(unittest.IsolatedAsyncioTestCase):
         for post in (RU, EN):
             self.assertEqual(await hit_profile_mode(self.db, post, '27', 'reader', self.now), 'bio_offer')
 
+    async def test_stored_hit_is_recognized_after_editor_rewrites_opening(self):
+        ident = await self.db.add_draft('ops:astro-sagittarius-hit-20261125-ru', 'Переписанный редактором хук')
+        self.assertEqual(await hit_profile_mode(self.db, 'Переписанный редактором хук', '27', 'reader', self.now, post_id=ident), 'bio_offer')
+
     async def test_invitation_is_not_repeated(self):
         await self.db.record_comment('first', None, 'reader', '27', 'Продолжить можно через ссылку в шапке профиля.', 'replied')
         self.assertEqual(await hit_profile_mode(self.db, RU, '27', 'reader', self.now), 'plain')

@@ -35,9 +35,13 @@ BUDGET_DAYS = {"2026-10-25": 1.6, "2026-11-09": 1.0}  # 09.11.2026: «да» в�
 INVITE_ALL_DAYS = {"2026-11-09"}  # слово владельца 09.11: всех комментаторов звать в бота; когда лимит ссылок исчерпан, зовём через «ссылка в шапке профиля» (лимиты Threads не трогаем)
 
 
-async def hit_profile_mode(db, post: str, comment: str, author: str, now):
+async def hit_profile_mode(db, post: str, comment: str, author: str, now, post_id=None):
     """Поручение 25.11: обещанный разбор под двумя новыми хитами → один мягкий вход через профиль."""
     hit = post.startswith('Стрельца попросили не устраивать шоу.') or post.startswith('A Sagittarius was told to stop making a scene.')
+    if post_id is not None:
+        stored = await db.get(post_id)
+        hit = bool(stored and stored.topic in {
+            'ops:astro-sagittarius-hit-20261125-ru', 'ops:astro-sagittarius-hit-20261125-en'})
     if not hit or not (find_birth(comment) or asks_link(comment)):
         return None
     rows = await db._rows(
@@ -406,7 +410,7 @@ async def answer_comments(
             continue
         if given == free_per_day:
             mode = "paywall" if links_ok else "paywall_bio"
-        hit_mode = await hit_profile_mode(db, post_text, comment['message'], author, now)
+        hit_mode = await hit_profile_mode(db, post_text, comment['message'], author, now, post_id=post_id)
         if hit_mode is not None:
             mode = hit_mode  # В этих двух ветках не добавляем прямые URL в ответ.
         # Игра «Угадай число» (31.10.2026): под матрицей код проверяет ответ (нашёл k из N, пасхалка) и даёт расчёт для прочтения выбора как игры-зеркала

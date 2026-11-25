@@ -131,7 +131,7 @@ async def startup_snapshot(dsn: str, account: str, mirror) -> None:
                                 await mirror("Пример ответа " + account + " " + sample['created_at'] + ": " + sample['reply'][:480])
         # Разовый GET по отдельному поручению: проверка чтения нового поста, без отправки и сброса пауз.
         for cmd in commands:
-            if not cmd.get('probe_comments'):
+            if not (cmd.get('probe_comments') or cmd.get('probe_discovery')):
                 continue
             from .storage import PgStorage
             from .threads_api import ThreadsClient
@@ -144,6 +144,13 @@ async def startup_snapshot(dsn: str, account: str, mirror) -> None:
                 if not await db.claim_slot('ops:comment-probe:' + cmd['id']):
                     continue
                 client = ThreadsClient(os.getenv('ZERNIO_API_KEY', '').strip(), os.getenv('ZERNIO_ACCOUNT_ID', '').strip(), db)
+                if cmd.get('probe_discovery'):
+                    from datetime import datetime, timedelta, timezone
+                    try:
+                        found = await asyncio.wait_for(client.commented_posts(datetime.now(timezone.utc) - timedelta(days=3)), 45)
+                        await mirror('Проверка общего списка комментариев ' + account + ': доступно; постов=' + str(len(found)))
+                    except Exception as e:
+                        await mirror('Проверка общего списка комментариев ' + account + ': ' + type(e).__name__ + ' ' + str(e)[:220])
                 for ident in cmd.get('ids', [])[:1]:
                     rows = await db._rows('SELECT threads_id FROM posts WHERE topic=? ORDER BY id DESC LIMIT 1', ('ops:' + str(ident),))
                     if not rows:

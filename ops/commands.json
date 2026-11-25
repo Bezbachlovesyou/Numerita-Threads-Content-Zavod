@@ -1612,5 +1612,17 @@
   "id": "sagittarius-one-reply-recovery-20261125-ru",
   "account": "ru",
   "action": "recover_sagittarius_replies"
+ },
+ {
+  "id": "sagittarius-endpoint-audit-20261125-ru",
+  "account": "ru",
+  "action": "publication_receipts",
+  "startup_snapshot": true,
+  "reply_audit": true,
+  "probe_comments": true,
+  "probe_discovery": true,
+  "ids": [
+   "astro-sagittarius-hit-20261125-ru"
+  ]
  }
 ]
