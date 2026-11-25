@@ -1526,5 +1526,11 @@
   "action": "perf_report",
   "days": 7,
   "after": "2026-11-21T10:00:00+03:00"
+ },
+ {
+  "id": "astro-hit-read-20261125-ru",
+  "account": "ru",
+  "action": "perf_report",
+  "days": 60
  }
 ]
