@@ -33,6 +33,20 @@ LOOKBACK = timedelta(days=3)  # под какими постами смотри�
 # продолжаем отвечать тем, кто пишет (слово владельца 25.10.2026).
 BUDGET_DAYS = {"2026-10-25": 1.6, "2026-11-09": 1.0}  # 09.11.2026: «да» владельца на $1 за день (пост про Скорпионов, 312 комментариев)
 INVITE_ALL_DAYS = {"2026-11-09"}  # слово владельца 09.11: всех комментаторов звать в бота; когда лимит ссылок исчерпан, зовём через «ссылка в шапке профиля» (лимиты Threads не трогаем)
+
+
+async def hit_profile_mode(db, post: str, comment: str, author: str, now):
+    """Поручение 25.11: обещанный разбор под двумя новыми хитами → один мягкий вход через профиль."""
+    hit = post.startswith('Стрельца попросили не устраивать шоу.') or post.startswith('A Sagittarius was told to stop making a scene.')
+    if not hit or not (find_birth(comment) or asks_link(comment)):
+        return None
+    rows = await db._rows(
+        "SELECT COUNT(*) AS n FROM comment_replies WHERE LOWER(author)=LOWER(?) AND status='replied' "
+        "AND created_at>=? AND (LOWER(reply) LIKE '%шапк%' OR LOWER(reply) LIKE '%профил%' "
+        "OR LOWER(reply) LIKE '%bio%' OR LOWER(reply) LIKE '%profile%' OR LOWER(reply) LIKE '%t.me/numeritabot%')",
+        (author, (now - timedelta(days=7)).isoformat()))
+    return 'plain' if rows[0]['n'] else 'bio_offer'
+
 MAX_GENERATIONS_PER_RUN = 6  # включая переписывания; 28.10.2026 — спокойный темп после повторных 403/80016
 FRESH_WINDOW = timedelta(minutes=30)
 DAILY_REPLY_CAP = 250  # Локальный потолок (28.10.2026: было 900); не измерение остатка реальной квоты Meta.
@@ -387,6 +401,9 @@ async def answer_comments(
             continue
         if given == free_per_day:
             mode = "paywall" if links_ok else "paywall_bio"
+        hit_mode = await hit_profile_mode(db, post_text, comment['message'], author, now)
+        if hit_mode is not None:
+            mode = hit_mode  # В этих двух ветках не добавляем прямые URL в ответ.
         # Игра «Угадай число» (31.10.2026): под матрицей код проверяет ответ (нашёл k из N, пасхалка) и даёт расчёт для прочтения выбора как игры-зеркала
         from . import game
         grid = await game.grid_of(db, post_id)

@@ -10,5 +10,24 @@
   "en": "A Sagittarius was told to stop making a scene. So they called witnesses.\n\nMark Twain — Nov 30.\nWalt Disney — Dec 5.\nFrank Sinatra — Dec 12.\nÉdith Piaf — Dec 19.\n\nAll Sagittarius. The witnesses arrived. Each brought their own stage.\n\nA Sun sign doesn't guarantee talent. Hiding yours isn't compulsory either.\n\nSagittarius? Share the day of the month you were born (1–31): I'll offer a playful picture of your strength through numerology.",
   "topic": "Astrology Threads",
   "authorization": "Прямое поручение владельца 25.11.2026 опубликовать сейчас обе версии; один пост на аккаунт.",
-  "status": "Поставлено в штатный пульт; публикация ещё не подтверждена."
+  "status": {
+    "en": {
+      "status": "published",
+      "url": "https://www.threads.com/@numerita.love/post/DgLM6FriCeH",
+      "verified_at": "2026-11-25T18:43:57Z",
+      "source": "Threads post_status через штатный publication_receipts"
+    },
+    "ru": {
+      "status": "published",
+      "url": "https://www.threads.com/@numerita.ai/post/DgLMwVFjlgk",
+      "verified_at": "2026-11-25T19:39:04Z",
+      "source": "Threads post_status через publication_receipts; исходная отправка, без дубля"
+    }
+  },
+  "ssh": {
+    "registered": true,
+    "removed": true,
+    "connected": false,
+    "note": "Пользователь разрешил SSH. Соединение недоступно из-за DNS/отказа прокси; ключ удалён, список Railway пуст. Квитанции получены штатным пультом."
+  }
 }

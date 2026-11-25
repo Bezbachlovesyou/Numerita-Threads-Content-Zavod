@@ -129,6 +129,34 @@ async def startup_snapshot(dsn: str, account: str, mirror) -> None:
                                                        "WHERE post_id=$1 AND status='replied' ORDER BY created_at DESC LIMIT 2", row['id'])
                             for sample in samples:
                                 await mirror("Пример ответа " + account + " " + sample['created_at'] + ": " + sample['reply'][:480])
+        # Разовый GET по отдельному поручению: проверка чтения нового поста, без отправки и сброса пауз.
+        for cmd in commands:
+            if not cmd.get('probe_comments'):
+                continue
+            from .storage import PgStorage
+            from .threads_api import ThreadsClient
+            from .dialogue import walk_comments
+            import os
+            db = PgStorage(dsn, schema=schema)
+            db.pool = await asyncpg.create_pool(dsn, min_size=1, max_size=1,
+                server_settings={'search_path': schema}, command_timeout=20)
+            try:
+                if not await db.claim_slot('ops:comment-probe:' + cmd['id']):
+                    continue
+                client = ThreadsClient(os.getenv('ZERNIO_API_KEY', '').strip(), os.getenv('ZERNIO_ACCOUNT_ID', '').strip(), db)
+                for ident in cmd.get('ids', [])[:1]:
+                    rows = await db._rows('SELECT threads_id FROM posts WHERE topic=? ORDER BY id DESC LIMIT 1', ('ops:' + str(ident),))
+                    if not rows:
+                        continue
+                    try:
+                        comments = await asyncio.wait_for(client.comments(rows[0]['threads_id'], max_pages=1), 45)
+                        incoming = [c for c, _, _ in walk_comments(comments) if not (c.get('from') or {}).get('isOwner')]
+                        await mirror('Проверка чтения комментариев ' + account + ': доступно; реплик читателей на первой странице=' + str(len(incoming))
+                                     + '; защитная пауза отправки не изменялась')
+                    except Exception as e:
+                        await mirror('Проверка чтения комментариев ' + account + ': ' + type(e).__name__ + ' ' + str(e)[:220])
+            finally:
+                await db.pool.close()
     except Exception as e:
         await mirror("Снимок публикации недоступен: " + type(e).__name__)
     finally:

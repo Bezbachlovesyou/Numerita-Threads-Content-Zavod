@@ -1584,7 +1584,8 @@
   "reply_audit": true,
   "ids": [
    "astro-sagittarius-hit-20261125-ru"
-  ]
+  ],
+  "probe_comments": true
  },
  {
   "id": "sagittarius-reply-audit-20261125-en",
