@@ -151,6 +151,21 @@ async def startup_snapshot(dsn: str, account: str, mirror) -> None:
                         await mirror('Проверка общего списка комментариев ' + account + ': доступно; постов=' + str(len(found)))
                     except Exception as e:
                         await mirror('Проверка общего списка комментариев ' + account + ': ' + type(e).__name__ + ' ' + str(e)[:220])
+                if cmd.get('probe_reply_reads'):
+                    from datetime import datetime, timedelta, timezone
+                    now = datetime.now(timezone.utc)
+                    known = {p.threads_id for p in await db.recent_published(now - timedelta(days=3))}
+                    known.update(r['target_id'] for r in await db.active_dialogue_targets(now - timedelta(days=7)))
+                    scans = json.loads(await db.kv_get('comments:last_scans') or '{}')
+                    gone = set(json.loads(await db.kv_get('gone_posts') or '[]'))
+                    for target in sorted(known - gone, key=lambda t: scans.get(t, ''))[:6]:
+                        try:
+                            comments = await asyncio.wait_for(client.comments(target), 60)
+                            await mirror('Проверка чтения ветки ' + account + ' ' + target + ': доступно; комментариев=' + str(len(comments)))
+                        except Exception as e:
+                            await mirror('Проверка чтения ветки ' + account + ' ' + target + ': ' + type(e).__name__ + ' ' + str(e)[:220])
+                            if getattr(e, 'http_status', None) == 429:
+                                break
                 for ident in cmd.get('ids', [])[:1]:
                     rows = await db._rows('SELECT threads_id FROM posts WHERE topic=? ORDER BY id DESC LIMIT 1', ('ops:' + str(ident),))
                     if not rows:

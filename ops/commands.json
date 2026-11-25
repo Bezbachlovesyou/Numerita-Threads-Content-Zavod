@@ -1624,5 +1624,16 @@
   "ids": [
    "astro-sagittarius-hit-20261125-ru"
   ]
+ },
+ {
+  "id": "sagittarius-target-read-audit-20261125-ru",
+  "account": "ru",
+  "action": "publication_receipts",
+  "startup_snapshot": true,
+  "probe_comments": true,
+  "probe_reply_reads": true,
+  "ids": [
+   "astro-sagittarius-hit-20261125-ru"
+  ]
  }
 ]
