@@ -1566,5 +1566,13 @@
   "ids": [
    "astro-sagittarius-hit-20261125-en"
   ]
+ },
+ {
+  "id": "astro-receipt-startup-20261125-ru",
+  "account": "ru",
+  "action": "publication_receipts",
+  "ids": [
+   "astro-sagittarius-hit-20261125-ru"
+  ]
  }
 ]

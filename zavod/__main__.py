@@ -30,6 +30,13 @@ async def main() -> None:
     logging.info("Контент-завод (%s) подключается к базе", "EN" if os.getenv("FACTORY_LANG") == "en" else "RU")
     storage = PgStorage(cfg.database_url) if cfg.database_url else Storage(cfg.db_path)
     await storage.init()
+    # Только запрошенные квитанции: независимы от ожидания API в очереди автопостинга.
+    from . import ops
+    from .bot import _mirror_log
+    receipt_task = asyncio.create_task(ops.receipt_probe(
+        storage, ThreadsClient(cfg.zernio_api_key, cfg.zernio_account_id, storage) if cfg.threads_enabled else None,
+        "en" if os.getenv("FACTORY_LANG") == "en" else "ru", _mirror_log))
+    receipt_task.add_done_callback(lambda task: task.exception() if not task.cancelled() else None)
     from . import text_mode
     if text_mode.enabled() and not await storage.kv_get('experiment:text-only:started_at'):
         await storage.kv_set('experiment:text-only:started_at',datetime.now(timezone.utc).isoformat())

@@ -25,6 +25,7 @@ Claude записывает поручение в ops/commands.json в main. Б�
   tell      — {"text": "..."} или {"file": "knowledge/…"}: длинный текст только владельцу в Telegram (без Threads, $0).
 """
 
+import asyncio
 import json
 import logging
 import time
@@ -59,7 +60,7 @@ async def publication_receipts(db, threads, ids: list[str]) -> list[str]:
         line = f"{ident}: локально={post.status}"
         if post.threads_id and post.threads_id != "published" and threads:
             try:
-                status, link, error = await threads.post_status(post.threads_id)
+                status, link, error = await asyncio.wait_for(threads.post_status(post.threads_id), 20)
                 line += f"; Threads={status}; {link or error or 'ссылки пока нет'}"
             except Exception as e:
                 line += "; квитанция недоступна: " + type(e).__name__
@@ -67,6 +68,22 @@ async def publication_receipts(db, threads, ids: list[str]) -> list[str]:
             line += "; " + post.error[:180]
         out.append(line)
     return out
+
+
+async def receipt_probe(db, threads, account: str, mirror) -> None:
+    """Запрошенное чтение квитанций не ждёт автоматических постов и не исполняет команды публикации."""
+    try:
+        for cmd in await fetch():
+            if cmd.get("action") != "publication_receipts" or cmd.get("account", "ru") != account:
+                continue
+            if not await db.claim_slot(f"ops:{cmd['id']}"):
+                continue
+            await mirror("Диагностика квитанций: " + account + "; следующий API-запрос="
+                         + str(await db.kv_get("api:next_request") or "сейчас"))
+            for line in await publication_receipts(db, threads, [str(i) for i in cmd.get("ids", [])]):
+                await mirror(line)
+    except Exception:
+        log.exception("Чтение запрошенных квитанций не завершено")
 
 
 async def tick(db, account: str, run, ready=None) -> None:
