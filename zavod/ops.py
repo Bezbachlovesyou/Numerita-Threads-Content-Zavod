@@ -39,9 +39,9 @@ EVERY = 300
 _last: float | None = None
 
 
-async def fetch() -> list[dict]:
+async def fetch(fresh: bool = False) -> list[dict]:
     async with httpx.AsyncClient(timeout=20) as http:
-        r = await http.get(URL, params={"t": int(time.time() // EVERY)})  # обходим кэш CDN
+        r = await http.get(URL, params={"t": int(time.time()) if fresh else int(time.time() // EVERY)})
     if r.status_code != 200:
         return []
     data = r.json()
@@ -91,7 +91,7 @@ async def startup_snapshot(dsn: str, account: str, mirror) -> None:
     import asyncpg
     conn = None
     try:
-        commands = [c for c in await fetch() if c.get("action") == "publication_receipts"
+        commands = [c for c in await fetch(fresh=True) if c.get("action") == "publication_receipts"
                     and c.get("account", "ru") == account and c.get("startup_snapshot")]
         if not commands or not dsn:
             return
@@ -109,6 +109,26 @@ async def startup_snapshot(dsn: str, account: str, mirror) -> None:
                     row = await conn.fetchrow(f"SELECT id,status,threads_id,error FROM {schema}.posts "
                                              "WHERE topic=$1 ORDER BY id DESC LIMIT 1", "ops:" + ident)
                     await mirror("Снимок публикации " + ident + ": " + json.dumps(dict(row) if row else {}, ensure_ascii=False))
+                    if cmd.get("reply_audit"):
+                        keys = ('replies:paused', 'autoreply_error', 'autoreply:last_success',
+                                'autoreply:cooldown:v1', 'reply_links_paused_until')
+                        state = await conn.fetch(f"SELECT key,value FROM {schema}.kv WHERE key=ANY($1::text[])", list(keys))
+                        await mirror("Аудит ответов " + account + ": " + json.dumps([dict(r) for r in state], ensure_ascii=False)[:650])
+                        if row:
+                            scans = await conn.fetchval(f"SELECT value FROM {schema}.kv WHERE key='comments:last_scans'")
+                            scan = json.loads(scans or '{}').get(row['threads_id'])
+                            counters = await conn.fetchrow(f"SELECT COUNT(*) AS archived, "
+                                f"COUNT(*) FILTER (WHERE NOT EXISTS (SELECT 1 FROM {schema}.comment_replies r "
+                                "WHERE r.comment_id=m.message_id)) AS unhandled "
+                                f"FROM {schema}.dialogue_messages m WHERE target_id=$1 AND role='user'", row['threads_id'])
+                            replies = await conn.fetch(f"SELECT status,COUNT(*) AS n,MAX(created_at) AS last "
+                                                       f"FROM {schema}.comment_replies WHERE post_id=$1 GROUP BY status", row['id'])
+                            await mirror("Ответы под хитом " + account + ": " + json.dumps({
+                                'scan': scan, 'archive': dict(counters), 'replies': [dict(r) for r in replies]}, ensure_ascii=False))
+                            samples = await conn.fetch(f"SELECT reply,created_at FROM {schema}.comment_replies "
+                                                       "WHERE post_id=$1 AND status='replied' ORDER BY created_at DESC LIMIT 2", row['id'])
+                            for sample in samples:
+                                await mirror("Пример ответа " + account + " " + sample['created_at'] + ": " + sample['reply'][:480])
     except Exception as e:
         await mirror("Снимок публикации недоступен: " + type(e).__name__)
     finally:

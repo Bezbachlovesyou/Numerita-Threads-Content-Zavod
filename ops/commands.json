@@ -1575,5 +1575,25 @@
    "astro-sagittarius-hit-20261125-ru"
   ],
   "startup_snapshot": true
+ },
+ {
+  "id": "sagittarius-reply-audit-20261125-ru",
+  "account": "ru",
+  "action": "publication_receipts",
+  "startup_snapshot": true,
+  "reply_audit": true,
+  "ids": [
+   "astro-sagittarius-hit-20261125-ru"
+  ]
+ },
+ {
+  "id": "sagittarius-reply-audit-20261125-en",
+  "account": "en",
+  "action": "publication_receipts",
+  "startup_snapshot": true,
+  "reply_audit": true,
+  "ids": [
+   "astro-sagittarius-hit-20261125-en"
+  ]
  }
 ]
