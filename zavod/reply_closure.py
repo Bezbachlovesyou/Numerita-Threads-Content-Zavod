@@ -38,7 +38,9 @@ async def extra_targets(db):
 async def notify_once(db, state, bot, cfg, text):
     if state.get('notice'):
         return
-    # Reserve before Telegram: ambiguous network failures are not blindly repeated.
+    # Atomic across overlapping Railway containers; ambiguous sends are not retried.
+    if not await db.claim_slot('reply_closure:notice:'+state['job']):
+        return
     state['notice'] = 'reserved'
     await save(db,state)
     recipients=cfg.admin_ids
@@ -74,7 +76,8 @@ async def combined_report(db, state, bot, cfg, mirror):
     lines.append(f"Отдельно: упоминаний @Numeritabot без URL — {a['mentions_without_url']+b['mentions_without_url']}; приглашений через профиль — {a['profile_hints']+b['profile_hints']}.")
     lines.append('Ссылки — по журналу подтверждённых отправок; пропуски (например, спам/эмодзи) не считаются ответами. Новые поступления обрабатываются дальше.')
     await notify_once(db,state,bot,cfg,'\n'.join(lines))
-    await mirror('Завершение очереди комментариев: отчёт отправлен; '+json.dumps({'job':state['job'],'receipts':state['receipts']}))
+    if state.get('notice') == 'sent':
+        await mirror('Завершение очереди комментариев: отчёт отправлен; '+json.dumps({'job':state['job'],'receipts':state['receipts']}))
 
 async def tick(db, threads, bot, cfg, mirror):
     job=os.getenv('COMMENTS_CLOSURE_JOB','').strip()

@@ -40,7 +40,7 @@ class Closure(unittest.IsolatedAsyncioTestCase):
         state=await job.load(self.db);self.assertFalse(state['complete']);self.assertIn('error',state)
         self.bot.send_message.assert_not_called()
     async def test_notice_reserved_before_api_and_no_blind_retry(self):
-        state={};self.bot.send_message.side_effect=TimeoutError()
+        state={'job':'test'};self.bot.send_message.side_effect=TimeoutError()
         with self.assertRaises(TimeoutError):await job.notify_once(self.db,state,self.bot,self.cfg,'done')
         self.assertEqual((await job.load(self.db))['notice'],'reserved')
         await job.notify_once(self.db,state,self.bot,self.cfg,'done')
@@ -84,7 +84,7 @@ class PostgresClosure(Closure):
 class Combined(unittest.IsolatedAsyncioTestCase):
     async def test_waits_for_both_then_reports_once(self):
         state={'job':'same','complete':'now','targets':[], 'sent_during_job':2,'skipped_during_job':1,'links72h':job.count_links([{'reply':'https://t.me/numeritabot'}])}
-        db=SimpleNamespace(pool=SimpleNamespace(fetchval=AsyncMock(return_value=json.dumps({'job':'same','complete':False}))),kv_set=AsyncMock())
+        db=SimpleNamespace(pool=SimpleNamespace(fetchval=AsyncMock(return_value=json.dumps({'job':'same','complete':False}))),kv_set=AsyncMock(),claim_slot=AsyncMock(return_value=True))
         bot=SimpleNamespace(send_message=AsyncMock(return_value=SimpleNamespace(message_id=42)))
         cfg=SimpleNamespace(admin_ids={1});mirror=AsyncMock()
         with patch('zavod.reply_closure.lang.is_en',return_value=False):
