@@ -48,10 +48,10 @@ class Closure(unittest.IsolatedAsyncioTestCase):
 
 class Pagination(unittest.IsolatedAsyncioTestCase):
     async def test_discovery_requires_all_pages(self):
-        c=ThreadsClient('fake','fake');c._request=AsyncMock(side_effect=[(200,{'data':[{'id':'a'}],'pagination':{'hasMore':True,'cursor':'next'}}),(200,{'data':[{'id':'b'}],'pagination':{'hasMore':False}})])
+        c=ThreadsClient('fake','fake');c._request=AsyncMock(side_effect=[(200,{'data':[{'id':'a'}],'pagination':{'hasMore':True,'nextCursor':'next'}}),(200,{'data':[{'id':'b'}],'pagination':{'hasMore':False}})])
         self.assertEqual(len(await c.commented_posts(datetime.now(timezone.utc),all_pages=True)),2)
     async def test_comments_truncation_is_not_success(self):
-        c=ThreadsClient('fake','fake');c._request=AsyncMock(return_value=(200,{'comments':[{'id':'a'}],'pagination':{'hasMore':True,'cursor':'next'}}))
+        c=ThreadsClient('fake','fake');c._request=AsyncMock(return_value=(200,{'comments':[{'id':'a'}],'pagination':{'hasMore':True,'nextCursor':'next'}}))
         with self.assertRaises(ThreadsError):await c.comments('p',max_pages=1)
 
 if __name__=='__main__':unittest.main()

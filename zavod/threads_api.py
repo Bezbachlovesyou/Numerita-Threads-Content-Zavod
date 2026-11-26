@@ -188,7 +188,7 @@ class ThreadsClient:
                 if len(items) >= 50 and not page:
                     raise ThreadsError("Полнота списка постов не подтверждена: нет пагинации")
                 return out
-            cursor = page.get("cursor")
+            cursor = page.get("nextCursor") or page.get("cursor")
             if not cursor or cursor in seen:
                 raise ThreadsError("Неполная пагинация списка постов")
             seen.add(cursor)
@@ -207,7 +207,7 @@ class ThreadsClient:
                 raise ThreadsError("API не подтвердил список комментариев")
             out += payload["comments"]
             page = payload.get("pagination") or {}
-            cursor = page.get("cursor")
+            cursor = page.get("nextCursor") or page.get("cursor")
             if not page.get("hasMore"):
                 if len(payload["comments"]) >= 50 and not page:
                     raise ThreadsError("Полнота комментариев не подтверждена")
