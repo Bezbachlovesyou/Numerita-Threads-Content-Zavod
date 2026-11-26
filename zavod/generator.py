@@ -109,6 +109,12 @@ class Generator:
             self.system += "\n\n" + emotions.read_text(encoding="utf-8")
         reply_path = voice_path.with_name("reply_voice.md")
         self.reply_system = reply_path.read_text(encoding="utf-8") if reply_path.exists() else self.system
+        mission = voice_path.with_name("mission.md")
+        if mission.exists():
+            mission_text = mission.read_text(encoding="utf-8")
+            self.system = mission_text + "\n\n" + self.system
+            self.reply_system = mission_text + "\n\n" + self.reply_system
+            self.voice_short = mission_text + "\n\n" + self.voice_short
         abundance = voice_path.with_name("abundance.md")  # деньги и изобилие: вдохновляем, не обесцениваем
         if abundance.exists():
             text = abundance.read_text(encoding="utf-8")
