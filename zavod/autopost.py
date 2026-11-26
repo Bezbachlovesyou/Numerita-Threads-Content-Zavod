@@ -156,7 +156,7 @@ DATING_RUBRICS = {"text_gotaway", "text_flags", "text_loves", "text_marriage", "
 PSYCH_RUBRICS = {"text_traits", "text_vector", "text_goals_story", "text_lessons", "text_fears", "text_reaction", "text_outgrow", "text_success", "text_levels", "text_gifts", "text_battery", "text_roles", "text_avoid", "text_great", "text_unknown"}
 
 
-ASTRO_RUBRICS = {"video_zodiac_heart", "text_pluto_gen", "text_sign", "text_sign_good", "text_sign_list", "text_sign_clash", "text_asc", "text_sign_truth", "text_mercury", "text_planet", "text_sky"}  # слово владельца 08.11.2026: «Знак × число» должен попадать в тему «Астрология», а не «Нумерология»
+ASTRO_RUBRICS = {"text_no_sugar", "video_zodiac_heart", "text_pluto_gen", "text_sign", "text_sign_good", "text_sign_list", "text_sign_clash", "text_asc", "text_sign_truth", "text_mercury", "text_planet", "text_sky"}  # слово владельца 08.11.2026: «Знак × число» должен попадать в тему «Астрология», а не «Нумерология»
 
 
 SIGN_RE = re.compile(r"(?i)\b(овен|овн[аоыуе]\w*|телец|тельц\w*|близнец\w*|скорпион\w*|стрелец|стрельц\w*|козерог\w*|водолей|водолея\w*|водолеев|весы|весов|aries|taurus|gemini|scorpio|sagittarius|capricorn|aquarius|pisces|virgo|libra)\b")
@@ -383,7 +383,7 @@ class ContentPlan:
             when=now,
             rubric=rubric,
             topic=topic,
-            tag=f"{rubric.key}{digit}_{now:%d%m}",
+            tag=f"{'fail' if rubric.key == 'text_no_sugar' else rubric.key}{digit}_{now:%d%m}",
             card_number=number,
             card_label=label,
             card_cta_text=cta_text,
