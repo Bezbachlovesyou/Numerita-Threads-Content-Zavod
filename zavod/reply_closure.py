@@ -31,6 +31,8 @@ async def save(db, state):
 
 async def extra_targets(db):
     state = await load(db)
+    if not os.getenv('COMMENTS_CLOSURE_JOB') or state.get('job') != os.getenv('COMMENTS_CLOSURE_JOB'):
+        return []
     return [tuple(t) for t in state.get('targets', [])] if state and not state.get('complete') else []
 
 async def notify_once(db, state, bot, cfg, text):
@@ -39,8 +41,16 @@ async def notify_once(db, state, bot, cfg, text):
     # Reserve before Telegram: ambiguous network failures are not blindly repeated.
     state['notice'] = 'reserved'
     await save(db,state)
+    recipients=cfg.admin_ids
+    if os.getenv('COMMENTS_CLOSURE_REPORT_CHAT_ID'):
+        recipient=int(os.environ['COMMENTS_CLOSURE_REPORT_CHAT_ID'])
+        if recipient not in cfg.admin_ids:
+            raise ValueError('Report recipient is not an administrator')
+        recipients={recipient}
+    elif len(recipients) != 1:
+        raise ValueError('One explicit report recipient required')
     receipts=[]
-    for recipient in sorted(cfg.admin_ids):
+    for recipient in sorted(recipients):
         message=await bot.send_message(recipient,text)
         receipts.append({'recipient':recipient,'message_id':message.message_id})
     state['notice']='sent'; state['receipts']=receipts
