@@ -114,8 +114,9 @@ async def tick(db, threads, bot, cfg, mirror):
             target=min(pending,key=lambda t:state['observed'].get(t[0],{}).get('at',''))
             comments=await threads.comments(target[0])
             candidates=[item['id'] for item,_ in reply_candidates(comments)]
-            handled=await db.handled_comments(candidates)
-            unreplyable=sum(bool(item.get('message')) and not (item.get('from') or {}).get('isOwner') and item.get('canReply') is False for item,_,_ in walk_comments(comments))
+            closed=[item['id'] for item,_,_ in walk_comments(comments) if item.get('id') and item.get('message') and not (item.get('from') or {}).get('isOwner') and item.get('canReply') is False and not any((r.get('from') or {}).get('isOwner') for r in item.get('replies') or [])]
+            handled=await db.handled_comments(candidates+closed)
+            unreplyable=len(set(closed)-handled)
             state['observed'][target[0]]={'at':now.isoformat(),'pending':len(set(candidates)-handled)+unreplyable,'unreplyable':unreplyable}
         unknown=[t for t in state['targets'] if t[0] not in state['observed']]
         waiting=sum(v['pending'] for v in state['observed'].values())
