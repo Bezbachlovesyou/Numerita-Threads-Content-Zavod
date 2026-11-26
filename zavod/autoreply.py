@@ -219,6 +219,9 @@ async def reply_targets(db: Storage, threads: ThreadsClient, now: datetime) -> l
         if await reply_cooldown.defer(db, e, now):
             return []
         await db.kv_set("autoreply_error", f"{now:%d.%m %H:%M} список постов с комментариями: {e}")
+    from .reply_closure import extra_targets
+    for target in await extra_targets(db):
+        targets.setdefault(target[0], target)
     # Keep following recently active discussions after the original post ages out.
     for row in await db.active_dialogue_targets(now - timedelta(days=7)):
         target = row["target_id"]

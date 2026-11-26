@@ -3616,6 +3616,11 @@ async def run_scheduler(
                 await notify_admins(bot, cfg, notice)
         except Exception:
             log.exception("Profit controller failed")
+        try:
+            from . import reply_closure
+            await reply_closure.tick(db, threads, bot, cfg, _mirror_log)
+        except Exception:
+            log.exception("Порученный обход комментариев отложен")
         if threads is not None and cfg.autoreply and datetime.now() >= next_replies \
                 and await db.kv_get("replies:paused") != "1":  # пауза автоответов (пульт replies_off, 18.11.2026: бот лежит)
             # Первые 15–30 минут решают, покажет ли Threads пост шире: в первый час после поста отвечаем быстрее.

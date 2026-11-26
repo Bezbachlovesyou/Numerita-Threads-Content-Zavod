@@ -170,20 +170,32 @@ class ThreadsClient:
         return (target.get("status") or remote.get("status") or "unknown", target.get("platformPostUrl"),
                 target.get("errorMessage"))
 
-    async def commented_posts(self, since: datetime) -> list[dict]:
-        """Все посты аккаунта в Threads, под которыми есть комментарии (в том числе опубликованные не ботом)."""
-        _, payload = await self._request(
-            "GET",
-            "/inbox/comments",
-            params={
-                "platform": "threads", "accountId": self.account_id, "minComments": 1,
-                "since": since.isoformat(), "limit": 50,
-            },
-        )
-        return payload.get("data") or []
+    async def commented_posts(self, since: datetime, all_pages: bool = False) -> list[dict]:
+        """Commented posts, with fail-closed pagination for owner backlog audits."""
+        out, cursor, seen = [], None, set()
+        for _ in range(100 if all_pages else 1):
+            params = {"platform": "threads", "accountId": self.account_id, "minComments": 1,
+                      "since": since.isoformat(), "limit": 50}
+            if cursor:
+                params["cursor"] = cursor
+            _, payload = await self._request("GET", "/inbox/comments", params=params)
+            items = payload.get("data") or []
+            out.extend(items)
+            page = payload.get("pagination") or {}
+            if not all_pages:
+                return out
+            if not page.get("hasMore"):
+                if len(items) >= 50 and not page:
+                    raise ThreadsError("Полнота списка постов не подтверждена: нет пагинации")
+                return out
+            cursor = page.get("cursor")
+            if not cursor or cursor in seen:
+                raise ThreadsError("Неполная пагинация списка постов")
+            seen.add(cursor)
+        raise ThreadsError("Список постов превысил предел полного обхода")
 
-    async def comments(self, post_id: str, max_pages: int = 10) -> list[dict]:
-        """Все комментарии под постом — постранично, до 500, с общей паузой API."""
+    async def comments(self, post_id: str, max_pages: int = 100) -> list[dict]:
+        """Все комментарии под постом — постранично, до 5000, с общей паузой API."""
         out: list[dict] = []
         cursor = None
         for _ in range(max_pages):
@@ -191,11 +203,20 @@ class ThreadsClient:
             if cursor:
                 params["cursor"] = cursor
             _, payload = await self._request("GET", f"/inbox/comments/{post_id}", params=params)
-            out += payload.get("comments") or []
+            if not isinstance(payload.get("comments"), list):
+                raise ThreadsError("API не подтвердил список комментариев")
+            out += payload["comments"]
             page = payload.get("pagination") or {}
             cursor = page.get("cursor")
-            if not page.get("hasMore") or not cursor:
+            if not page.get("hasMore"):
+                if len(payload["comments"]) >= 50 and not page:
+                    raise ThreadsError("Полнота комментариев не подтверждена")
                 break
+            if not cursor:
+                raise ThreadsError("Неполная пагинация комментариев")
+        else:
+            if page.get("hasMore"):
+                raise ThreadsError("Комментарии получены не полностью: предел страниц")
         return out
 
     async def reply(self, post_id: str, comment_id: str, message: str) -> None:
