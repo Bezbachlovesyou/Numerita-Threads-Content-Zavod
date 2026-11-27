@@ -1635,5 +1635,30 @@
   "ids": [
    "astro-sagittarius-hit-20261125-ru"
   ]
+ },
+ {
+  "id": "aries-replies-on-20261127-ru",
+  "account": "ru",
+  "action": "replies_on"
+ },
+ {
+  "id": "aries-presentation-20261127-ru",
+  "account": "ru",
+  "action": "post",
+  "rubric": "text_sign_good",
+  "asap": true,
+  "over_cap": true,
+  "text": "Овен уже начал отношения. Второй участник ещё печатает «привет».\n\nВ астрологической сценке Овен — мастер первого шага. Но иногда второй шаг полезнее: спросить «А ты чего хочешь?»\n\nСмелость — сказать «ты мне нравишься».\nБлизость — дождаться ответа.\nДаже если внутренний Овен уже выбрал шторы.\n\nЭто образ, не диагноз по знаку.\nОвны, какой день рождения — от 1 до 31? Добавлю нумерологический штрих: как проявлять инициативу, оставляя место двоим."
+ },
+ {
+  "id": "aries-receipt-20261127-ru",
+  "account": "ru",
+  "action": "publication_receipts",
+  "startup_snapshot": true,
+  "reply_audit": true,
+  "probe_comments": true,
+  "ids": [
+   "aries-presentation-20261127-ru"
+  ]
  }
 ]
